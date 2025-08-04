@@ -208,6 +208,9 @@ cython_debug/
 # BMAD Core
 .bmad-core/
 
+# reference documents for historical context
+.ignore/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
