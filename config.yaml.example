@@ -1,0 +1,30 @@
+# Auto-Trader System Configuration
+# Copy this file to config.yaml and customize as needed
+
+# Interactive Brokers Configuration
+ibkr:
+  host: "127.0.0.1"
+  port: 7497
+  client_id: 1
+  timeout: 30
+
+# Risk Management Configuration
+risk:
+  max_position_percent: 10.0  # Maximum position size as % of account value
+  daily_loss_limit_percent: 2.0  # Daily loss limit as % of account value
+  max_open_positions: 5  # Maximum number of concurrent positions
+  min_account_balance: 1000  # Minimum account balance required to trade
+
+# Trading System Configuration
+trading:
+  simulation_mode: true  # Set to false for live trading
+  market_hours_only: true  # Only trade during regular market hours  
+  default_timeframe: "15min"  # Default timeframe for execution functions
+  order_timeout: 60  # Order timeout in seconds
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  rotation: "1 day"  # Log rotation frequency
+  retention: "30 days"  # How long to keep old logs
+  format: "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}"
