@@ -1,6 +1,6 @@
-# Epic 4: Notifications & Persistence
+# Epic 4: Notifications & State Persistence
 
-Add Discord notifications, trade history logging, and state persistence for multi-day positions. This epic completes the system with observability and continuity features.
+Add Discord notifications, trade history logging, and state persistence for multi-day positions. This epic completes the system with observability and continuity features, building upon the logging infrastructure established in Epic 1.
 
 ## Story 4.1: Discord Notifications
 
@@ -14,7 +14,8 @@ so that I can monitor my system remotely.
 3: Exit notifications include: symbol, side, price, P&L, exit reason
 4: Error notifications include: error type, symbol, attempted action, timestamp
 5: Notifications formatted with markdown for readability
-6: Failed webhook posts logged but don't crash the system
+6: Failed webhook posts logged using Epic 1 logging infrastructure but don't crash the system
+7: Integrate with portfolio risk tracking from Epic 1.5 to include risk metrics in notifications
 
 ## Story 4.2: Trade History Logging
 
@@ -29,6 +30,8 @@ so that I can analyze my performance.
 4: Separate files for each month (trades_2024_01.csv format)
 5: Trade summary calculated on each trade: win rate, average win/loss
 6: History queryable by date range or symbol
+7: Build upon Epic 1 logging infrastructure for trade event capture
+8: Include risk metrics from Epic 1.5: risk percentage, portfolio impact at trade time
 
 ## Story 4.3: State Persistence and Recovery
 
@@ -42,4 +45,6 @@ so that I can maintain trades across multiple days.
 3: On startup, state file loaded and positions reconciled with IBKR
 4: Orphaned orders detected and cancelled if position no longer exists
 5: State file backup created before each update (keeping last 5 versions)
-6: Recovery process logged clearly showing what was restored
+6: Recovery process logged using Epic 1 logging infrastructure showing what was restored
+7: Integrate with Epic 1.5 risk management to restore portfolio risk tracking on startup
+8: Validate recovered positions against current portfolio risk limits
