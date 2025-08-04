@@ -15,6 +15,7 @@ N/A - This is a greenfield project built from scratch without using any starter 
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
 | 2025-08-03 | 1.0 | Initial architecture based on PRD | Winston (Architect) |
+| 2025-08-04 | 1.1 | Updated with enhanced risk management, CLI wizard, and logging improvements | Winston (Architect) |
 
 ## High Level Architecture
 
@@ -42,12 +43,13 @@ Auto-Trader is a monolithic Python application designed for automated trade exec
 - File-based persistence for durability
 
 **Primary Data Flow:**
-1. Trade plans loaded from YAML files at startup
-2. Market data streamed from IBKR WebSocket
-3. Execution functions evaluate on candle close events
-4. Risk checks performed before order placement
-5. Orders submitted to IBKR, notifications sent to Discord
-6. Trade history appended to CSV, state persisted to JSON
+1. Trade plans loaded from YAML files or created via interactive CLI wizard
+2. Position sizing calculated automatically using risk management module  
+3. Market data streamed from IBKR WebSocket
+4. Execution functions evaluate on candle close events
+5. Comprehensive risk checks performed before order placement (portfolio limits, position sizing)
+6. Orders submitted to IBKR, notifications sent to Discord with risk metrics
+7. Trade history appended to CSV, state persisted to JSON with risk tracking
 
 ### High Level Project Diagram
 
@@ -62,8 +64,9 @@ graph TB
     subgraph "Auto-Trader Core"
         MAIN[Main Process<br/>Orchestrator]
         LOADER[Trade Plan<br/>Loader]
+        CLI[Interactive CLI<br/>Wizard]
         ENGINE[Execution<br/>Engine]
-        RISK[Risk<br/>Manager]
+        RISK[Enhanced Risk<br/>Manager]
         STATE[State<br/>Manager]
     end
 
@@ -79,10 +82,12 @@ graph TB
     end
 
     YAML --> LOADER
+    CLI --> YAML
     ENV --> MAIN
     CONFIG --> MAIN
     
     LOADER --> ENGINE
+    CLI --> RISK
     ENGINE --> RISK
     RISK --> IBKR
     
@@ -134,6 +139,8 @@ This is the DEFINITIVE technology selection for the project. All components MUST
 | **Linting** | ruff | 0.7.0 | Fast Python linter | Replaces flake8/isort/black, blazing fast |
 | **Type Checking** | mypy | 1.11.0 | Static type checking | Catches errors before runtime |
 | **Time Zones** | pytz | 2024.1 | Timezone handling | Market hours calculations |
+| **CLI Enhancement** | rich | 13.7.0 | Enhanced terminal output | Improved CLI wizard experience |
+| **CLI Framework** | click | 8.1.7 | Command-line interface | CLI wizard and commands |
 
 ## Data Models
 
@@ -146,10 +153,12 @@ This is the DEFINITIVE technology selection for the project. All components MUST
 - entry_level: Decimal - Price level for entry
 - stop_loss: Decimal - Stop loss price
 - take_profit: Decimal - Target price
-- position_size: int - Number of shares/contracts
+- risk_category: str - Risk level: "small" (1%), "normal" (2%), "large" (3%)
 - entry_function: ExecutionFunction - Entry trigger logic
 - exit_function: ExecutionFunction - Exit trigger logic
 - status: TradePlanStatus - Current state (awaiting_entry, position_open, completed)
+- calculated_position_size: int - Dynamically calculated based on risk management
+- dollar_risk: Decimal - Calculated risk amount in dollars
 
 **Relationships:**
 - Contains ExecutionFunction configurations
@@ -235,17 +244,29 @@ This is the DEFINITIVE technology selection for the project. All components MUST
 **Technology Stack:** ib-async for API wrapper, asyncio for event handling
 
 ### risk_manager
-**Responsibility:** Enforce position sizing rules, daily loss limits, and pre-trade risk checks to protect capital
+**Responsibility:** Automated position sizing, portfolio risk tracking, and comprehensive pre-trade risk validation
 
 **Key Interfaces:**
-- `def check_position_size(symbol: str, quantity: int) -> RiskCheck`
+- `def calculate_position_size(account_balance: Decimal, risk_percent: float, entry_price: Decimal, stop_price: Decimal) -> PositionSizeResult`
+- `def check_portfolio_risk_limit(new_trade_risk: Decimal) -> RiskCheck`
+- `def get_current_portfolio_risk() -> Decimal` - Calculate total risk percentage
+- `def add_position_to_registry(position_id: str, risk_amount: Decimal)` - Track open position risk
+- `def remove_position_from_registry(position_id: str)` - Remove closed position risk
+- `def validate_trade_plan(trade_plan: TradePlan, account_balance: Decimal) -> RiskValidationResult`
 - `def check_daily_loss_limit() -> RiskCheck`
-- `def check_max_positions() -> RiskCheck`
-- `def update_daily_pnl(pnl: Decimal)` - Track realized P&L
 
-**Dependencies:** config.yaml for risk parameters, state_manager for current positions
+**Risk Categories:**
+- Small: 1% account risk per trade
+- Normal: 2% account risk per trade  
+- Large: 3% account risk per trade
 
-**Technology Stack:** Pure Python with pydantic for validation
+**Portfolio Limits:**
+- Maximum 10% total portfolio risk across all open positions
+- Position sizing formula: `Position Size = (Account Value × Risk %) ÷ |Entry Price - Stop Loss Price|`
+
+**Dependencies:** config.yaml for risk parameters, state_manager for position registry
+
+**Technology Stack:** Pure Python with pydantic for validation, Decimal for precise calculations
 
 ### discord_notifier
 **Responsibility:** Send formatted trade notifications and system alerts to Discord webhooks
@@ -272,6 +293,29 @@ This is the DEFINITIVE technology selection for the project. All components MUST
 **Dependencies:** File system for JSON storage
 
 **Technology Stack:** Python json module, pydantic for serialization
+
+### cli_wizard
+**Responsibility:** Interactive command-line interface for guided trade plan creation with real-time risk validation
+
+**Key Interfaces:**
+- `async def create_trade_plan() -> TradePlan` - Step-by-step plan creation
+- `async def create_plan_from_template(template_name: str) -> TradePlan` - Template-based creation
+- `def validate_symbol_input(symbol: str) -> ValidationResult` - Real-time symbol validation
+- `def calculate_live_risk(entry: Decimal, stop: Decimal, risk_category: str) -> RiskPreview`
+- `def show_portfolio_impact(new_risk: Decimal) -> PortfolioSummary`
+- `def preview_plan(trade_plan: TradePlan) -> str` - Format plan preview for confirmation
+
+**Features:**
+- Progressive field validation with immediate feedback
+- Real-time position size calculation during input
+- Portfolio risk impact preview
+- Error recovery for risk limit violations
+- Template system for common strategies
+- Quick plan creation with command-line arguments
+
+**Dependencies:** risk_manager for calculations, yaml module for file operations
+
+**Technology Stack:** Pure Python with rich/click for enhanced CLI experience
 
 ### Component Diagrams
 
@@ -351,6 +395,45 @@ sequenceDiagram
     end
 ```
 
+### CLI Trade Plan Creation Workflow
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant CLI as CLI Wizard
+    participant Risk as Risk Manager
+    participant YAML as Config File
+    participant Discord as Discord
+
+    User->>CLI: auto-trader create-plan
+    CLI->>Risk: Get Current Portfolio Status
+    Risk-->>CLI: Portfolio Risk: 4.2%
+    CLI->>User: Show Portfolio Context
+    
+    CLI->>User: Prompt for Symbol
+    User->>CLI: Enter "AAPL"
+    CLI->>CLI: Validate Symbol Format
+    CLI->>User: Prompt for Entry Level
+    User->>CLI: Enter "180.50"
+    
+    CLI->>User: Prompt for Stop Loss
+    User->>CLI: Enter "178.00"
+    CLI->>Risk: Calculate Stop Distance
+    Risk-->>CLI: 1.39% stop distance
+    
+    CLI->>User: Prompt for Risk Category
+    User->>CLI: Select "normal" (2%)
+    CLI->>Risk: Calculate Position Size
+    Risk-->>CLI: 80 shares, $200 risk
+    CLI->>Risk: Check Portfolio Limit
+    Risk-->>CLI: New total: 6.2% ✓
+    
+    CLI->>User: Show Plan Preview
+    User->>CLI: Confirm "yes"
+    CLI->>YAML: Save Trade Plan
+    CLI->>Discord: Send Config Update
+    CLI->>User: Success Confirmation
+```
+
 ## Database Schema
 
 Since we're using file-based storage for MVP, here are the file schemas:
@@ -358,24 +441,40 @@ Since we're using file-based storage for MVP, here are the file schemas:
 ### Trade Plan Schema (YAML)
 ```yaml
 # trade_plans/active_plans.yaml
+# Auto-Trader Trade Plans - Position sizing calculated automatically
 plans:
   - plan_id: "AAPL_20250803_001"
     symbol: "AAPL"
-    entry_level: 180.50
-    stop_loss: 178.00
-    take_profit: 185.00
-    position_size: 100
+    
+    # Entry/Exit Levels (always use 2+ decimal places)
+    entry_level: 180.50    # Trigger level for position entry
+    stop_loss: 178.00      # Maximum loss exit
+    take_profit: 185.00    # Profit target exit
+    
+    # Risk Management (position size calculated automatically)
+    risk_category: "normal" # Risk level: small (1%), normal (2%), large (3%)
+    
+    # Execution Logic
     entry_function:
-      type: "close_above"
-      timeframe: "15min"
+      type: "close_above"   # Options: close_above, close_below, trailing_stop
+      timeframe: "15min"    # Bar size: 1min, 5min, 15min, 30min, 1hour, 4hour, 1day
       parameters:
         threshold: 180.50
+        
     exit_function:
       type: "trailing_stop"
       timeframe: "5min"
       parameters:
         trail_percent: 1.5
-    status: "awaiting_entry"
+        
+    # Current Status (auto-updated by system)
+    status: "awaiting_entry"  # awaiting_entry, position_open, position_closed
+    created_at: "2025-08-03T09:30:00Z"
+    
+    # Runtime calculations (populated by risk manager)
+    calculated_position_size: 80  # Based on risk management formula
+    dollar_risk: 200.00           # Risk amount in dollars
+    portfolio_risk_percent: 2.0   # Individual trade risk percentage
 ```
 
 ### Position State Schema (JSON)
@@ -419,7 +518,16 @@ auto-trader/
 │       │   ├── __init__.py
 │       │   ├── trade_plan.py
 │       │   ├── position.py
+│       │   ├── risk_models.py    # Risk management models
 │       │   └── market_data.py
+│       ├── cli/                 # Interactive CLI components
+│       │   ├── __init__.py
+│       │   ├── wizard.py        # Trade plan creation wizard
+│       │   ├── commands.py      # CLI command handlers
+│       │   ├── validators.py    # Input validation
+│       │   └── tests/
+│       │       ├── test_wizard.py
+│       │       └── test_validators.py
 │       ├── trade_engine/         # Core execution logic
 │       │   ├── __init__.py
 │       │   ├── engine.py
@@ -440,11 +548,15 @@ auto-trader/
 │       │       ├── notifier.py
 │       │       └── tests/
 │       │           └── test_notifier.py
-│       ├── risk_management/     # Risk checks
+│       ├── risk_management/     # Enhanced risk system
 │       │   ├── __init__.py
-│       │   ├── risk_manager.py
+│       │   ├── risk_manager.py  # Core risk management
+│       │   ├── position_sizer.py # Automated position sizing
+│       │   ├── portfolio_tracker.py # Portfolio risk tracking
 │       │   └── tests/
-│       │       └── test_risk_manager.py
+│       │       ├── test_risk_manager.py
+│       │       ├── test_position_sizer.py
+│       │       └── test_portfolio_tracker.py
 │       └── persistence/         # State management
 │           ├── __init__.py
 │           ├── state_manager.py
@@ -453,17 +565,28 @@ auto-trader/
 │               └── test_state_manager.py
 ├── data/                       # Runtime data files
 │   ├── trade_plans/           # YAML trade plans
+│   │   ├── active_plans.yaml  # Current trade plans
+│   │   └── templates/         # Plan templates
+│   │       ├── breakout.yaml
+│   │       ├── pullback.yaml
+│   │       └── swing_trade.yaml
 │   ├── state/                 # JSON position state
 │   └── history/               # CSV trade history
-├── logs/                      # Rotating log files
+├── logs/                      # Enhanced logging structure
+│   ├── trades.log            # Trade execution logs
+│   ├── risk.log              # Risk management logs
+│   ├── system.log            # System events
+│   └── cli.log               # CLI wizard interactions
 ├── scripts/                   # Utility scripts
 │   ├── setup_environment.py
-│   └── validate_config.py
+│   ├── validate_config.py
+│   └── create_plan_templates.py
 ├── tests/                     # Integration tests
 │   ├── conftest.py
 │   └── integration/
 ├── .env.example              # Environment template
 ├── config.yaml.example       # Config template
+├── user_config.yaml.example  # User preferences template
 ├── pyproject.toml           # UV/project config
 ├── uv.lock                  # Locked dependencies
 ├── README.md
@@ -510,7 +633,25 @@ Development (Paper Trading) -> Manual Config Switch -> Production (Live Trading)
 - **Required Context:**
   - Correlation ID: UUID per trade plan evaluation
   - Service Context: module.function name
+  - Trade Context: plan_id, symbol, action
+  - Risk Context: portfolio_risk_percent, position_risk_amount
   - User Context: Not applicable (single user system)
+
+**Enhanced Logging Categories:**
+- **Risk Management Logs:** All position sizing calculations, portfolio risk updates, limit violations
+- **CLI Wizard Logs:** User interaction flows, validation errors, plan creation steps
+- **Cross-Interface Logs:** State changes propagated across Discord/Terminal/Config
+- **Performance Logs:** Execution latency, WebSocket reconnection timing
+
+**Progressive Verbosity Levels:**
+- **Standard:** Essential trade events, errors, risk violations
+- **Detailed (--verbose):** Risk calculations, validation steps, state changes
+- **Debug (--debug):** All function calls, WebSocket events, configuration loads
+
+**Log Rotation and Retention:**
+- Daily rotation with 30-day retention
+- Separate log files by category: trades.log, risk.log, system.log, cli.log
+- Structured format for easy parsing and analysis
 
 ### Error Handling Patterns
 
@@ -784,17 +925,21 @@ The decision to use Discord as the UI interface is brilliant for MVP - it elimin
 Since this is a backend-only system for MVP:
 
 1. **Immediate Development Tasks:**
-   - Set up project structure with UV
-   - Implement core models with pydantic
+   - Set up project structure with UV and enhanced CLI dependencies
+   - Implement core models with pydantic including risk management models
+   - Create enhanced risk management module with automated position sizing
+   - Build interactive CLI wizard with real-time validation
    - Create IBKR client with circuit breaker
    - Build execution engine with the three functions
-   - Add Discord notifications
-   - Implement state persistence
+   - Add Discord notifications with risk metrics
+   - Implement state persistence with portfolio tracking
 
 2. **Testing Strategy:**
-   - Set up pytest with asyncio support
-   - Create integration tests with paper account
-   - Build test fixtures for market data
+   - Set up pytest with asyncio support including CLI testing
+   - Create comprehensive unit tests for risk management calculations
+   - Create integration tests with paper account including CLI workflows
+   - Build test fixtures for market data and risk scenarios
+   - Test portfolio risk limit enforcement and validation
 
 3. **Deployment Preparation:**
    - Create systemd service file (Linux)
