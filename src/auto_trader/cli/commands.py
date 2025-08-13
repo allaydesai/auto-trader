@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from config import Settings, ConfigLoader
-from auto_trader.logging_config import get_logger
+from ..logging_config import get_logger
 
 
 console = Console()

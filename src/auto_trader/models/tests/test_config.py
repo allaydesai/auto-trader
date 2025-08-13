@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from auto_trader import (
+from auto_trader.models import (
     Settings,
     ConfigLoader,
     SystemConfig,
