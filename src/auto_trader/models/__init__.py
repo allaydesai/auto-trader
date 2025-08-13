@@ -14,7 +14,7 @@ from config import (
 __all__ = [
     "Settings",
     "ConfigLoader",
-    "SystemConfig", 
+    "SystemConfig",
     "UserPreferences",
     "IBKRConfig",
     "RiskConfig",

@@ -16,7 +16,7 @@ __author__ = "Auto-Trader Developer"
 
 __all__ = [
     "Settings",
-    "ConfigLoader", 
+    "ConfigLoader",
     "SystemConfig",
     "UserPreferences",
     "IBKRConfig",
