@@ -78,21 +78,58 @@ class SystemConfig(BaseModel):
 class UserPreferences(BaseModel):
     """User-specific preferences from user_config.yaml."""
 
-    default_account_value: Decimal = Field(
+    # Account and Risk Configuration  
+    account_value: Decimal = Field(
         default=Decimal("10000"),
         ge=1000,
-        description="Default account value for calculations",
+        description="Total account balance for position sizing calculations",
     )
     default_risk_category: str = Field(
-        default="conservative", pattern="^(conservative|moderate|aggressive)$"
+        default="normal", 
+        pattern="^(small|normal|large)$",
+        description="Default risk level for new trade plans"
     )
+    
+    # Trading Preferences
     preferred_timeframes: list[str] = Field(
-        default=["15min", "1hour"], description="Preferred execution timeframes"
+        default=["15min", "30min"], 
+        description="Default timeframes for execution functions"
+    )
+    default_entry_function: str = Field(
+        default="close_above",
+        description="Preferred entry execution function type"
+    )
+    default_exit_function: str = Field(
+        default="take_profit_stop_loss",
+        description="Preferred exit execution function type"
+    )
+    
+    # Environment Configuration
+    environment: str = Field(
+        default="paper",
+        pattern="^(paper|live)$", 
+        description="Trading environment preference"
+    )
+    
+    # Legacy Support (maintained for backward compatibility)
+    default_account_value: Optional[Decimal] = Field(
+        default=None,
+        description="DEPRECATED: Use account_value instead",
     )
     default_execution_functions: dict[str, str] = Field(
-        default={"long": "close_above", "short": "close_below"},
-        description="Default execution functions by trade type",
+        default_factory=lambda: {"long": "close_above", "short": "close_below"},
+        description="DEPRECATED: Use default_entry_function instead",
     )
+    
+    @field_validator('preferred_timeframes')
+    @classmethod 
+    def validate_timeframes(cls, v):
+        """Validate timeframe formats."""
+        valid_timeframes = ['1min', '5min', '15min', '30min', '1h', '2h', '4h', '1d']
+        for timeframe in v:
+            if timeframe not in valid_timeframes:
+                raise ValueError(f"Invalid timeframe '{timeframe}'. Must be one of: {valid_timeframes}")
+        return v
 
 
 class Settings(BaseSettings):
@@ -206,11 +243,11 @@ class ConfigLoader:
             # Cross-validation checks
             if (
                 system_config.risk.min_account_balance
-                > user_preferences.default_account_value
+                > user_preferences.account_value
             ):
                 issues.append(
                     f"Minimum account balance ({system_config.risk.min_account_balance}) "
-                    f"exceeds default account value ({user_preferences.default_account_value})"
+                    f"exceeds account value ({user_preferences.account_value})"
                 )
 
         except Exception as e:
