@@ -4,11 +4,14 @@ Personal automated trading system designed to execute discretionary trades with 
 
 ## Features
 
+- **Trade Plan Management**: YAML-based trade plan definitions with comprehensive validation
 - **Candle-Close Execution**: Uses time-based triggers instead of simple price levels to filter market noise
 - **Risk Management**: Built-in position sizing and daily loss limits
 - **Discord Notifications**: Real-time trade alerts and status updates
 - **Simulation Mode**: Test strategies without real money
 - **IBKR Integration**: Direct connection to Interactive Brokers for execution
+- **CLI Interface**: Rich command-line tools for plan management and monitoring
+- **Live Monitoring**: Real-time dashboard for active trade plans
 - **Structured Logging**: Comprehensive audit trail with separate log files
 
 ## Quick Start
@@ -88,19 +91,53 @@ default_execution_functions:
   short: "close_below"
 ```
 
-### 4. Validation
+### 4. Create Trade Plans
 
-Verify your configuration:
+Create your first trade plan using templates:
 
 ```bash
-uv run python -m auto_trader.cli.commands validate-config --verbose
+# Create a new trade plan interactively
+uv run python -m auto_trader.cli.commands create-plan
+
+# List available templates
+uv run python -m auto_trader.cli.commands list-templates --verbose
 ```
 
-### 5. Running the Application
+### 5. Validation
+
+Verify your configuration and trade plans:
+
+```bash
+# Validate system configuration
+uv run python -m auto_trader.cli.commands validate-config --verbose
+
+# Validate all trade plans
+uv run python -m auto_trader.cli.commands validate-plans --verbose
+
+# List loaded trade plans
+uv run python -m auto_trader.cli.commands list-plans --verbose
+```
+
+### 6. Monitoring
+
+Monitor your trading system:
+
+```bash
+# Start live monitoring dashboard
+uv run python -m auto_trader.cli.commands monitor
+
+# View performance summary
+uv run python -m auto_trader.cli.commands summary --period week
+
+# Check trade history
+uv run python -m auto_trader.cli.commands history --symbol AAPL --days 7
+```
+
+### 7. Running the Application
 
 ```bash
 # Start the trading system
-uv run python -m src.main
+uv run python -m auto_trader.main
 ```
 
 ## Project Structure
@@ -111,7 +148,12 @@ auto-trader/
 │   ├── config.py                    # Configuration management
 │   ├── main.py                      # Application entry point
 │   └── auto_trader/
-│       ├── models/                  # Pydantic data models
+│       ├── models/                  # Pydantic data models & validation
+│       │   ├── trade_plan.py        # Trade plan schema & validation
+│       │   ├── validation_engine.py # YAML validation engine
+│       │   ├── error_reporting.py   # Enhanced error reporting
+│       │   ├── template_manager.py  # Template management
+│       │   └── plan_loader.py       # Plan loading & management
 │       ├── trade_engine/            # Core execution logic
 │       ├── integrations/            # External service integrations
 │       │   ├── ibkr_client/         # Interactive Brokers API
@@ -119,11 +161,112 @@ auto-trader/
 │       ├── risk_management/         # Risk validation
 │       ├── persistence/             # State management
 │       └── cli/                     # Command-line interface
+│           ├── commands.py          # Main CLI commands
+│           ├── display_utils.py     # Display & formatting utilities
+│           ├── file_utils.py        # File creation utilities
+│           ├── error_utils.py       # Error handling utilities
+│           └── plan_utils.py        # Plan creation utilities
+├── data/
+│   └── trade_plans/
+│       ├── templates/               # YAML plan templates
+│       │   ├── close_above.yaml     # Close above execution template
+│       │   ├── close_below.yaml     # Close below execution template
+│       │   └── trailing_stop.yaml   # Trailing stop template
+│       └── *.yaml                   # Your trade plan files
 ├── logs/                            # Application logs
 ├── config.yaml                      # System configuration
 ├── user_config.yaml                 # User preferences
 └── .env                            # Environment variables
 ```
+
+## Trade Plan Management
+
+The Auto-Trader uses YAML-based trade plans with comprehensive validation and template support.
+
+### Creating Trade Plans
+
+#### Using Templates (Recommended)
+
+```bash
+# Interactive plan creation from templates
+uv run python -m auto_trader.cli.commands create-plan
+
+# View available templates
+uv run python -m auto_trader.cli.commands list-templates --verbose
+```
+
+#### Manual YAML Creation
+
+Create files in `data/trade_plans/` directory:
+
+```yaml
+# data/trade_plans/AAPL_20250815_001.yaml
+plan_id: "AAPL_20250815_001"
+symbol: "AAPL"
+entry_level: 180.50
+stop_loss: 178.00
+take_profit: 185.00
+risk_category: "normal"  # small (1%), normal (2%), large (3%)
+entry_function:
+  function_type: "close_above"
+  timeframe: "15min"
+  parameters:
+    threshold: 180.50
+exit_function:
+  function_type: "stop_loss_take_profit"
+  timeframe: "1min"
+  parameters: {}
+status: "awaiting_entry"
+```
+
+### Trade Plan Validation
+
+```bash
+# Validate all trade plans
+uv run python -m auto_trader.cli.commands validate-plans --verbose
+
+# Validate specific directory
+uv run python -m auto_trader.cli.commands validate-plans --plans-dir /path/to/plans
+```
+
+### Managing Trade Plans
+
+```bash
+# List all loaded plans
+uv run python -m auto_trader.cli.commands list-plans
+
+# Filter by status
+uv run python -m auto_trader.cli.commands list-plans --status awaiting_entry
+
+# Filter by symbol
+uv run python -m auto_trader.cli.commands list-plans --symbol AAPL --verbose
+```
+
+### Execution Functions
+
+| Function Type | Description | Parameters |
+|---------------|-------------|------------|
+| `close_above` | Execute when price closes above threshold | `threshold`: Price level |
+| `close_below` | Execute when price closes below threshold | `threshold`: Price level |
+| `trailing_stop` | Dynamic stop loss that trails price | `trail_percent`: Trailing percentage |
+
+### Risk Categories
+
+| Category | Risk Percentage | Use Case |
+|----------|----------------|----------|
+| `small` | 1% | Conservative positions |
+| `normal` | 2% | Standard positions |
+| `large` | 3% | High-conviction trades |
+
+### Plan Statuses
+
+| Status | Description |
+|--------|-------------|
+| `awaiting_entry` | Waiting for entry conditions |
+| `position_open` | Active position, monitoring exit |
+| `completed` | Position closed successfully |
+| `cancelled` | Plan cancelled before execution |
+| `error` | Error occurred during execution |
 
 ## Configuration Options
 
@@ -155,43 +298,73 @@ auto-trader/
 
 ## CLI Commands
 
-### Setup Wizard
+The Auto-Trader provides a comprehensive CLI interface for all operations.
+
+### Configuration Commands
 
 ```bash
+# Interactive setup wizard
 uv run python -m auto_trader.cli.commands setup [--output-dir DIR] [--force]
-```
 
-Creates configuration files interactively.
-
-### Configuration Validation
-
-```bash
+# Validate system configuration  
 uv run python -m auto_trader.cli.commands validate-config [--verbose]
 ```
 
-Validates all configuration files and environment variables.
+### Trade Plan Commands
+
+```bash
+# Create new trade plan from template
+uv run python -m auto_trader.cli.commands create-plan [--output-dir DIR]
+
+# List available templates
+uv run python -m auto_trader.cli.commands list-templates [--verbose]
+
+# Validate trade plans
+uv run python -m auto_trader.cli.commands validate-plans [--plans-dir DIR] [--verbose]
+
+# List loaded trade plans
+uv run python -m auto_trader.cli.commands list-plans [--status STATUS] [--symbol SYMBOL] [--verbose]
+```
+
+### Monitoring & Analysis Commands
+
+```bash
+# Live monitoring dashboard  
+uv run python -m auto_trader.cli.commands monitor [--plans-dir DIR] [--refresh-rate SECONDS]
+
+# Performance summary
+uv run python -m auto_trader.cli.commands summary [--period day|week|month] [--format console|csv]
+
+# Trade history
+uv run python -m auto_trader.cli.commands history [--symbol SYMBOL] [--days DAYS] [--format console|csv]
+```
 
 ### Help System
 
 ```bash
+# Detailed help information
 uv run python -m auto_trader.cli.commands help-system
-```
 
-Displays detailed help information.
+# Command-specific help
+uv run python -m auto_trader.cli.commands COMMAND --help
+```
 
 ## Development
 
 ### Testing
 
 ```bash
-# Run all tests
-uv run pytest
+# Run all tests (134 tests currently passing)
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ -v
 
-# Run with coverage
-uv run pytest --cov=src --cov-report=html
+# Run with coverage report
+PYTHONPATH=src uv run coverage run -m pytest src/auto_trader/models/tests/
+PYTHONPATH=src uv run coverage report --show-missing
 
-# Run specific test file
-uv run pytest src/auto_trader/models/tests/test_config.py
+# Run specific test modules
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_trade_plan.py -v
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_validation_engine.py -v
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_template_manager.py -v
 ```
 
 ### Code Quality
@@ -238,12 +411,20 @@ uv remove package-name
    - Verify YAML syntax in config files
    - Ensure Discord webhook URL is valid
 
-2. **IBKR connection fails**
+2. **Trade plan validation errors**
+   - Check YAML syntax (indentation, colons, quotes)
+   - Verify required fields: plan_id, symbol, entry_level, stop_loss, take_profit
+   - Ensure risk_category is one of: small, normal, large
+   - Validate symbol format (1-10 uppercase characters, no special chars)
+   - Check price fields are positive decimals with max 4 decimal places
+   - Use `validate-plans --verbose` for detailed error messages
+
+3. **IBKR connection fails**
    - Verify TWS/Gateway is running
    - Check host/port settings match TWS configuration
    - Ensure client ID is unique
 
-3. **Logging issues**
+4. **Logging issues**
    - Check `logs/` directory permissions
    - Verify disk space for log files
    - Review log level settings

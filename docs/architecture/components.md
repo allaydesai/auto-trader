@@ -1,5 +1,98 @@
 # Components
 
+## Implementation Status
+
+- ✅ **Trade Plan Management** (Stories 1.1, 1.2): Complete YAML-based trade plan system with validation
+- ✅ **Configuration System** (Story 1.1): Comprehensive configuration management with validation  
+- ✅ **CLI Interface** (Stories 1.1, 1.2): Rich command-line interface for all operations
+- ⏸️ **Trade Engine**: Awaiting implementation (Story 1.3)
+- ⏸️ **IBKR Integration**: Awaiting implementation (Story 2.1) 
+- ⏸️ **Risk Management**: Awaiting implementation (Story 1.5)
+
+---
+
+## ✅ Trade Plan Management System (Implemented)
+
+### TradePlanLoader
+**Status:** ✅ Complete (Story 1.2)  
+**Responsibility:** Load and manage YAML trade plan files with validation and caching
+
+**Key Interfaces:**
+- `load_all_plans(validate: bool = True) -> Dict[str, TradePlan]` - Load all plans from directory
+- `load_single_file(file_path: Path) -> List[TradePlan]` - Load plans from specific file
+- `get_plan(plan_id: str) -> Optional[TradePlan]` - Retrieve specific plan
+- `get_plans_by_status(status: TradePlanStatus) -> List[TradePlan]` - Filter by status
+- `update_plan_status(plan_id: str, status: TradePlanStatus)` - Update plan state
+- `get_stats() -> Dict[str, Any]` - Get loading statistics
+
+**Features:**
+- Directory scanning for YAML files
+- File watching with hot-reload capability
+- Plan validation on load with error aggregation
+- In-memory caching with unique plan ID tracking
+- Comprehensive error reporting with line numbers
+
+### ValidationEngine  
+**Status:** ✅ Complete (Story 1.2)  
+**Responsibility:** Comprehensive YAML validation with detailed error reporting
+
+**Key Interfaces:**
+- `validate_yaml_content(content: str, file_path: Optional[Path]) -> ValidationResult`
+- `validate_plan_data(plan_data: dict) -> ValidationResult` 
+- `validate_file(file_path: Path) -> ValidationResult`
+- `add_error_codes(errors: List[ValidationError]) -> List[ValidationError]`
+
+**Validation Rules:**
+- Symbol format: 1-10 uppercase characters, no special chars
+- Price fields: Positive decimals with max 4 decimal places  
+- Risk category: One of "small", "normal", "large"
+- Entry level ≠ stop loss (prevent zero-risk trades)
+- Plan ID uniqueness across all loaded plans
+- Execution function and timeframe validation
+
+### TemplateManager
+**Status:** ✅ Complete (Story 1.2)  
+**Responsibility:** Manage YAML trade plan templates with inline documentation
+
+**Key Interfaces:**
+- `list_available_templates() -> Dict[str, Any]` - Get all templates
+- `load_template(template_name: str) -> str` - Load template content
+- `get_template_documentation(template_name: str) -> Dict[str, Any]` - Parse inline docs
+- `create_plan_from_template(template_name: str, data: dict, output_file: Path) -> TradePlan`
+- `validate_template(template_name: str) -> ValidationResult`
+
+**Templates Available:**
+- `close_above.yaml` - Execute when price closes above threshold
+- `close_below.yaml` - Execute when price closes below threshold  
+- `trailing_stop.yaml` - Dynamic trailing stop strategy
+
+### CLI Interface System
+**Status:** ✅ Complete (Stories 1.1, 1.2)  
+**Responsibility:** Rich command-line interface for all operations
+
+**Commands Implemented:**
+- `setup` - Interactive configuration wizard
+- `validate-config` - Validate system configuration
+- `validate-plans` - Validate trade plan files
+- `list-plans` - Display loaded plans with filtering
+- `create-plan` - Interactive plan creation from templates
+- `list-templates` - Show available templates
+- `monitor` - Live monitoring dashboard
+- `summary` - Performance analysis
+- `history` - Trade history viewer
+- `help-system` - Comprehensive help
+
+**Features:**
+- Rich console formatting with colors and tables
+- Progressive error disclosure (show critical issues first)
+- Verbose mode for detailed output
+- File permission error handling with context
+- Safety defaults (simulation mode enforced)
+
+---
+
+## ⏸️ Future Components
+
 ## trade_engine
 **Responsibility:** Core orchestration of trade execution logic, managing the lifecycle of trade plans from signal generation to order placement
 
