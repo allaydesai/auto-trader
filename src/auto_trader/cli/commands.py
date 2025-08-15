@@ -50,6 +50,19 @@ from .plan_utils import (
     create_plan_output_file,
     show_plan_creation_success,
 )
+from .diagnostic_utils import (
+    check_configuration,
+    check_trade_plans,
+    check_permissions,
+    display_diagnostic_summary,
+    export_debug_information,
+)
+from .schema_utils import (
+    display_schema_console,
+)
+from .watch_utils import (
+    start_file_watching,
+)
 
 
 console = Console()
@@ -227,7 +240,7 @@ def validate_plans(plans_dir: Optional[Path], verbose: bool, watch: bool) -> Non
         
         # Enable file watching if requested
         if watch:
-            _start_file_watching(loader.plans_directory, verbose)
+            start_file_watching(loader.plans_directory, verbose)
             
         logger.info("Trade plan validation completed", plan_count=len(plans))
         
@@ -443,7 +456,7 @@ def show_schema(output_format: str, field: Optional[str]) -> None:
         else:
             # Show complete schema
             if output_format == "console":
-                _display_schema_console(schema)
+                display_schema_console(schema)
             elif output_format == "json":
                 import json
                 console.print(json.dumps(schema, indent=2))
@@ -648,27 +661,27 @@ def doctor(config: bool, plans: bool, permissions: bool, export_debug: bool) -> 
         # Configuration checks
         if config:
             console.print("[blue]🔧 Checking configuration...[/blue]")
-            config_results = _check_configuration()
+            config_results = check_configuration()
             diagnostic_results.extend(config_results)
             
         # Plans directory checks
         if plans:
             console.print("[blue]📄 Checking trade plans...[/blue]")
-            plans_results = _check_trade_plans()
+            plans_results = check_trade_plans()
             diagnostic_results.extend(plans_results)
             
         # Permission checks
         if permissions:
             console.print("[blue]🔒 Checking permissions...[/blue]")
-            permission_results = _check_permissions()
+            permission_results = check_permissions()
             diagnostic_results.extend(permission_results)
             
         # Show summary
-        _display_diagnostic_summary(diagnostic_results)
+        display_diagnostic_summary(diagnostic_results)
         
         # Export debug information if requested
         if export_debug:
-            _export_debug_information(diagnostic_results)
+            export_debug_information(diagnostic_results)
             
         logger.info("Diagnostic checks completed")
         
@@ -715,405 +728,7 @@ def help_system() -> None:
     )
 
 
-# Utility functions moved to separate modules
-
-
 # All utility functions moved to separate modules for better organization
-
-
-def _check_configuration() -> List[dict]:
-    """Check configuration files and settings."""
-    results = []
-    
-    try:
-        settings = Settings()
-        config_loader = ConfigLoader(settings)
-        
-        # Check environment file
-        env_file = Path(".env")
-        if env_file.exists():
-            results.append({
-                "check": "Environment file",
-                "status": "✅",
-                "message": f"Found {env_file}",
-                "level": "success"
-            })
-        else:
-            results.append({
-                "check": "Environment file",
-                "status": "⚠️",
-                "message": "No .env file found - using defaults",
-                "level": "warning"
-            })
-            
-        # Check configuration validation
-        issues = config_loader.validate_configuration()
-        if not issues:
-            results.append({
-                "check": "Configuration validation",
-                "status": "✅", 
-                "message": "All configuration files valid",
-                "level": "success"
-            })
-        else:
-            for issue in issues:
-                results.append({
-                    "check": "Configuration validation",
-                    "status": "❌",
-                    "message": f"Issue: {issue}",
-                    "level": "error"
-                })
-                
-        # Check user config file
-        if settings.user_config_file.exists():
-            results.append({
-                "check": "User configuration",
-                "status": "✅",
-                "message": f"Found {settings.user_config_file}",
-                "level": "success"
-            })
-        else:
-            results.append({
-                "check": "User configuration", 
-                "status": "⚠️",
-                "message": "No user_config.yaml - using defaults",
-                "level": "warning"
-            })
-            
-    except Exception as e:
-        results.append({
-            "check": "Configuration check",
-            "status": "❌",
-            "message": f"Error: {e}",
-            "level": "error"
-        })
-        
-    return results
-
-
-def _check_trade_plans() -> List[dict]:
-    """Check trade plans directory and files."""
-    results = []
-    
-    try:
-        loader = TradePlanLoader()
-        
-        # Check plans directory
-        if loader.plans_directory.exists():
-            results.append({
-                "check": "Plans directory",
-                "status": "✅",
-                "message": f"Found {loader.plans_directory}",
-                "level": "success"
-            })
-            
-            # Count YAML files
-            yaml_files = list(loader.plans_directory.glob("*.yaml")) + list(loader.plans_directory.glob("*.yml"))
-            results.append({
-                "check": "YAML files",
-                "status": "📄",
-                "message": f"Found {len(yaml_files)} YAML files",
-                "level": "info"
-            })
-            
-        else:
-            results.append({
-                "check": "Plans directory",
-                "status": "❌",
-                "message": f"Directory not found: {loader.plans_directory}",
-                "level": "error"
-            })
-            
-        # Try to load plans
-        plans = loader.load_all_plans(validate=True)
-        if plans:
-            results.append({
-                "check": "Plan loading",
-                "status": "✅",
-                "message": f"Loaded {len(plans)} valid plans",
-                "level": "success"
-            })
-        else:
-            results.append({
-                "check": "Plan loading",
-                "status": "⚠️",
-                "message": "No valid plans found",
-                "level": "warning"
-            })
-            
-    except Exception as e:
-        results.append({
-            "check": "Trade plans check",
-            "status": "❌",
-            "message": f"Error: {e}",
-            "level": "error"
-        })
-        
-    return results
-
-
-def _check_permissions() -> List[dict]:
-    """Check file and directory permissions."""
-    results = []
-    
-    # Check current directory permissions
-    current_dir = Path.cwd()
-    if current_dir.is_dir():
-        results.append({
-            "check": "Current directory",
-            "status": "✅" if current_dir.stat().st_mode & 0o200 else "❌",
-            "message": f"Write access to {current_dir}",
-            "level": "success" if current_dir.stat().st_mode & 0o200 else "error"
-        })
-    
-    # Check plans directory permissions
-    plans_dir = Path("data/trade_plans")
-    if plans_dir.exists():
-        has_write = plans_dir.stat().st_mode & 0o200
-        results.append({
-            "check": "Plans directory permissions",
-            "status": "✅" if has_write else "❌",
-            "message": f"{'Write' if has_write else 'No write'} access to {plans_dir}",
-            "level": "success" if has_write else "error"
-        })
-    else:
-        results.append({
-            "check": "Plans directory permissions",
-            "status": "⚠️",
-            "message": f"Plans directory does not exist: {plans_dir}",
-            "level": "warning"
-        })
-        
-    # Check logs directory
-    logs_dir = Path("logs")
-    if logs_dir.exists():
-        has_write = logs_dir.stat().st_mode & 0o200
-        results.append({
-            "check": "Logs directory permissions",
-            "status": "✅" if has_write else "❌",
-            "message": f"{'Write' if has_write else 'No write'} access to {logs_dir}",
-            "level": "success" if has_write else "error"
-        })
-    else:
-        results.append({
-            "check": "Logs directory permissions",
-            "status": "⚠️",
-            "message": f"Logs directory does not exist: {logs_dir}",
-            "level": "warning"
-        })
-        
-    return results
-
-
-def _display_diagnostic_summary(results: List[dict]) -> None:
-    """Display diagnostic results summary."""
-    # Count results by level
-    success_count = len([r for r in results if r["level"] == "success"])
-    warning_count = len([r for r in results if r["level"] == "warning"])
-    error_count = len([r for r in results if r["level"] == "error"])
-    info_count = len([r for r in results if r["level"] == "info"])
-    
-    # Create results table
-    table = Table(title="Diagnostic Results")
-    table.add_column("Check", style="cyan", width=25)
-    table.add_column("Status", style="white", width=8)
-    table.add_column("Message", style="white", width=50)
-    
-    for result in results:
-        table.add_row(result["check"], result["status"], result["message"])
-    
-    console.print(table)
-    
-    # Show summary
-    summary_color = "red" if error_count > 0 else "yellow" if warning_count > 0 else "green"
-    console.print(
-        Panel(
-            f"[{summary_color}]Summary:[/{summary_color}]\n"
-            f"✅ {success_count} successful\n"
-            f"⚠️ {warning_count} warnings\n"
-            f"❌ {error_count} errors\n"
-            f"📄 {info_count} info",
-            title="Health Check Summary",
-            border_style=summary_color,
-        )
-    )
-    
-    # Show recommendations
-    if error_count > 0:
-        console.print(
-            Panel(
-                "[red]🚨 Critical Issues Found[/red]\n"
-                "Please resolve errors before using the system.\n"
-                "Run 'auto-trader setup' if this is first-time setup.",
-                title="Recommendations",
-                border_style="red",
-            )
-        )
-    elif warning_count > 0:
-        console.print(
-            Panel(
-                "[yellow]⚠️  Warnings Found[/yellow]\n"
-                "System will work but some features may be limited.\n"
-                "Consider resolving warnings for optimal experience.",
-                title="Recommendations",
-                border_style="yellow",
-            )
-        )
-    else:
-        console.print(
-            Panel(
-                "[green]✅ System Healthy[/green]\n"
-                "All checks passed! Your system is ready to use.",
-                title="Recommendations",
-                border_style="green",
-            )
-        )
-
-
-def _export_debug_information(results: List[dict]) -> None:
-    """Export debug information to file."""
-    debug_file = Path(f"auto-trader-debug-{int(time.time())}.json")
-    
-    debug_info = {
-        "timestamp": datetime.now().isoformat(),
-        "diagnostic_results": results,
-        "system_info": {
-            "python_version": "3.11.8",  # Could get dynamically
-            "platform": "linux",  # Could get dynamically
-            "working_directory": str(Path.cwd()),
-        },
-        "environment_variables": {
-            "PYTHONPATH": "src",  # Only non-sensitive env vars
-        }
-    }
-    
-    try:
-        import json
-        with open(debug_file, 'w') as f:
-            json.dump(debug_info, f, indent=2)
-            
-        console.print(
-            Panel(
-                f"[green]Debug information exported to:[/green] {debug_file}\n"
-                "[yellow]Warning:[/yellow] Review file before sharing - no secrets included",
-                title="Debug Export",
-                border_style="green",
-            )
-        )
-    except Exception as e:
-        console.print(f"[red]Failed to export debug info: {e}[/red]")
-
-
-def _display_schema_console(schema: dict) -> None:
-    """Display schema in console-friendly format."""
-    console.print(
-        Panel(
-            "[blue]Trade Plan Schema Documentation[/blue]\n"
-            "Complete schema for trade plan YAML files",
-            title="Schema",
-            border_style="blue",
-        )
-    )
-    
-    properties = schema.get("properties", {})
-    required_fields = set(schema.get("required", []))
-    
-    # Create schema table
-    table = Table(title="Trade Plan Fields")
-    table.add_column("Field", style="cyan", width=20)
-    table.add_column("Type", style="yellow", width=15) 
-    table.add_column("Required", style="red", width=10)
-    table.add_column("Description", style="white", width=40)
-    
-    for field_name, field_info in properties.items():
-        field_type = field_info.get("type", "unknown")
-        if field_type == "object" and "properties" in field_info:
-            field_type = "object"
-        elif field_type == "array" and "items" in field_info:
-            items_type = field_info["items"].get("type", "unknown")
-            field_type = f"array[{items_type}]"
-            
-        is_required = "✓" if field_name in required_fields else ""
-        description = field_info.get("description", "No description")[:50] + "..." if len(field_info.get("description", "")) > 50 else field_info.get("description", "")
-        
-        table.add_row(field_name, field_type, is_required, description)
-    
-    console.print(table)
-    
-    # Show examples section
-    console.print(
-        Panel(
-            "[green]Examples:[/green]\n"
-            "• Basic plan: auto-trader create-plan\n"
-            "• View templates: auto-trader list-templates\n"
-            "• Field help: auto-trader show-schema --field plan_id\n"
-            "• JSON format: auto-trader show-schema --format json",
-            title="Usage Examples",
-            border_style="green",
-        )
-    )
-
-
-def _start_file_watching(watch_directory: Path, verbose: bool) -> None:
-    """Start file watching with rich progress indicators."""
-    console.print(
-        Panel(
-            f"[blue]🔄 Starting file watcher for: {watch_directory}[/blue]\n"
-            "Press 'Ctrl+C' to stop watching...",
-            title="File Watching",
-            border_style="blue",
-        )
-    )
-    
-    def validation_callback(file_path: Path, event_type: FileWatchEventType) -> None:
-        """Handle validation callbacks with rich formatting."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        if event_type == FileWatchEventType.CREATED:
-            console.print(f"[green]{timestamp} ✅ File created:[/green] {file_path.name}")
-        elif event_type == FileWatchEventType.MODIFIED:
-            console.print(f"[yellow]{timestamp} 🔄 File modified:[/yellow] {file_path.name}")
-        elif event_type == FileWatchEventType.DELETED:
-            console.print(f"[red]{timestamp} 🗑️  File deleted:[/red] {file_path.name}")
-            
-        if verbose and event_type != FileWatchEventType.DELETED:
-            console.print(f"[dim]    Validating {file_path.name}...[/dim]")
-    
-    # Create file watcher
-    watcher = FileWatcher(
-        watch_directory=watch_directory,
-        validation_callback=validation_callback,
-        debounce_delay=0.5
-    )
-    
-    try:
-        if watcher.start():
-            console.print("[green]✓ File watcher started successfully[/green]")
-            
-            # Run until interrupted
-            while True:
-                time.sleep(1.0)
-                
-        else:
-            console.print("[red]❌ Failed to start file watcher[/red]")
-            
-    except KeyboardInterrupt:
-        console.print("\n[yellow]File watching stopped by user[/yellow]")
-    finally:
-        watcher.stop()
-        
-        # Show final statistics
-        stats = watcher.get_stats()
-        console.print(
-            Panel(
-                f"[blue]File Watching Statistics[/blue]\n"
-                f"Events processed: {stats['events_processed']}\n"
-                f"Validation errors: {stats['validation_errors']}\n"
-                f"Watch duration: Active",
-                title="Summary",
-                border_style="blue",
-            )
-        )
 
 
 if __name__ == "__main__":
