@@ -1,0 +1,18 @@
+# Auto-Trader User Preferences Configuration
+# Copy this file to user_config.yaml and customize for your trading preferences
+
+# Account Configuration
+default_account_value: 10000  # Default account value for position sizing calculations
+
+# Risk Profile
+default_risk_category: "conservative"  # conservative, moderate, or aggressive
+
+# Trading Preferences
+preferred_timeframes:
+  - "15min"
+  - "1hour"
+
+# Default Execution Functions by Trade Type
+default_execution_functions:
+  long: "close_above"    # Default function for long positions
+  short: "close_below"   # Default function for short positions
