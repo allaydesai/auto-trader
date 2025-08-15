@@ -1,18 +1,91 @@
-# Auto-Trader User Preferences Configuration
+# Auto-Trader User Configuration Template
 # Copy this file to user_config.yaml and customize for your trading preferences
+# 
+# This file contains trader-specific defaults and preferences that enhance 
+# the system configuration without changing core behavior.
+#
+# SECURITY NOTE: This file does not contain secrets - those belong in .env
 
-# Account Configuration
-default_account_value: 10000  # Default account value for position sizing calculations
+# Account & Risk Configuration
+# =============================
 
-# Risk Profile
-default_risk_category: "conservative"  # conservative, moderate, or aggressive
+# Total account balance used for position sizing calculations
+# This value is critical for proper risk management
+account_value: 10000.00  # USD - Update to your actual account balance
 
-# Trading Preferences
+# Default risk level for new trade plans 
+# Affects position sizing and validation thresholds
+# Available options: small, normal, large
+default_risk_category: "normal"
+
+# Trading Preferences  
+# ===================
+
+# Default timeframes for execution functions
+# These are suggested when creating new trade plans
+# Available options: 1min, 5min, 15min, 30min, 1h, 2h, 4h, 1d
 preferred_timeframes:
-  - "15min"
-  - "1hour"
+  - "15min"  # Most common for intraday trading
+  - "30min"  # Good for swing entries
 
-# Default Execution Functions by Trade Type
-default_execution_functions:
-  long: "close_above"    # Default function for long positions
-  short: "close_below"   # Default function for short positions
+# Preferred execution function for long entries
+# This will be the default when creating long trade plans
+# Available options: close_above, close_below, trailing_stop
+default_entry_function: "close_above"
+
+# Preferred execution function for exits
+# This will be the default exit strategy for new plans
+# Available options: take_profit_stop_loss, trailing_stop, time_based
+default_exit_function: "take_profit_stop_loss"
+
+# Environment Configuration
+# =========================
+
+# Trading environment preference
+# "paper" = Paper trading account (safe for testing)  
+# "live" = Live trading account (real money - be careful!)
+# 
+# IMPORTANT: Always start with "paper" until you're confident in your setup
+environment: "paper"
+
+# Advanced Configuration (Optional)
+# =================================
+# These fields are maintained for backward compatibility with older versions.
+# New users should use the fields above instead.
+
+# DEPRECATED: Use account_value instead
+# default_account_value: 10000.00
+
+# DEPRECATED: Use default_entry_function instead  
+# default_execution_functions:
+#   long: "close_above"
+#   short: "close_below"
+
+# Configuration Notes:
+# ===================
+# 
+# 1. Position Sizing: The account_value is used to calculate position sizes
+#    based on your risk_category and the specific trade plan parameters.
+#
+# 2. Risk Categories:
+#    - small: Conservative position sizing (1-2% account risk)
+#    - normal: Balanced position sizing (2-3% account risk)  
+#    - large: Aggressive position sizing (3-5% account risk)
+#
+# 3. Timeframes: Choose timeframes that match your trading style:
+#    - 1min, 5min: Scalping and very short-term trades
+#    - 15min, 30min: Intraday swing trading
+#    - 1h, 2h: Longer swing trades
+#    - 4h, 1d: Position trading
+#
+# 4. Execution Functions:
+#    - close_above: Enter long when price closes above a level
+#    - close_below: Enter short when price closes below a level  
+#    - trailing_stop: Dynamic stop that trails profitable positions
+#
+# 5. Environment Safety:
+#    - Always test new configurations in "paper" mode first
+#    - Only switch to "live" when you're confident in your setup
+#    - The system will warn you when using live mode
+#
+# For more information, see: docs/configuration-guide.md

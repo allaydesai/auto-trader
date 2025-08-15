@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 import click
@@ -18,6 +18,7 @@ from ..models import (
     TemplateManager,
     TradePlanStatus,
 )
+from ..utils import FileWatcher, FileWatchEventType
 from .display_utils import (
     display_config_summary,
     display_plans_summary,
@@ -185,7 +186,8 @@ def setup(output_dir: Path, force: bool) -> None:
     help="Directory containing trade plan YAML files",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed validation results")
-def validate_plans(plans_dir: Optional[Path], verbose: bool) -> None:
+@click.option("--watch", "-w", is_flag=True, help="Watch for file changes and validate automatically")
+def validate_plans(plans_dir: Optional[Path], verbose: bool, watch: bool) -> None:
     """Validate all trade plan YAML files in the plans directory."""
     logger.info("Trade plan validation started")
     
@@ -223,6 +225,10 @@ def validate_plans(plans_dir: Optional[Path], verbose: bool) -> None:
         else:
             handle_validation_plan_failure(loader, plans_dir, verbose)
         
+        # Enable file watching if requested
+        if watch:
+            _start_file_watching(loader.plans_directory, verbose)
+            
         logger.info("Trade plan validation completed", plan_count=len(plans))
         
     except Exception as e:
@@ -236,9 +242,26 @@ def validate_plans(plans_dir: Optional[Path], verbose: bool) -> None:
     help="Directory containing trade plan YAML files",
 )
 @click.option("--status", help="Filter by status (awaiting_entry, position_open, completed)")
-@click.option("--symbol", help="Filter by symbol")
+@click.option("--symbol", help="Filter by symbol")  
+@click.option("--risk-category", help="Filter by risk category (small, normal, large)")
+@click.option("--sort-by", default="plan_id", type=click.Choice(["plan_id", "symbol", "status", "created_at"]), help="Sort plans by field")
+@click.option("--sort-desc", is_flag=True, help="Sort in descending order")
+@click.option("--limit", type=int, help="Limit number of results")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed plan information")
-def list_plans(plans_dir: Optional[Path], status: Optional[str], symbol: Optional[str], verbose: bool) -> None:
+@click.option("--quiet", "-q", is_flag=True, help="Minimal output")
+@click.option("--debug", is_flag=True, help="Debug level output")
+def list_plans(
+    plans_dir: Optional[Path], 
+    status: Optional[str], 
+    symbol: Optional[str],
+    risk_category: Optional[str],
+    sort_by: str,
+    sort_desc: bool,
+    limit: Optional[int],
+    verbose: bool,
+    quiet: bool,
+    debug: bool
+) -> None:
     """List all loaded trade plans with optional filtering."""
     logger.info("List trade plans started")
     
@@ -267,28 +290,78 @@ def list_plans(plans_dir: Optional[Path], status: Optional[str], symbol: Optiona
                 status_enum = TradePlanStatus(status)
                 filtered_plans = [p for p in filtered_plans if p.status == status_enum]
             except ValueError:
-                console.print(f"[red]Invalid status: {status}[/red]")
+                console.print(f"[red]❌ Invalid status: {status}[/red]")
                 return
                 
         if symbol:
             filtered_plans = [p for p in filtered_plans if p.symbol.upper() == symbol.upper()]
+            
+        if risk_category:
+            filtered_plans = [p for p in filtered_plans if p.risk_category == risk_category]
+        
+        # Apply sorting
+        reverse = sort_desc
+        if sort_by == "plan_id":
+            filtered_plans.sort(key=lambda p: p.plan_id, reverse=reverse)
+        elif sort_by == "symbol":
+            filtered_plans.sort(key=lambda p: p.symbol, reverse=reverse) 
+        elif sort_by == "status":
+            filtered_plans.sort(key=lambda p: p.status.value, reverse=reverse)
+        elif sort_by == "created_at":
+            filtered_plans.sort(key=lambda p: p.created_at, reverse=reverse)
+        
+        # Apply limit
+        if limit and limit > 0:
+            filtered_plans = filtered_plans[:limit]
         
         # Display results
         if not filtered_plans:
-            console.print(
-                Panel(
-                    "[yellow]No plans found matching filters[/yellow]",
-                    title="Filtered Results",
-                    border_style="yellow",
+            if not quiet:
+                console.print(
+                    Panel(
+                        "[yellow]⚠️  No plans found matching filters[/yellow]",
+                        title="Filtered Results",
+                        border_style="yellow",
+                    )
                 )
-            )
             return
         
-        display_plans_table(filtered_plans, verbose)
+        # Display with UX-compliant formatting
+        if not quiet:
+            # Show header with status-at-a-glance information
+            filter_info = []
+            if status:
+                filter_info.append(f"status={status}")
+            if symbol:
+                filter_info.append(f"symbol={symbol}")  
+            if risk_category:
+                filter_info.append(f"risk={risk_category}")
+            if limit:
+                filter_info.append(f"limit={limit}")
+                
+            filter_str = f" ({', '.join(filter_info)})" if filter_info else ""
+            
+            console.print(
+                Panel(
+                    f"[blue]📈 TRADE PLANS - {len(filtered_plans)} plan(s) found{filter_str}[/blue]",
+                    title="Trade Plans",
+                    border_style="blue",
+                )
+            )
         
-        # Show statistics
-        stats = loader.get_stats()
-        display_stats_summary(stats)
+        # Display plans table with verbosity control
+        if debug:
+            display_plans_table(filtered_plans, verbose=True)
+            console.print(f"\n[dim]🔍 Debug: Sort by {sort_by}, desc={sort_desc}[/dim]")
+        elif verbose:
+            display_plans_table(filtered_plans, verbose=True)
+        elif not quiet:
+            display_plans_table(filtered_plans, verbose=False)
+        
+        # Show statistics (unless quiet mode)
+        if not quiet:
+            stats = loader.get_stats()
+            display_stats_summary(stats)
         
         logger.info("List trade plans completed", filtered_count=len(filtered_plans))
         
@@ -335,6 +408,53 @@ def create_plan() -> None:
         
     except Exception as e:
         handle_generic_error("creating plan", e)
+
+
+@cli.command()
+@click.option("--format", "output_format", default="console", type=click.Choice(["console", "json", "yaml"]), help="Output format")
+@click.option("--field", help="Show documentation for specific field")
+def show_schema(output_format: str, field: Optional[str]) -> None:
+    """Show trade plan schema documentation with examples."""
+    logger.info("Schema documentation requested")
+    
+    try:
+        from ..models.trade_plan import TradePlan
+        
+        # Get model schema information
+        schema = TradePlan.model_json_schema()
+        
+        if field:
+            # Show specific field documentation
+            if field in schema.get("properties", {}):
+                field_info = schema["properties"][field]
+                console.print(
+                    Panel(
+                        f"[blue]Field: {field}[/blue]\n"
+                        f"Type: {field_info.get('type', 'unknown')}\n"
+                        f"Description: {field_info.get('description', 'No description')}\n"
+                        f"Required: {'Yes' if field in schema.get('required', []) else 'No'}",
+                        title=f"Schema - {field}",
+                        border_style="blue",
+                    )
+                )
+            else:
+                console.print(f"[red]❌ Field '{field}' not found in schema[/red]")
+                return
+        else:
+            # Show complete schema
+            if output_format == "console":
+                _display_schema_console(schema)
+            elif output_format == "json":
+                import json
+                console.print(json.dumps(schema, indent=2))
+            elif output_format == "yaml":
+                import yaml
+                console.print(yaml.dump(schema, default_flow_style=False))
+                
+        logger.info("Schema documentation completed", field=field, format=output_format)
+        
+    except Exception as e:
+        handle_generic_error("schema documentation", e)
 
 
 @cli.command()
@@ -501,6 +621,62 @@ def history(symbol: Optional[str], days: int, output_format: str) -> None:
 
 
 @cli.command()
+@click.option("--config", is_flag=True, help="Check configuration files and settings")
+@click.option("--plans", is_flag=True, help="Check trade plans directory and files")
+@click.option("--permissions", is_flag=True, help="Check file and directory permissions")
+@click.option("--export-debug", is_flag=True, help="Export debug information to file")
+def doctor(config: bool, plans: bool, permissions: bool, export_debug: bool) -> None:
+    """Run diagnostic checks and provide troubleshooting information."""
+    logger.info("Diagnostic checks started")
+    
+    try:
+        console.print(
+            Panel(
+                "[blue]🏥 Auto-Trader Health Check[/blue]\n"
+                "Running diagnostic checks...",
+                title="System Diagnostics",
+                border_style="blue",
+            )
+        )
+        
+        # If no specific checks specified, run all
+        if not any([config, plans, permissions]):
+            config = plans = permissions = True
+            
+        diagnostic_results = []
+        
+        # Configuration checks
+        if config:
+            console.print("[blue]🔧 Checking configuration...[/blue]")
+            config_results = _check_configuration()
+            diagnostic_results.extend(config_results)
+            
+        # Plans directory checks
+        if plans:
+            console.print("[blue]📄 Checking trade plans...[/blue]")
+            plans_results = _check_trade_plans()
+            diagnostic_results.extend(plans_results)
+            
+        # Permission checks
+        if permissions:
+            console.print("[blue]🔒 Checking permissions...[/blue]")
+            permission_results = _check_permissions()
+            diagnostic_results.extend(permission_results)
+            
+        # Show summary
+        _display_diagnostic_summary(diagnostic_results)
+        
+        # Export debug information if requested
+        if export_debug:
+            _export_debug_information(diagnostic_results)
+            
+        logger.info("Diagnostic checks completed")
+        
+    except Exception as e:
+        handle_generic_error("diagnostic checks", e)
+
+
+@cli.command()
 def help_system() -> None:
     """Display detailed help information."""
     console.print(
@@ -543,6 +719,401 @@ def help_system() -> None:
 
 
 # All utility functions moved to separate modules for better organization
+
+
+def _check_configuration() -> List[dict]:
+    """Check configuration files and settings."""
+    results = []
+    
+    try:
+        settings = Settings()
+        config_loader = ConfigLoader(settings)
+        
+        # Check environment file
+        env_file = Path(".env")
+        if env_file.exists():
+            results.append({
+                "check": "Environment file",
+                "status": "✅",
+                "message": f"Found {env_file}",
+                "level": "success"
+            })
+        else:
+            results.append({
+                "check": "Environment file",
+                "status": "⚠️",
+                "message": "No .env file found - using defaults",
+                "level": "warning"
+            })
+            
+        # Check configuration validation
+        issues = config_loader.validate_configuration()
+        if not issues:
+            results.append({
+                "check": "Configuration validation",
+                "status": "✅", 
+                "message": "All configuration files valid",
+                "level": "success"
+            })
+        else:
+            for issue in issues:
+                results.append({
+                    "check": "Configuration validation",
+                    "status": "❌",
+                    "message": f"Issue: {issue}",
+                    "level": "error"
+                })
+                
+        # Check user config file
+        if settings.user_config_file.exists():
+            results.append({
+                "check": "User configuration",
+                "status": "✅",
+                "message": f"Found {settings.user_config_file}",
+                "level": "success"
+            })
+        else:
+            results.append({
+                "check": "User configuration", 
+                "status": "⚠️",
+                "message": "No user_config.yaml - using defaults",
+                "level": "warning"
+            })
+            
+    except Exception as e:
+        results.append({
+            "check": "Configuration check",
+            "status": "❌",
+            "message": f"Error: {e}",
+            "level": "error"
+        })
+        
+    return results
+
+
+def _check_trade_plans() -> List[dict]:
+    """Check trade plans directory and files."""
+    results = []
+    
+    try:
+        loader = TradePlanLoader()
+        
+        # Check plans directory
+        if loader.plans_directory.exists():
+            results.append({
+                "check": "Plans directory",
+                "status": "✅",
+                "message": f"Found {loader.plans_directory}",
+                "level": "success"
+            })
+            
+            # Count YAML files
+            yaml_files = list(loader.plans_directory.glob("*.yaml")) + list(loader.plans_directory.glob("*.yml"))
+            results.append({
+                "check": "YAML files",
+                "status": "📄",
+                "message": f"Found {len(yaml_files)} YAML files",
+                "level": "info"
+            })
+            
+        else:
+            results.append({
+                "check": "Plans directory",
+                "status": "❌",
+                "message": f"Directory not found: {loader.plans_directory}",
+                "level": "error"
+            })
+            
+        # Try to load plans
+        plans = loader.load_all_plans(validate=True)
+        if plans:
+            results.append({
+                "check": "Plan loading",
+                "status": "✅",
+                "message": f"Loaded {len(plans)} valid plans",
+                "level": "success"
+            })
+        else:
+            results.append({
+                "check": "Plan loading",
+                "status": "⚠️",
+                "message": "No valid plans found",
+                "level": "warning"
+            })
+            
+    except Exception as e:
+        results.append({
+            "check": "Trade plans check",
+            "status": "❌",
+            "message": f"Error: {e}",
+            "level": "error"
+        })
+        
+    return results
+
+
+def _check_permissions() -> List[dict]:
+    """Check file and directory permissions."""
+    results = []
+    
+    # Check current directory permissions
+    current_dir = Path.cwd()
+    if current_dir.is_dir():
+        results.append({
+            "check": "Current directory",
+            "status": "✅" if current_dir.stat().st_mode & 0o200 else "❌",
+            "message": f"Write access to {current_dir}",
+            "level": "success" if current_dir.stat().st_mode & 0o200 else "error"
+        })
+    
+    # Check plans directory permissions
+    plans_dir = Path("data/trade_plans")
+    if plans_dir.exists():
+        has_write = plans_dir.stat().st_mode & 0o200
+        results.append({
+            "check": "Plans directory permissions",
+            "status": "✅" if has_write else "❌",
+            "message": f"{'Write' if has_write else 'No write'} access to {plans_dir}",
+            "level": "success" if has_write else "error"
+        })
+    else:
+        results.append({
+            "check": "Plans directory permissions",
+            "status": "⚠️",
+            "message": f"Plans directory does not exist: {plans_dir}",
+            "level": "warning"
+        })
+        
+    # Check logs directory
+    logs_dir = Path("logs")
+    if logs_dir.exists():
+        has_write = logs_dir.stat().st_mode & 0o200
+        results.append({
+            "check": "Logs directory permissions",
+            "status": "✅" if has_write else "❌",
+            "message": f"{'Write' if has_write else 'No write'} access to {logs_dir}",
+            "level": "success" if has_write else "error"
+        })
+    else:
+        results.append({
+            "check": "Logs directory permissions",
+            "status": "⚠️",
+            "message": f"Logs directory does not exist: {logs_dir}",
+            "level": "warning"
+        })
+        
+    return results
+
+
+def _display_diagnostic_summary(results: List[dict]) -> None:
+    """Display diagnostic results summary."""
+    # Count results by level
+    success_count = len([r for r in results if r["level"] == "success"])
+    warning_count = len([r for r in results if r["level"] == "warning"])
+    error_count = len([r for r in results if r["level"] == "error"])
+    info_count = len([r for r in results if r["level"] == "info"])
+    
+    # Create results table
+    table = Table(title="Diagnostic Results")
+    table.add_column("Check", style="cyan", width=25)
+    table.add_column("Status", style="white", width=8)
+    table.add_column("Message", style="white", width=50)
+    
+    for result in results:
+        table.add_row(result["check"], result["status"], result["message"])
+    
+    console.print(table)
+    
+    # Show summary
+    summary_color = "red" if error_count > 0 else "yellow" if warning_count > 0 else "green"
+    console.print(
+        Panel(
+            f"[{summary_color}]Summary:[/{summary_color}]\n"
+            f"✅ {success_count} successful\n"
+            f"⚠️ {warning_count} warnings\n"
+            f"❌ {error_count} errors\n"
+            f"📄 {info_count} info",
+            title="Health Check Summary",
+            border_style=summary_color,
+        )
+    )
+    
+    # Show recommendations
+    if error_count > 0:
+        console.print(
+            Panel(
+                "[red]🚨 Critical Issues Found[/red]\n"
+                "Please resolve errors before using the system.\n"
+                "Run 'auto-trader setup' if this is first-time setup.",
+                title="Recommendations",
+                border_style="red",
+            )
+        )
+    elif warning_count > 0:
+        console.print(
+            Panel(
+                "[yellow]⚠️  Warnings Found[/yellow]\n"
+                "System will work but some features may be limited.\n"
+                "Consider resolving warnings for optimal experience.",
+                title="Recommendations",
+                border_style="yellow",
+            )
+        )
+    else:
+        console.print(
+            Panel(
+                "[green]✅ System Healthy[/green]\n"
+                "All checks passed! Your system is ready to use.",
+                title="Recommendations",
+                border_style="green",
+            )
+        )
+
+
+def _export_debug_information(results: List[dict]) -> None:
+    """Export debug information to file."""
+    debug_file = Path(f"auto-trader-debug-{int(time.time())}.json")
+    
+    debug_info = {
+        "timestamp": datetime.now().isoformat(),
+        "diagnostic_results": results,
+        "system_info": {
+            "python_version": "3.11.8",  # Could get dynamically
+            "platform": "linux",  # Could get dynamically
+            "working_directory": str(Path.cwd()),
+        },
+        "environment_variables": {
+            "PYTHONPATH": "src",  # Only non-sensitive env vars
+        }
+    }
+    
+    try:
+        import json
+        with open(debug_file, 'w') as f:
+            json.dump(debug_info, f, indent=2)
+            
+        console.print(
+            Panel(
+                f"[green]Debug information exported to:[/green] {debug_file}\n"
+                "[yellow]Warning:[/yellow] Review file before sharing - no secrets included",
+                title="Debug Export",
+                border_style="green",
+            )
+        )
+    except Exception as e:
+        console.print(f"[red]Failed to export debug info: {e}[/red]")
+
+
+def _display_schema_console(schema: dict) -> None:
+    """Display schema in console-friendly format."""
+    console.print(
+        Panel(
+            "[blue]Trade Plan Schema Documentation[/blue]\n"
+            "Complete schema for trade plan YAML files",
+            title="Schema",
+            border_style="blue",
+        )
+    )
+    
+    properties = schema.get("properties", {})
+    required_fields = set(schema.get("required", []))
+    
+    # Create schema table
+    table = Table(title="Trade Plan Fields")
+    table.add_column("Field", style="cyan", width=20)
+    table.add_column("Type", style="yellow", width=15) 
+    table.add_column("Required", style="red", width=10)
+    table.add_column("Description", style="white", width=40)
+    
+    for field_name, field_info in properties.items():
+        field_type = field_info.get("type", "unknown")
+        if field_type == "object" and "properties" in field_info:
+            field_type = "object"
+        elif field_type == "array" and "items" in field_info:
+            items_type = field_info["items"].get("type", "unknown")
+            field_type = f"array[{items_type}]"
+            
+        is_required = "✓" if field_name in required_fields else ""
+        description = field_info.get("description", "No description")[:50] + "..." if len(field_info.get("description", "")) > 50 else field_info.get("description", "")
+        
+        table.add_row(field_name, field_type, is_required, description)
+    
+    console.print(table)
+    
+    # Show examples section
+    console.print(
+        Panel(
+            "[green]Examples:[/green]\n"
+            "• Basic plan: auto-trader create-plan\n"
+            "• View templates: auto-trader list-templates\n"
+            "• Field help: auto-trader show-schema --field plan_id\n"
+            "• JSON format: auto-trader show-schema --format json",
+            title="Usage Examples",
+            border_style="green",
+        )
+    )
+
+
+def _start_file_watching(watch_directory: Path, verbose: bool) -> None:
+    """Start file watching with rich progress indicators."""
+    console.print(
+        Panel(
+            f"[blue]🔄 Starting file watcher for: {watch_directory}[/blue]\n"
+            "Press 'Ctrl+C' to stop watching...",
+            title="File Watching",
+            border_style="blue",
+        )
+    )
+    
+    def validation_callback(file_path: Path, event_type: FileWatchEventType) -> None:
+        """Handle validation callbacks with rich formatting."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        if event_type == FileWatchEventType.CREATED:
+            console.print(f"[green]{timestamp} ✅ File created:[/green] {file_path.name}")
+        elif event_type == FileWatchEventType.MODIFIED:
+            console.print(f"[yellow]{timestamp} 🔄 File modified:[/yellow] {file_path.name}")
+        elif event_type == FileWatchEventType.DELETED:
+            console.print(f"[red]{timestamp} 🗑️  File deleted:[/red] {file_path.name}")
+            
+        if verbose and event_type != FileWatchEventType.DELETED:
+            console.print(f"[dim]    Validating {file_path.name}...[/dim]")
+    
+    # Create file watcher
+    watcher = FileWatcher(
+        watch_directory=watch_directory,
+        validation_callback=validation_callback,
+        debounce_delay=0.5
+    )
+    
+    try:
+        if watcher.start():
+            console.print("[green]✓ File watcher started successfully[/green]")
+            
+            # Run until interrupted
+            while True:
+                time.sleep(1.0)
+                
+        else:
+            console.print("[red]❌ Failed to start file watcher[/red]")
+            
+    except KeyboardInterrupt:
+        console.print("\n[yellow]File watching stopped by user[/yellow]")
+    finally:
+        watcher.stop()
+        
+        # Show final statistics
+        stats = watcher.get_stats()
+        console.print(
+            Panel(
+                f"[blue]File Watching Statistics[/blue]\n"
+                f"Events processed: {stats['events_processed']}\n"
+                f"Validation errors: {stats['validation_errors']}\n"
+                f"Watch duration: Active",
+                title="Summary",
+                border_style="blue",
+            )
+        )
 
 
 if __name__ == "__main__":

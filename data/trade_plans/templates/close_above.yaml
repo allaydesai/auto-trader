@@ -1,93 +1,193 @@
-# Close Above Execution Function Template
-# This template creates a trade plan that enters when price closes above a threshold
+# Trade Plan Template - Close Above Entry Strategy
+# =================================================
+# This template creates a long position when price closes above a threshold level.
+# 
+# STRATEGY: Breakout/Support-turned-resistance entries
+# RISK LEVEL: Medium (suitable for trending markets)
+# TIMEFRAME: Intraday to multi-day holds
+# 
+# COMMON USE CASES:
+# • Breaking above key resistance levels
+# • Support-turned-resistance retests  
+# • Trend continuation after pullbacks
+# • Breakout from consolidation patterns
 
-# Unique identifier for this trade plan (REQUIRED)
-# Format: {SYMBOL}_{YYYYMMDD}_{SEQUENCE}
-# Example: AAPL_20250815_001
-plan_id: "SYMBOL_YYYYMMDD_001"
+# TRADE IDENTIFICATION
+# =====================
 
-# Trading symbol (REQUIRED)
-# Must be 1-10 uppercase letters only
-# Examples: AAPL, MSFT, GOOGL, SPY
-symbol: "SYMBOL"
+# Unique plan identifier (REQUIRED)
+# Format: SYMBOL_YYYYMMDD_NNN (where NNN is sequence number 001-999)
+# This ID must be unique across all your trade plans
+# Example: AAPL_20250815_001, MSFT_20250815_002
+plan_id: "SYMBOL_YYYYMMDD_001"  # 📝 UPDATE THIS: Your unique plan ID
 
-# Entry price level (REQUIRED)
-# The price where you want to enter the trade
-# Decimal with maximum 4 decimal places
-# Example: 180.50
-entry_level: 0.00
+# Trading instrument symbol (REQUIRED) 
+# Must be valid ticker symbol (1-10 uppercase letters)
+# Supported exchanges: NYSE, NASDAQ, major ETFs
+# Examples: AAPL, MSFT, GOOGL, SPY, QQQ, IWM
+symbol: "SYMBOL"  # 📝 UPDATE THIS: Your trading symbol
 
-# Stop loss price (REQUIRED)
-# Your maximum loss exit point
-# For LONG positions: must be BELOW entry_level
-# For SHORT positions: must be ABOVE entry_level
-# Example: 178.00 (for long position with entry at 180.50)
-stop_loss: 0.00
+# PRICE LEVELS & RISK MANAGEMENT
+# ===============================
 
-# Take profit target (REQUIRED)
-# Your profit-taking exit point
-# For LONG positions: must be ABOVE entry_level
-# For SHORT positions: must be BELOW entry_level
-# Example: 185.00 (for long position with entry at 180.50)
-take_profit: 0.00
+# Entry trigger level (REQUIRED)
+# The price threshold that triggers trade entry
+# Format: Decimal with up to 4 decimal places (USD)
+# Strategy: Set just above key resistance or breakout level
+# Example: 180.50 (for Apple stock breakout)
+entry_level: 0.00  # 📝 UPDATE THIS: Your entry trigger price
 
-# Risk category (REQUIRED)
-# Determines position sizing as percentage of account
-# Valid values:
-#   "small"  - 1% account risk
-#   "normal" - 2% account risk
-#   "large"  - 3% account risk
-risk_category: "normal"
+# Stop loss protection (REQUIRED)  
+# Your maximum acceptable loss exit point
+# ⚠️  CRITICAL: For LONG trades, must be BELOW entry_level
+# Risk calculation: (entry_level - stop_loss) × position_size = max loss
+# Strategy: Set below key support or recent swing low
+# Example: 178.00 (gives $2.50 risk per share at 180.50 entry)
+stop_loss: 0.00  # 📝 UPDATE THIS: Your stop loss price
 
-# Entry execution function (REQUIRED)
-# Defines when to enter the trade
+# Profit target (REQUIRED)
+# Your profit-taking exit point for partial or full position
+# 💰 For LONG trades, must be ABOVE entry_level  
+# Risk:Reward calculation: (take_profit - entry_level) / (entry_level - stop_loss)
+# Strategy: Set at next resistance level or measured move target
+# Example: 185.00 (gives 1.8:1 reward:risk ratio with above levels)
+take_profit: 0.00  # 📝 UPDATE THIS: Your profit target
+
+# Position size category (REQUIRED)
+# Determines how much capital to risk on this trade
+# Risk categories affect position sizing:
+#   "small"  → 1% of account balance at risk (conservative)
+#   "normal" → 2% of account balance at risk (balanced)  
+#   "large"  → 3% of account balance at risk (aggressive)
+# ⚠️  WARNING: Large positions increase both profit and loss potential
+risk_category: "normal"  # 📝 UPDATE THIS: small/normal/large
+
+# EXECUTION STRATEGY
+# ==================
+
+# Entry trigger configuration (REQUIRED)
+# Defines the exact conditions for entering the trade
 entry_function:
-  # Function type for entry trigger
+  # Entry mechanism: close_above function
+  # Enters trade when candle CLOSES above threshold price
+  # This avoids false breakouts from wicks/spikes
   function_type: "close_above"
   
-  # Timeframe for candle evaluation
-  # Valid values: 1min, 5min, 15min, 30min, 60min, 240min, 1440min, 1h, 4h, 1d
-  # Recommendation: Use 15min or higher to avoid noise
-  timeframe: "15min"
+  # Timeframe for price evaluation (REQUIRED)
+  # Larger timeframes = fewer false signals, slower execution
+  # Smaller timeframes = faster execution, more noise
+  # Available: 1min, 5min, 15min, 30min, 1h, 2h, 4h, 1d
+  # 💡 RECOMMENDED: 15min (good balance of speed vs reliability)
+  timeframe: "15min"  # 📝 UPDATE THIS: Your preferred timeframe
   
-  # Function-specific parameters
+  # Entry function parameters
   parameters:
-    # Price threshold for close_above function
-    # Trade enters when candle closes ABOVE this price
-    # Typically same as entry_level, but can be different for buffer
-    threshold: 0.00
+    # Price threshold for entry trigger (REQUIRED)
+    # Trade executes when {timeframe} candle closes ABOVE this level
+    # 💡 TIP: Often same as entry_level, or slightly higher for confirmation
+    # Example: 180.50 (enters when 15min candle closes above $180.50)
+    threshold: 0.00  # 📝 UPDATE THIS: Your entry threshold
 
-# Exit execution function (REQUIRED)
-# Defines when to exit the trade
+# Exit strategy configuration (REQUIRED)
+# Defines how and when to exit the position
 exit_function:
-  # Standard stop-loss/take-profit exit function
+  # Exit mechanism: Standard stop-loss and take-profit
+  # Monitors price continuously and exits at predefined levels
+  # Simple, reliable, and widely used approach
   function_type: "stop_loss_take_profit"
   
-  # Faster timeframe for exit monitoring
-  # Recommendation: Use 1min for quick exit execution
-  timeframe: "1min"
+  # Exit monitoring timeframe (REQUIRED)
+  # Faster timeframes = quicker exit execution
+  # 💡 RECOMMENDED: 1min for rapid stop-loss execution
+  timeframe: "1min"  # 📝 UPDATE THIS: Your exit monitoring timeframe
   
-  # No additional parameters needed for stop_loss_take_profit
+  # Exit parameters (none needed for stop_loss_take_profit)
+  # Stop loss and take profit levels are defined above
   parameters: {}
 
-# Initial status (OPTIONAL)
-# Valid values: awaiting_entry, position_open, completed, cancelled, error
-# Default: awaiting_entry
+# SYSTEM MANAGEMENT (OPTIONAL)
+# =============================
+
+# Initial plan status (OPTIONAL)
+# The system automatically sets this to "awaiting_entry" if not specified
+# Advanced users can set other statuses for plan management
+# Valid options: awaiting_entry, position_open, completed, cancelled, error
+# 💡 LEAVE COMMENTED unless you need specific status control
 # status: "awaiting_entry"
 
-# Example Complete Configuration:
+# COMPLETE EXAMPLE CONFIGURATIONS
+# ===============================
+# Here are three real-world examples you can copy and modify:
+
+# EXAMPLE 1: Apple Stock Breakout (Conservative)
 # plan_id: "AAPL_20250815_001"
 # symbol: "AAPL"
-# entry_level: 180.50
-# stop_loss: 178.00
-# take_profit: 185.00
-# risk_category: "normal"
+# entry_level: 180.50      # Above key resistance  
+# stop_loss: 178.00        # Below support level
+# take_profit: 185.00      # Next resistance target
+# risk_category: "small"   # Conservative 1% risk
 # entry_function:
 #   function_type: "close_above"
-#   timeframe: "15min"
+#   timeframe: "30min"     # Longer timeframe for confirmation
 #   parameters:
 #     threshold: 180.50
+# exit_function:
+#   function_type: "stop_loss_take_profit" 
+#   timeframe: "1min"
+#   parameters: {}
+
+# EXAMPLE 2: SPY ETF Momentum Trade (Balanced)  
+# plan_id: "SPY_20250815_001"
+# symbol: "SPY"
+# entry_level: 425.00      # Round number breakout
+# stop_loss: 422.00        # 3-point risk
+# take_profit: 430.00      # 5-point reward (1.67:1 R:R)
+# risk_category: "normal"  # Standard 2% risk
+# entry_function:
+#   function_type: "close_above"
+#   timeframe: "15min"     # Good balance
+#   parameters:
+#     threshold: 425.00
 # exit_function:
 #   function_type: "stop_loss_take_profit"
 #   timeframe: "1min"
 #   parameters: {}
+
+# EXAMPLE 3: Tesla Earnings Play (Aggressive)
+# plan_id: "TSLA_20250815_001"  
+# symbol: "TSLA"
+# entry_level: 250.00      # Post-earnings breakout
+# stop_loss: 245.00        # Tight 5-point stop
+# take_profit: 265.00      # 15-point target (3:1 R:R)
+# risk_category: "large"   # Aggressive 3% risk
+# entry_function:
+#   function_type: "close_above"
+#   timeframe: "5min"      # Fast execution on volatility
+#   parameters:
+#     threshold: 250.25    # Small buffer for confirmation
+# exit_function:
+#   function_type: "stop_loss_take_profit"
+#   timeframe: "1min"
+#   parameters: {}
+
+# QUICK START CHECKLIST
+# =====================
+# Before saving this file:
+# □ Update plan_id with unique identifier
+# □ Set symbol to your target stock/ETF  
+# □ Define entry_level based on technical analysis
+# □ Set stop_loss below key support (for longs)
+# □ Set take_profit at realistic target
+# □ Choose appropriate risk_category
+# □ Adjust timeframe based on trade style
+# □ Set threshold = entry_level (or slightly higher)
+# □ Verify all required fields are filled
+# □ Save file and run: auto-trader validate-plans
+
+# RISK WARNING
+# ============
+# ⚠️  Trading involves substantial risk of loss and is not suitable for all investors.
+# ⚠️  Past performance does not guarantee future results.  
+# ⚠️  Only trade with capital you can afford to lose.
+# ⚠️  Always test strategies in paper trading first.
+# ⚠️  This system does not provide investment advice.
