@@ -1,0 +1,35 @@
+# Sample trade plans for testing
+
+- plan_id: "AAPL_20250815_001"
+  symbol: "AAPL"
+  entry_level: 180.50
+  stop_loss: 178.00
+  take_profit: 185.00
+  risk_category: "normal"
+  entry_function:
+    function_type: "close_above"
+    timeframe: "15min"
+    parameters:
+      threshold: 180.50
+  exit_function:
+    function_type: "stop_loss_take_profit"
+    timeframe: "1min"
+    parameters: {}
+  status: "awaiting_entry"
+
+- plan_id: "MSFT_20250815_001"
+  symbol: "MSFT"
+  entry_level: 300.00
+  stop_loss: 295.00
+  take_profit: 310.00
+  risk_category: "small"
+  entry_function:
+    function_type: "close_below"
+    timeframe: "30min"
+    parameters:
+      threshold: 300.00
+  exit_function:
+    function_type: "stop_loss_take_profit"
+    timeframe: "5min"
+    parameters: {}
+  status: "awaiting_entry"
