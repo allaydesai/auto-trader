@@ -11,7 +11,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from auto_trader.cli.commands import cli, validate_config, setup, help_system
+from auto_trader.cli.commands import cli
+from auto_trader.cli.config_commands import validate_config, setup
+from auto_trader.cli.help_commands import help_system
 
 
 class TestValidateConfigCommand:
@@ -41,7 +43,7 @@ class TestValidateConfigCommand:
                 yaml.dump(user_config_data, f)
 
             # Mock settings to use temp files
-            with patch("auto_trader.cli.commands.Settings") as mock_settings:
+            with patch("auto_trader.cli.config_commands.Settings") as mock_settings:
                 mock_settings_instance = MagicMock()
                 mock_settings_instance.config_file = config_file
                 mock_settings_instance.user_config_file = user_config_file
@@ -51,7 +53,7 @@ class TestValidateConfigCommand:
                 mock_settings.return_value = mock_settings_instance
 
                 with patch(
-                    "auto_trader.cli.commands.ConfigLoader"
+                    "auto_trader.cli.config_commands.ConfigLoader"
                 ) as mock_loader_class:
                     mock_loader = MagicMock()
                     mock_loader.validate_configuration.return_value = []
@@ -70,7 +72,7 @@ class TestValidateConfigCommand:
             mock_settings_instance = MagicMock()
             mock_settings.return_value = mock_settings_instance
 
-            with patch("auto_trader.cli.commands.ConfigLoader") as mock_loader_class:
+            with patch("auto_trader.cli.config_commands.ConfigLoader") as mock_loader_class:
                 mock_loader = MagicMock()
                 mock_loader.validate_configuration.return_value = [
                     "Discord webhook URL is required",
@@ -98,12 +100,12 @@ class TestValidateConfigCommand:
             custom_config.touch()
             custom_user_config.touch()
 
-            with patch("auto_trader.cli.commands.Settings") as mock_settings:
+            with patch("auto_trader.cli.config_commands.Settings") as mock_settings:
                 mock_settings_instance = MagicMock()
                 mock_settings.return_value = mock_settings_instance
 
                 with patch(
-                    "auto_trader.cli.commands.ConfigLoader"
+                    "auto_trader.cli.config_commands.ConfigLoader"
                 ) as mock_loader_class:
                     mock_loader = MagicMock()
                     mock_loader.validate_configuration.return_value = []
@@ -129,9 +131,9 @@ class TestValidateConfigCommand:
         runner = CliRunner()
 
         with patch("auto_trader.cli.commands.Settings"), patch(
-            "auto_trader.cli.commands.ConfigLoader"
+            "auto_trader.cli.config_commands.ConfigLoader"
         ) as mock_loader_class, patch(
-            "auto_trader.cli.commands._display_config_summary"
+            "auto_trader.cli.config_commands.display_config_summary"
         ) as mock_display:
             mock_loader = MagicMock()
             mock_loader.validate_configuration.return_value = []
@@ -166,8 +168,8 @@ class TestSetupCommand:
             temp_path = Path(temp_dir)
 
             # Mock the interactive prompts
-            with patch("auto_trader.cli.commands.click.prompt") as mock_prompt, patch(
-                "auto_trader.cli.commands.click.confirm"
+            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt, patch(
+                "auto_trader.cli.config_commands.click.confirm"
             ) as mock_confirm:
                 mock_prompt.side_effect = [
                     "https://discord.com/api/webhooks/test",  # webhook_url
@@ -217,8 +219,8 @@ class TestSetupCommand:
             (temp_path / ".env").write_text("OLD_CONTENT=true")
             (temp_path / "config.yaml").write_text("old: config")
 
-            with patch("auto_trader.cli.commands.click.prompt") as mock_prompt, patch(
-                "auto_trader.cli.commands.click.confirm"
+            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt, patch(
+                "auto_trader.cli.config_commands.click.confirm"
             ) as mock_confirm:
                 mock_prompt.side_effect = [
                     "https://discord.com/api/webhooks/test",
@@ -307,8 +309,8 @@ class TestHelperFunctions:
         with tempfile.TemporaryDirectory() as temp_dir:
             env_path = Path(temp_dir) / ".env"
 
-            with patch("auto_trader.cli.commands.click.prompt") as mock_prompt, patch(
-                "auto_trader.cli.commands.click.confirm"
+            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt, patch(
+                "auto_trader.cli.config_commands.click.confirm"
             ) as mock_confirm:
                 mock_prompt.side_effect = [
                     "https://discord.com/api/webhooks/test",
@@ -358,7 +360,7 @@ class TestHelperFunctions:
         with tempfile.TemporaryDirectory() as temp_dir:
             user_config_path = Path(temp_dir) / "user_config.yaml"
 
-            with patch("auto_trader.cli.commands.click.prompt") as mock_prompt:
+            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt:
                 mock_prompt.side_effect = [25000, "aggressive"]
 
                 _create_user_config_file(user_config_path)

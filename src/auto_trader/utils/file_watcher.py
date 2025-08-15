@@ -101,14 +101,14 @@ class TradeplanFileHandler(FileSystemEventHandler):
         
         # Schedule debounced processing
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             self._debounce_tasks[key] = loop.call_later(
                 self.debounce_delay,
                 self._process_debounced_event,
                 key
             )
         except RuntimeError:
-            # No event loop in current thread, process immediately
+            # No running loop - process immediately
             self._process_debounced_event(key)
         
     def _process_debounced_event(self, key: str):
