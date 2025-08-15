@@ -82,11 +82,11 @@ src/auto_trader/
 - **Python:** 3.11.8 (exact version)
 - **Package Manager:** UV 0.5.0+ (NEVER update pyproject.toml directly)
 - **Async Runtime:** asyncio (stdlib)
-- **Data Processing:** pandas 2.2.0, numpy 1.26.0
-- **Data Validation:** pydantic 2.9.0 (v2 syntax only)
-- **Logging:** loguru 0.7.2 (NOT stdlib logging)
-- **HTTP Client:** httpx 0.27.0 (for Discord webhooks)
-- **Scheduling:** APScheduler 3.10.4
+- **Data Processing:** pandas numpy
+- **Data Validation:** pydantic (v2 syntax only)
+- **Logging:** loguru (NOT stdlib logging)
+- **HTTP Client:** httpx (for Discord webhooks)
+- **Scheduling:** APScheduler
 
 ### Financial Integrations
 - **IBKR Integration:** ib-async 1.0.0+ (NOT ib_insync)

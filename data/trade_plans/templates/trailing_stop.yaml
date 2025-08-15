@@ -1,0 +1,138 @@
+# Trailing Stop Execution Function Template
+# This template creates a trade plan with dynamic trailing stop loss
+
+# Unique identifier for this trade plan (REQUIRED)
+# Format: {SYMBOL}_{YYYYMMDD}_{SEQUENCE}
+# Example: AAPL_20250815_003
+plan_id: "SYMBOL_YYYYMMDD_001"
+
+# Trading symbol (REQUIRED)
+# Must be 1-10 uppercase letters only
+# Examples: AAPL, MSFT, GOOGL, SPY
+symbol: "SYMBOL"
+
+# Entry price level (REQUIRED)
+# The price where you want to enter the trade
+# Decimal with maximum 4 decimal places
+# Example: 180.50
+entry_level: 0.00
+
+# Initial stop loss price (REQUIRED)
+# Your maximum loss exit point at entry
+# This becomes the starting point for the trailing stop
+# For LONG positions: must be BELOW entry_level
+# For SHORT positions: must be ABOVE entry_level
+# Example: 178.00 (for long position with entry at 180.50)
+stop_loss: 0.00
+
+# Take profit target (REQUIRED)
+# Your profit-taking exit point (optional with trailing stops)
+# Can be set high to let trailing stop handle exits
+# For LONG positions: must be ABOVE entry_level
+# For SHORT positions: must be BELOW entry_level
+# Example: 190.00 (for long position - high target to let trail work)
+take_profit: 0.00
+
+# Risk category (REQUIRED)
+# Determines position sizing as percentage of account
+# Valid values:
+#   "small"  - 1% account risk
+#   "normal" - 2% account risk
+#   "large"  - 3% account risk
+risk_category: "normal"
+
+# Entry execution function (REQUIRED)
+# Defines when to enter the trade
+entry_function:
+  # Function type for entry trigger
+  # Common choices: close_above (for long), close_below (for short)
+  function_type: "close_above"
+  
+  # Timeframe for candle evaluation
+  # Valid values: 1min, 5min, 15min, 30min, 60min, 240min, 1440min, 1h, 4h, 1d
+  # Recommendation: Use 15min or higher to avoid noise
+  timeframe: "15min"
+  
+  # Function-specific parameters
+  parameters:
+    # Price threshold for entry function
+    # For close_above: enters when price closes above this level
+    # For close_below: enters when price closes below this level
+    threshold: 0.00
+
+# Exit execution function (REQUIRED)
+# Trailing stop function for dynamic exit management
+exit_function:
+  # Trailing stop function type
+  function_type: "trailing_stop"
+  
+  # Timeframe for trailing stop evaluation
+  # Recommendation: Use 1min or 5min for responsive trailing
+  timeframe: "5min"
+  
+  # Trailing stop parameters
+  parameters:
+    # Trail percentage (REQUIRED)
+    # Percentage distance to maintain from favorable price
+    # Example: 2.0 means stop trails 2% behind best price
+    # For LONG: stop trails 2% below highest price since entry
+    # For SHORT: stop trails 2% above lowest price since entry
+    trail_percent: 2.0
+    
+    # Minimum trail distance (OPTIONAL)
+    # Minimum dollar amount to trail behind
+    # Prevents stops from getting too close during low volatility
+    # Example: 1.00 means stop stays at least $1.00 away
+    min_trail_distance: 1.00
+    
+    # Activation threshold (OPTIONAL)
+    # Profit percentage before trailing starts
+    # Example: 1.5 means start trailing after 1.5% profit
+    # Protects against immediate whipsaws at entry
+    activation_threshold: 1.0
+
+# Initial status (OPTIONAL)
+# Valid values: awaiting_entry, position_open, completed, cancelled, error
+# Default: awaiting_entry
+# status: "awaiting_entry"
+
+# Example Complete Configuration (LONG with trailing stop):
+# plan_id: "AAPL_20250815_003"
+# symbol: "AAPL"
+# entry_level: 180.50
+# stop_loss: 178.00    # Initial stop (2.5 points risk)
+# take_profit: 200.00  # High target - let trailing stop handle exit
+# risk_category: "normal"
+# entry_function:
+#   function_type: "close_above"
+#   timeframe: "15min"
+#   parameters:
+#     threshold: 180.50
+# exit_function:
+#   function_type: "trailing_stop"
+#   timeframe: "5min"
+#   parameters:
+#     trail_percent: 2.0        # Trail 2% behind best price
+#     min_trail_distance: 1.00  # Minimum $1 trail distance
+#     activation_threshold: 1.0 # Start trailing after 1% profit
+
+# Trailing Stop Behavior Explanation:
+# 1. Position enters at 180.50, initial stop at 178.00
+# 2. Price moves to 182.00 (+1.5% profit)
+# 3. Activation threshold (1.0%) reached, trailing begins
+# 4. As price moves up, stop trails 2% behind highest price
+# 5. If price hits 185.00, stop trails to ~181.30 (185.00 * 0.98)
+# 6. Stop only moves in favorable direction, never backwards
+# 7. Exit triggered when price hits trailing stop level
+
+# Benefits of Trailing Stops:
+# - Locks in profits as trade moves favorably
+# - Allows unlimited upside potential
+# - Reduces need to guess optimal exit point
+# - Handles volatile moves better than fixed targets
+
+# Best Practices:
+# - Use wider trail_percent (3-5%) for volatile stocks
+# - Set activation_threshold to avoid early exit on noise
+# - Consider min_trail_distance for low-priced stocks
+# - Monitor during major news events (may want manual override)

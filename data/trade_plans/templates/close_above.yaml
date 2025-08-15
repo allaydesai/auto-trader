@@ -1,0 +1,93 @@
+# Close Above Execution Function Template
+# This template creates a trade plan that enters when price closes above a threshold
+
+# Unique identifier for this trade plan (REQUIRED)
+# Format: {SYMBOL}_{YYYYMMDD}_{SEQUENCE}
+# Example: AAPL_20250815_001
+plan_id: "SYMBOL_YYYYMMDD_001"
+
+# Trading symbol (REQUIRED)
+# Must be 1-10 uppercase letters only
+# Examples: AAPL, MSFT, GOOGL, SPY
+symbol: "SYMBOL"
+
+# Entry price level (REQUIRED)
+# The price where you want to enter the trade
+# Decimal with maximum 4 decimal places
+# Example: 180.50
+entry_level: 0.00
+
+# Stop loss price (REQUIRED)
+# Your maximum loss exit point
+# For LONG positions: must be BELOW entry_level
+# For SHORT positions: must be ABOVE entry_level
+# Example: 178.00 (for long position with entry at 180.50)
+stop_loss: 0.00
+
+# Take profit target (REQUIRED)
+# Your profit-taking exit point
+# For LONG positions: must be ABOVE entry_level
+# For SHORT positions: must be BELOW entry_level
+# Example: 185.00 (for long position with entry at 180.50)
+take_profit: 0.00
+
+# Risk category (REQUIRED)
+# Determines position sizing as percentage of account
+# Valid values:
+#   "small"  - 1% account risk
+#   "normal" - 2% account risk
+#   "large"  - 3% account risk
+risk_category: "normal"
+
+# Entry execution function (REQUIRED)
+# Defines when to enter the trade
+entry_function:
+  # Function type for entry trigger
+  function_type: "close_above"
+  
+  # Timeframe for candle evaluation
+  # Valid values: 1min, 5min, 15min, 30min, 60min, 240min, 1440min, 1h, 4h, 1d
+  # Recommendation: Use 15min or higher to avoid noise
+  timeframe: "15min"
+  
+  # Function-specific parameters
+  parameters:
+    # Price threshold for close_above function
+    # Trade enters when candle closes ABOVE this price
+    # Typically same as entry_level, but can be different for buffer
+    threshold: 0.00
+
+# Exit execution function (REQUIRED)
+# Defines when to exit the trade
+exit_function:
+  # Standard stop-loss/take-profit exit function
+  function_type: "stop_loss_take_profit"
+  
+  # Faster timeframe for exit monitoring
+  # Recommendation: Use 1min for quick exit execution
+  timeframe: "1min"
+  
+  # No additional parameters needed for stop_loss_take_profit
+  parameters: {}
+
+# Initial status (OPTIONAL)
+# Valid values: awaiting_entry, position_open, completed, cancelled, error
+# Default: awaiting_entry
+# status: "awaiting_entry"
+
+# Example Complete Configuration:
+# plan_id: "AAPL_20250815_001"
+# symbol: "AAPL"
+# entry_level: 180.50
+# stop_loss: 178.00
+# take_profit: 185.00
+# risk_category: "normal"
+# entry_function:
+#   function_type: "close_above"
+#   timeframe: "15min"
+#   parameters:
+#     threshold: 180.50
+# exit_function:
+#   function_type: "stop_loss_take_profit"
+#   timeframe: "1min"
+#   parameters: {}

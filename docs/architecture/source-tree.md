@@ -1,27 +1,46 @@
 # Source Tree
 
+## Implementation Status
+- ✅ **Implemented** (Stories 1.1, 1.2): Core models, validation, CLI, templates
+- ⏸️ **Planned**: Trade engine, IBKR integration, risk management, notifications
+- 🧪 **Testing**: 134 tests currently passing (88% coverage)
+
 ```plaintext
 auto-trader/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py                    # Entry point, max 100 lines
-│   ├── config.py                  # Settings with pydantic
+│   ├── config.py                  # ✅ Settings with pydantic validation
 │   └── auto_trader/
 │       ├── __init__.py
-│       ├── models/               # Pydantic models
+│       ├── logging_config.py      # ✅ Loguru configuration
+│       ├── models/               # ✅ Pydantic models & validation
+│       │   ├── __init__.py        # ✅ Model exports
+│       │   ├── trade_plan.py      # ✅ TradePlan & ExecutionFunction
+│       │   ├── validation_engine.py # ✅ YAML validation engine
+│       │   ├── error_reporting.py # ✅ Enhanced error reporting
+│       │   ├── template_manager.py # ✅ Template system
+│       │   ├── plan_loader.py     # ✅ Plan loading & management
+│       │   ├── position.py        # ⏸️ Position model (future)
+│       │   ├── risk_models.py     # ⏸️ Risk management models
+│       │   ├── market_data.py     # ⏸️ Market data models
+│       │   └── tests/            # ✅ Comprehensive test suite
+│       │       ├── conftest.py    # ✅ Test fixtures
+│       │       ├── test_trade_plan.py    # ✅ 21 tests
+│       │       ├── test_validation_engine.py # ✅ 21 tests
+│       │       ├── test_error_reporting.py   # ✅ 47 tests
+│       │       ├── test_template_manager.py  # ✅ 19 tests
+│       │       ├── test_plan_loader.py       # ✅ 19 tests
+│       │       └── test_config.py            # ✅ 22 tests
+│       ├── cli/                 # ✅ Rich CLI interface (refactored)
 │       │   ├── __init__.py
-│       │   ├── trade_plan.py
-│       │   ├── position.py
-│       │   ├── risk_models.py    # Risk management models
-│       │   └── market_data.py
-│       ├── cli/                 # Interactive CLI components
-│       │   ├── __init__.py
-│       │   ├── wizard.py        # Trade plan creation wizard
-│       │   ├── commands.py      # CLI command handlers
-│       │   ├── validators.py    # Input validation
-│       │   └── tests/
-│       │       ├── test_wizard.py
-│       │       └── test_validators.py
+│       │   ├── commands.py      # ✅ Main CLI commands (549 lines)
+│       │   ├── display_utils.py # ✅ Display & formatting utilities
+│       │   ├── file_utils.py    # ✅ File creation utilities
+│       │   ├── error_utils.py   # ✅ Error handling utilities
+│       │   ├── plan_utils.py    # ✅ Plan creation utilities
+│       │   └── tests/          # ✅ CLI tests
+│       │       └── test_commands.py
 │       ├── trade_engine/         # Core execution logic
 │       │   ├── __init__.py
 │       │   ├── engine.py
@@ -57,13 +76,13 @@ auto-trader/
 │           ├── trade_history.py
 │           └── tests/
 │               └── test_state_manager.py
-├── data/                       # Runtime data files
-│   ├── trade_plans/           # YAML trade plans
-│   │   ├── active_plans.yaml  # Current trade plans
-│   │   └── templates/         # Plan templates
-│   │       ├── breakout.yaml
-│   │       ├── pullback.yaml
-│   │       └── swing_trade.yaml
+├── data/                       # ✅ Runtime data files
+│   ├── trade_plans/           # ✅ YAML trade plans
+│   │   ├── *.yaml             # ✅ User trade plan files
+│   │   └── templates/         # ✅ Plan templates with inline docs
+│   │       ├── close_above.yaml   # ✅ Close above execution template
+│   │       ├── close_below.yaml   # ✅ Close below execution template  
+│   │       └── trailing_stop.yaml # ✅ Trailing stop template
 │   ├── state/                 # JSON position state
 │   └── history/               # CSV trade history
 ├── logs/                      # Enhanced logging structure

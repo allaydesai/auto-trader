@@ -1,16 +1,54 @@
 """CLI commands for Auto-Trader application."""
 
-import sys
+import time
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.live import Live
 
 from config import Settings, ConfigLoader
 from ..logging_config import get_logger
+from ..models import (
+    TradePlanLoader,
+    TemplateManager,
+    TradePlanStatus,
+)
+from .display_utils import (
+    display_config_summary,
+    display_plans_summary,
+    display_plans_table,
+    display_stats_summary,
+    display_performance_summary,
+    display_trade_history,
+    generate_monitor_layout,
+)
+from .file_utils import (
+    create_env_file,
+    create_config_file,
+    create_user_config_file,
+    get_plan_data_interactive,
+    export_performance_csv,
+    export_trade_history_csv,
+)
+from .error_utils import (
+    handle_config_validation_failure,
+    handle_file_permission_error,
+    handle_validation_plan_failure,
+    handle_generic_error,
+    show_safety_warning,
+    check_existing_files,
+)
+from .plan_utils import (
+    show_available_templates,
+    get_template_choice,
+    create_plan_output_file,
+    show_plan_creation_success,
+)
 
 
 console = Console()
@@ -64,31 +102,19 @@ def validate_config(
                 )
             )
 
+            # Show safety warning if not in simulation mode
+            show_safety_warning(config_loader.system_config.trading.simulation_mode)
+
             if verbose:
-                _display_config_summary(config_loader)
+                display_config_summary(config_loader)
 
             logger.info("Configuration validation passed")
 
         else:
-            console.print(
-                Panel(
-                    "[red]✗ Configuration validation failed![/red]",
-                    title="Validation Result",
-                    border_style="red",
-                )
-            )
-
-            console.print("\n[bold red]Issues found:[/bold red]")
-            for i, issue in enumerate(issues, 1):
-                console.print(f"  {i}. {issue}")
-
-            logger.error("Configuration validation failed", issues=issues)
-            sys.exit(1)
+            handle_config_validation_failure(issues, verbose)
 
     except Exception as e:
-        console.print(f"[red]Error during validation: {e}[/red]")
-        logger.error("Configuration validation error", error=str(e))
-        sys.exit(1)
+        handle_generic_error("configuration validation", e)
 
 
 @cli.command()
@@ -117,27 +143,21 @@ def setup(output_dir: Path, force: bool) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Check for existing files
-        env_file = output_dir / ".env"
-        config_file = output_dir / "config.yaml"
-        user_config_file = output_dir / "user_config.yaml"
-
-        existing_files = [
-            f for f in [env_file, config_file, user_config_file] if f.exists()
-        ]
-
-        if existing_files and not force:
-            console.print(
-                "\n[yellow]Warning: The following files already exist:[/yellow]"
-            )
-            for f in existing_files:
-                console.print(f"  • {f}")
-            console.print("\nUse --force to overwrite existing files.")
+        if not check_existing_files(output_dir, force):
             return
 
         # Create configuration files
-        _create_env_file(env_file)
-        _create_config_file(config_file)
-        _create_user_config_file(user_config_file)
+        env_file = output_dir / ".env"
+        config_file = output_dir / "config.yaml"
+        user_config_file = output_dir / "user_config.yaml"
+        
+        try:
+            create_env_file(env_file)
+            create_config_file(config_file)
+            create_user_config_file(user_config_file)
+        except (OSError, IOError) as e:
+            handle_file_permission_error(output_dir, "file creation", e)
+            return
 
         console.print(
             Panel(
@@ -155,9 +175,329 @@ def setup(output_dir: Path, force: bool) -> None:
         logger.info("Setup wizard completed successfully")
 
     except Exception as e:
-        console.print(f"[red]Setup failed: {e}[/red]")
-        logger.error("Setup wizard failed", error=str(e))
-        sys.exit(1)
+        handle_generic_error("setup wizard", e)
+
+
+@cli.command()
+@click.option(
+    "--plans-dir",
+    type=click.Path(exists=True, path_type=Path),
+    help="Directory containing trade plan YAML files",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed validation results")
+def validate_plans(plans_dir: Optional[Path], verbose: bool) -> None:
+    """Validate all trade plan YAML files in the plans directory."""
+    logger.info("Trade plan validation started")
+    
+    try:
+        # Use custom directory or default
+        loader = TradePlanLoader(plans_dir) if plans_dir else TradePlanLoader()
+        
+        console.print(
+            Panel(
+                f"[blue]Validating trade plans in: {loader.plans_directory}[/blue]",
+                title="Trade Plan Validation",
+                border_style="blue",
+            )
+        )
+        
+        # Load and validate all plans
+        plans = loader.load_all_plans(validate=True)
+        
+        # Get validation report
+        report = loader.get_validation_report()
+        
+        if plans:
+            console.print(
+                Panel(
+                    f"[green]✓ Successfully loaded {len(plans)} trade plan(s)[/green]",
+                    title="Validation Result",
+                    border_style="green",
+                )
+            )
+            
+            if verbose:
+                display_plans_summary(loader)
+                console.print("\n" + report)
+                
+        else:
+            handle_validation_plan_failure(loader, plans_dir, verbose)
+        
+        logger.info("Trade plan validation completed", plan_count=len(plans))
+        
+    except Exception as e:
+        handle_generic_error("trade plan validation", e)
+
+
+@cli.command()
+@click.option(
+    "--plans-dir",
+    type=click.Path(exists=True, path_type=Path),
+    help="Directory containing trade plan YAML files",
+)
+@click.option("--status", help="Filter by status (awaiting_entry, position_open, completed)")
+@click.option("--symbol", help="Filter by symbol")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed plan information")
+def list_plans(plans_dir: Optional[Path], status: Optional[str], symbol: Optional[str], verbose: bool) -> None:
+    """List all loaded trade plans with optional filtering."""
+    logger.info("List trade plans started")
+    
+    try:
+        # Use custom directory or default
+        loader = TradePlanLoader(plans_dir) if plans_dir else TradePlanLoader()
+        
+        # Load all plans
+        plans = loader.load_all_plans(validate=True)
+        
+        if not plans:
+            console.print(
+                Panel(
+                    "[yellow]No trade plans found[/yellow]",
+                    title="Trade Plans",
+                    border_style="yellow",
+                )
+            )
+            return
+        
+        # Apply filters
+        filtered_plans = list(plans.values())
+        
+        if status:
+            try:
+                status_enum = TradePlanStatus(status)
+                filtered_plans = [p for p in filtered_plans if p.status == status_enum]
+            except ValueError:
+                console.print(f"[red]Invalid status: {status}[/red]")
+                return
+                
+        if symbol:
+            filtered_plans = [p for p in filtered_plans if p.symbol.upper() == symbol.upper()]
+        
+        # Display results
+        if not filtered_plans:
+            console.print(
+                Panel(
+                    "[yellow]No plans found matching filters[/yellow]",
+                    title="Filtered Results",
+                    border_style="yellow",
+                )
+            )
+            return
+        
+        display_plans_table(filtered_plans, verbose)
+        
+        # Show statistics
+        stats = loader.get_stats()
+        display_stats_summary(stats)
+        
+        logger.info("List trade plans completed", filtered_count=len(filtered_plans))
+        
+    except Exception as e:
+        handle_generic_error("listing plans", e)
+
+
+@cli.command()
+@click.option("--output-dir", type=click.Path(path_type=Path), help="Output directory for created plan")
+def create_plan() -> None:
+    """Interactive wizard to create a new trade plan from template."""
+    logger.info("Create trade plan wizard started")
+    
+    try:
+        # Initialize template manager
+        template_manager = TemplateManager()
+        
+        # Show available templates
+        template_info = show_available_templates(template_manager)
+        if not template_info:
+            return
+        
+        # Get template choice
+        template_name = get_template_choice(template_info["template_names"])
+        
+        # Get plan data interactively
+        plan_data = get_plan_data_interactive()
+        
+        # Create output file path
+        output_dir_param = click.get_current_context().params.get("output_dir")
+        output_file = create_plan_output_file(plan_data, output_dir_param)
+        
+        # Create the plan
+        trade_plan = template_manager.create_plan_from_template(
+            template_name, 
+            plan_data, 
+            output_file
+        )
+        
+        # Show success message
+        show_plan_creation_success(trade_plan, output_file)
+        
+        logger.info("Trade plan created successfully", plan_id=trade_plan.plan_id)
+        
+    except Exception as e:
+        handle_generic_error("creating plan", e)
+
+
+@cli.command()
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed template information")
+def list_templates(verbose: bool) -> None:
+    """List all available trade plan templates."""
+    logger.info("List templates started")
+    
+    try:
+        template_manager = TemplateManager()
+        templates = template_manager.list_available_templates()
+        
+        if not templates:
+            console.print(
+                Panel(
+                    "[yellow]No templates found[/yellow]",
+                    title="Templates",
+                    border_style="yellow",
+                )
+            )
+            return
+        
+        console.print(
+            Panel(
+                f"[blue]Found {len(templates)} template(s)[/blue]",
+                title="Available Templates",
+                border_style="blue",
+            )
+        )
+        
+        # Create templates table
+        table = Table(title="Trade Plan Templates")
+        table.add_column("Name", style="cyan")
+        table.add_column("Description", style="white")
+        if verbose:
+            table.add_column("Required Fields", style="yellow")
+            table.add_column("Use Cases", style="green")
+        
+        for name in templates:
+            doc_info = template_manager.get_template_documentation(name)
+            description = doc_info.get("description", "No description")
+            
+            if verbose:
+                required_count = len(doc_info.get("required_fields", []))
+                use_cases_count = len(doc_info.get("use_cases", []))
+                table.add_row(
+                    name, 
+                    description,
+                    str(required_count),
+                    str(use_cases_count)
+                )
+            else:
+                table.add_row(name, description)
+        
+        console.print(table)
+        
+        if verbose:
+            # Show template summary
+            summary = template_manager.get_template_summary()
+            console.print("\n[bold]Template Validation Results:[/bold]")
+            for name, is_valid in summary["validation_results"].items():
+                status = "[green]✓[/green]" if is_valid else "[red]✗[/red]"
+                console.print(f"  {status} {name}")
+        
+        logger.info("List templates completed", template_count=len(templates))
+        
+    except Exception as e:
+        handle_generic_error("listing templates", e)
+
+
+@cli.command()
+@click.option(
+    "--plans-dir",
+    type=click.Path(exists=True, path_type=Path),
+    help="Directory containing trade plan YAML files",
+)
+@click.option("--refresh-rate", default=5, help="Refresh rate in seconds")
+def monitor(plans_dir: Optional[Path], refresh_rate: int) -> None:
+    """Live system monitor dashboard showing real-time status."""
+    logger.info("Live system monitor started")
+    
+    try:
+        # Initialize loader
+        loader = TradePlanLoader(plans_dir) if plans_dir else TradePlanLoader()
+        
+        console.print(
+            Panel(
+                "[bold blue]Starting Auto-Trader Live Monitor[/bold blue]\n"
+                "Press 'Ctrl+C' to exit",
+                title="Live Monitor",
+                border_style="blue",
+            )
+        )
+        
+        with Live(generate_monitor_layout(loader), refresh_per_second=1/refresh_rate, screen=True) as live:
+            try:
+                while True:
+                    live.update(generate_monitor_layout(loader))
+                    time.sleep(refresh_rate)
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Monitor stopped by user[/yellow]")
+                
+    except Exception as e:
+        handle_generic_error("live monitor", e)
+
+
+@cli.command()
+@click.option("--period", default="week", type=click.Choice(["day", "week", "month"]), help="Summary period")
+@click.option("--format", "output_format", default="console", type=click.Choice(["console", "csv"]), help="Output format")
+def summary(period: str, output_format: str) -> None:
+    """Generate performance summary for the specified period."""
+    logger.info("Performance summary started", period=period)
+    
+    try:
+        console.print(
+            Panel(
+                f"[blue]Generating {period} performance summary...[/blue]",
+                title="Performance Summary",
+                border_style="blue",
+            )
+        )
+        
+        # This is a placeholder implementation - in real system would analyze trade history
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        if output_format == "console":
+            display_performance_summary(period, current_date)
+        else:
+            export_performance_csv(period, current_date)
+            
+        logger.info("Performance summary completed", period=period, format=output_format)
+        
+    except Exception as e:
+        handle_generic_error("generating summary", e)
+
+
+@cli.command()
+@click.option("--symbol", help="Filter by trading symbol")
+@click.option("--days", default=30, help="Number of days to look back")
+@click.option("--format", "output_format", default="console", type=click.Choice(["console", "csv"]), help="Output format")
+def history(symbol: Optional[str], days: int, output_format: str) -> None:
+    """Display trade history with optional filtering."""
+    logger.info("Trade history requested", symbol=symbol, days=days)
+    
+    try:
+        console.print(
+            Panel(
+                f"[blue]Loading trade history (last {days} days)...[/blue]",
+                title="Trade History",
+                border_style="blue",
+            )
+        )
+        
+        # This is a placeholder implementation - in real system would load from CSV files
+        if output_format == "console":
+            display_trade_history(symbol, days)
+        else:
+            export_trade_history_csv(symbol, days)
+            
+        logger.info("Trade history completed", symbol=symbol, days=days, format=output_format)
+        
+    except Exception as e:
+        handle_generic_error("loading history", e)
 
 
 @cli.command()
@@ -166,187 +506,43 @@ def help_system() -> None:
     console.print(
         Panel(
             "[bold blue]Auto-Trader Help System[/bold blue]\n\n"
-            "[bold]Available Commands:[/bold]\n"
+            "[bold]Configuration Commands:[/bold]\n"
             "• validate-config  - Validate configuration files\n"
-            "• setup           - Run interactive setup wizard\n"
-            "• help-system     - Display this help information\n\n"
+            "• setup           - Run interactive setup wizard\n\n"
+            "[bold]Trade Plan Commands:[/bold]\n"
+            "• validate-plans  - Validate trade plan YAML files\n"
+            "• list-plans      - List loaded trade plans with filtering\n"
+            "• create-plan     - Create new trade plan from template\n"
+            "• list-templates  - List available trade plan templates\n\n"
+            "[bold]Monitoring & Analysis:[/bold]\n"
+            "• monitor         - Live system status dashboard\n"
+            "• summary         - Performance summary (day/week/month)\n"
+            "• history         - Trade history with filtering\n\n"
             "[bold]Configuration Files:[/bold]\n"
             "• .env            - Environment variables and secrets\n"
             "• config.yaml     - System configuration\n"
             "• user_config.yaml - User preferences and defaults\n\n"
+            "[bold]Trade Plan Files:[/bold]\n"
+            "• data/trade_plans/*.yaml - Trade plan definitions\n"
+            "• data/trade_plans/templates/*.yaml - Plan templates\n\n"
             "[bold]Example Usage:[/bold]\n"
             "auto-trader setup\n"
             "auto-trader validate-config --verbose\n"
-            "auto-trader validate-config --config-file custom_config.yaml",
+            "auto-trader validate-plans --verbose\n"
+            "auto-trader list-plans --status awaiting_entry\n"
+            "auto-trader monitor --refresh-rate 3\n"
+            "auto-trader summary --period week\n"
+            "auto-trader history --symbol AAPL --days 7",
             title="Help System",
             border_style="blue",
         )
     )
 
 
-def _display_config_summary(config_loader: ConfigLoader) -> None:
-    """Display configuration summary in verbose mode."""
-    system_config = config_loader.system_config
-    user_preferences = config_loader.user_preferences
-
-    # System Configuration Table
-    system_table = Table(title="System Configuration")
-    system_table.add_column("Setting", style="cyan")
-    system_table.add_column("Value", style="white")
-
-    system_table.add_row("Simulation Mode", str(system_config.trading.simulation_mode))
-    system_table.add_row(
-        "Market Hours Only", str(system_config.trading.market_hours_only)
-    )
-    system_table.add_row("Default Timeframe", system_config.trading.default_timeframe)
-    system_table.add_row(
-        "Max Position %", f"{system_config.risk.max_position_percent}%"
-    )
-    system_table.add_row(
-        "Daily Loss Limit %", f"{system_config.risk.daily_loss_limit_percent}%"
-    )
-    system_table.add_row(
-        "Max Open Positions", str(system_config.risk.max_open_positions)
-    )
-    system_table.add_row("Log Level", system_config.logging.level)
-
-    # User Preferences Table
-    user_table = Table(title="User Preferences")
-    user_table.add_column("Setting", style="cyan")
-    user_table.add_column("Value", style="white")
-
-    user_table.add_row(
-        "Default Account Value", f"${user_preferences.default_account_value:,}"
-    )
-    user_table.add_row("Risk Category", user_preferences.default_risk_category)
-    user_table.add_row(
-        "Preferred Timeframes", ", ".join(user_preferences.preferred_timeframes)
-    )
-
-    console.print("\n")
-    console.print(system_table)
-    console.print("\n")
-    console.print(user_table)
+# Utility functions moved to separate modules
 
 
-def _create_env_file(path: Path) -> None:
-    """Create .env file with interactive prompts."""
-    console.print("\n[bold]Environment Configuration:[/bold]")
-
-    # Get Discord webhook URL
-    webhook_url = click.prompt(
-        "Discord webhook URL",
-        type=str,
-        default="https://discord.com/api/webhooks/YOUR_WEBHOOK_URL_HERE",
-    )
-
-    # Get IBKR settings
-    ibkr_host = click.prompt("IBKR Host", default="127.0.0.1")
-    ibkr_port = click.prompt("IBKR Port", default=7497, type=int)
-    ibkr_client_id = click.prompt("IBKR Client ID", default=1, type=int)
-
-    # Get system settings
-    simulation_mode = click.confirm("Enable simulation mode?", default=True)
-    debug = click.confirm("Enable debug logging?", default=False)
-
-    env_content = f"""# Auto-Trader Environment Configuration
-# Generated by setup wizard
-
-# Interactive Brokers Configuration
-IBKR_HOST={ibkr_host}
-IBKR_PORT={ibkr_port}
-IBKR_CLIENT_ID={ibkr_client_id}
-
-# Discord Integration
-DISCORD_WEBHOOK_URL={webhook_url}
-
-# System Settings
-SIMULATION_MODE={str(simulation_mode).lower()}
-DEBUG={str(debug).lower()}
-
-# File Paths (optional - defaults will be used if not set)
-CONFIG_FILE=config.yaml
-USER_CONFIG_FILE=user_config.yaml
-LOGS_DIR=logs
-"""
-
-    path.write_text(env_content)
-    console.print(f"[green]✓ Created {path}[/green]")
-
-
-def _create_config_file(path: Path) -> None:
-    """Create config.yaml with default values."""
-    config_content = """# Auto-Trader System Configuration
-# Generated by setup wizard
-
-# Interactive Brokers Configuration
-ibkr:
-  host: "127.0.0.1"
-  port: 7497
-  client_id: 1
-  timeout: 30
-
-# Risk Management Configuration  
-risk:
-  max_position_percent: 10.0
-  daily_loss_limit_percent: 2.0
-  max_open_positions: 5
-  min_account_balance: 1000
-
-# Trading System Configuration
-trading:
-  simulation_mode: true
-  market_hours_only: true
-  default_timeframe: "15min"
-  order_timeout: 60
-
-# Logging Configuration
-logging:
-  level: "INFO"
-  rotation: "1 day"
-  retention: "30 days"
-  format: "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}"
-"""
-
-    path.write_text(config_content)
-    console.print(f"[green]✓ Created {path}[/green]")
-
-
-def _create_user_config_file(path: Path) -> None:
-    """Create user_config.yaml with interactive prompts."""
-    console.print("\n[bold]User Preferences:[/bold]")
-
-    # Get user preferences
-    account_value = click.prompt("Default account value", default=10000, type=int)
-
-    risk_category = click.prompt(
-        "Risk category",
-        type=click.Choice(["conservative", "moderate", "aggressive"]),
-        default="conservative",
-    )
-
-    user_config_content = f"""# Auto-Trader User Preferences Configuration
-# Generated by setup wizard
-
-# Account Configuration
-default_account_value: {account_value}
-
-# Risk Profile
-default_risk_category: "{risk_category}"
-
-# Trading Preferences
-preferred_timeframes:
-  - "15min"
-  - "1hour"
-
-# Default Execution Functions by Trade Type
-default_execution_functions:
-  long: "close_above"
-  short: "close_below"
-"""
-
-    path.write_text(user_config_content)
-    console.print(f"[green]✓ Created {path}[/green]")
+# All utility functions moved to separate modules for better organization
 
 
 if __name__ == "__main__":
