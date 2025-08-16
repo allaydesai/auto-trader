@@ -10,6 +10,7 @@ from .schema_commands import show_schema
 from .monitor_commands import monitor, summary, history
 from .diagnostic_commands import doctor
 from .help_commands import help_system
+from .risk_commands import calculate_position_size, portfolio_risk_summary
 
 
 @click.group()
@@ -32,6 +33,8 @@ cli.add_command(summary)
 cli.add_command(history)
 cli.add_command(doctor)
 cli.add_command(help_system)
+cli.add_command(calculate_position_size)
+cli.add_command(portfolio_risk_summary)
 
 
 if __name__ == "__main__":
