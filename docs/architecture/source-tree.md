@@ -1,9 +1,11 @@
 # Source Tree
 
 ## Implementation Status
-- ✅ **Implemented** (Stories 1.1, 1.2): Core models, validation, CLI, templates
+- ✅ **Implemented** (Stories 1.1, 1.2, 1.3): Core models, validation, modular CLI, templates
 - ⏸️ **Planned**: Trade engine, IBKR integration, risk management, notifications
-- 🧪 **Testing**: 134 tests currently passing (88% coverage)
+- 🧪 **Testing**: 179+ tests currently passing (87% coverage)
+- 🔧 **Refactoring**: CLI modularized from 735-line monolith to focused modules
+- ⚡ **Performance**: AsyncIO optimizations for file watching reliability
 
 ```plaintext
 auto-trader/
@@ -32,15 +34,40 @@ auto-trader/
 │       │       ├── test_template_manager.py  # ✅ 19 tests
 │       │       ├── test_plan_loader.py       # ✅ 19 tests
 │       │       └── test_config.py            # ✅ 22 tests
-│       ├── cli/                 # ✅ Rich CLI interface (refactored)
+│       ├── utils/               # ✅ Utility modules
 │       │   ├── __init__.py
-│       │   ├── commands.py      # ✅ Main CLI commands (549 lines)
+│       │   ├── file_watcher.py  # ✅ AsyncIO-optimized file monitoring
+│       │   └── tests/          # ✅ Utility tests
+│       │       └── test_file_watcher.py
+│       ├── cli/                 # ✅ Modular CLI interface (refactored)
+│       │   ├── __init__.py
+│       │   ├── commands.py      # ✅ Main entry point (38 lines - refactored)
+│       │   ├── config_commands.py    # ✅ Configuration management (38 lines)
+│       │   ├── plan_commands.py      # ✅ Trade plan operations (266 lines)
+│       │   ├── template_commands.py  # ✅ Template management (80 lines)
+│       │   ├── schema_commands.py    # ✅ Schema utilities (95 lines)
+│       │   ├── monitor_commands.py   # ✅ Monitoring & analysis (202 lines)
+│       │   ├── diagnostic_commands.py # ✅ System diagnostics (151 lines)
+│       │   ├── help_commands.py      # ✅ Help system (89 lines)
 │       │   ├── display_utils.py # ✅ Display & formatting utilities
 │       │   ├── file_utils.py    # ✅ File creation utilities
 │       │   ├── error_utils.py   # ✅ Error handling utilities
 │       │   ├── plan_utils.py    # ✅ Plan creation utilities
-│       │   └── tests/          # ✅ CLI tests
-│       │       └── test_commands.py
+│       │   ├── diagnostic_utils.py   # ✅ Diagnostic utility functions
+│       │   ├── schema_utils.py       # ✅ Schema utility functions
+│       │   ├── watch_utils.py        # ✅ File watching utilities
+│       │   └── tests/          # ✅ Comprehensive CLI test suite (65+ tests)
+│       │       ├── conftest.py
+│       │       ├── test_config_commands.py
+│       │       ├── test_plan_commands.py
+│       │       ├── test_template_commands.py
+│       │       ├── test_schema_commands.py
+│       │       ├── test_monitor_commands.py
+│       │       ├── test_diagnostic_commands.py
+│       │       ├── test_help_commands.py
+│       │       ├── test_diagnostic_utils.py
+│       │       ├── test_schema_utils.py
+│       │       └── test_watch_utils.py
 │       ├── trade_engine/         # Core execution logic
 │       │   ├── __init__.py
 │       │   ├── engine.py
@@ -94,8 +121,9 @@ auto-trader/
 │   ├── setup_environment.py
 │   ├── validate_config.py
 │   └── create_plan_templates.py
-├── tests/                     # Integration tests
+├── tests/                     # ✅ Integration tests
 │   ├── conftest.py
+│   ├── test_story_1_3_integration.py  # ✅ Story 1.3 integration tests
 │   └── integration/
 ├── .env.example              # Environment template
 ├── config.yaml.example       # Config template

@@ -39,22 +39,49 @@
 - **Classes:** Maximum 100 lines representing single concept
 - **Line Length:** Maximum 100 characters (ruff enforced)
 
-### Vertical Slice Architecture
+### Vertical Slice Architecture (Current Implementation)
 ```
 src/auto_trader/
     __init__.py
     main.py                    # Entry point, max 100 lines
     
-    models/                    # Pydantic models
+    models/                    # Pydantic models & validation
         __init__.py
-        trade_plan.py
-        position.py
-        market_data.py
-        tests/
+        trade_plan.py            # Core trade plan schema (289 lines)
+        validation_engine.py     # YAML validation engine
+        error_reporting.py       # Enhanced error reporting
+        template_manager.py      # Template management
+        plan_loader.py          # Plan loading & management
+        tests/                  # Comprehensive model tests
             test_trade_plan.py
-            test_position.py
+            test_validation_engine.py
+            test_template_manager.py
     
-    trade_engine/             # Core execution logic
+    cli/                      # Modular CLI architecture
+        __init__.py
+        commands.py             # Main entry point (38 lines - refactored)
+        config_commands.py      # Configuration management (38 lines)
+        plan_commands.py        # Trade plan operations (266 lines)
+        template_commands.py    # Template management (80 lines)
+        schema_commands.py      # Schema utilities (95 lines)
+        monitor_commands.py     # Monitoring & analysis (202 lines)
+        diagnostic_commands.py  # System diagnostics (151 lines)
+        help_commands.py        # Help system (89 lines)
+        display_utils.py        # Rich formatting utilities
+        file_utils.py          # File creation utilities
+        plan_utils.py          # Plan creation utilities
+        tests/                 # Comprehensive CLI test suite (65+ tests)
+            test_config_commands.py
+            test_plan_commands.py
+            test_template_commands.py
+    
+    utils/                    # Utility modules
+        __init__.py
+        file_watcher.py         # AsyncIO-optimized file monitoring
+        tests/
+            test_file_watcher.py
+    
+    trade_engine/             # Core execution logic (Future)
         __init__.py
         engine.py
         execution_functions.py
@@ -62,7 +89,7 @@ src/auto_trader/
             test_engine.py
             test_execution_functions.py
     
-    integrations/            # External services
+    integrations/            # External services (Future)
         ibkr_client/
             __init__.py
             client.py
