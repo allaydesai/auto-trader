@@ -225,6 +225,28 @@ class TestListPlans:
             assert result.exit_code == 0
             assert "Invalid status" in result.output
 
+    def test_list_plans_with_risk_info(self):
+        """Test plan listing with risk information."""
+        runner = CliRunner()
+
+        with patch("auto_trader.cli.plan_commands.TradePlanLoader") as mock_loader_class, \
+             patch("auto_trader.cli.plan_commands.display_plans_table") as mock_display, \
+             patch("auto_trader.cli.plan_commands.display_stats_summary") as mock_stats:
+            
+            mock_plan = self.create_mock_plan()
+            mock_loader = MagicMock()
+            mock_loader.load_all_plans.return_value = {"plan1": mock_plan}
+            mock_loader.get_stats.return_value = {}
+            mock_loader_class.return_value = mock_loader
+
+            result = runner.invoke(list_plans, ["--show-risk"])
+
+            assert result.exit_code == 0
+            # Verify that display_plans_table was called with show_risk_info=True
+            mock_display.assert_called_once()
+            call_args = mock_display.call_args
+            assert call_args[1]["show_risk_info"] is True
+
 
 class TestCreatePlan:
     """Test create-plan command."""

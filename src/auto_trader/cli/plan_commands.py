@@ -107,6 +107,7 @@ def validate_plans(plans_dir: Optional[Path], verbose: bool, watch: bool) -> Non
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed plan information")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--debug", is_flag=True, help="Debug level output")
+@click.option("--show-risk", is_flag=True, help="Show position sizes and risk calculations")
 def list_plans(
     plans_dir: Optional[Path], 
     status: Optional[str], 
@@ -117,7 +118,8 @@ def list_plans(
     limit: Optional[int],
     verbose: bool,
     quiet: bool,
-    debug: bool
+    debug: bool,
+    show_risk: bool,
 ) -> None:
     """List all loaded trade plans with optional filtering."""
     logger.info("List trade plans started")
@@ -208,12 +210,12 @@ def list_plans(
         
         # Display plans table with verbosity control
         if debug:
-            display_plans_table(filtered_plans, verbose=True)
+            display_plans_table(filtered_plans, verbose=True, show_risk_info=show_risk)
             console.print(f"\n[dim]🔍 Debug: Sort by {sort_by}, desc={sort_desc}[/dim]")
         elif verbose:
-            display_plans_table(filtered_plans, verbose=True)
+            display_plans_table(filtered_plans, verbose=True, show_risk_info=show_risk)
         elif not quiet:
-            display_plans_table(filtered_plans, verbose=False)
+            display_plans_table(filtered_plans, verbose=False, show_risk_info=show_risk)
         
         # Show statistics (unless quiet mode)
         if not quiet:
