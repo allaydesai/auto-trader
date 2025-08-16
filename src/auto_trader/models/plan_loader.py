@@ -264,6 +264,15 @@ class TradePlanLoader:
         """Get set of all loaded plan IDs."""
         return set(self._loaded_plans.keys())
     
+    def clear_cache_for_file(self, file_path: Path) -> None:
+        """
+        Clear cached data for a specific file.
+        
+        Args:
+            file_path: Path to file whose cache should be cleared
+        """
+        self._remove_plans_from_file(file_path)
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         Get statistics about loaded plans.

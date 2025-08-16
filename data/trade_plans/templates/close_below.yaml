@@ -1,15 +1,31 @@
-# Close Below Execution Function Template
-# This template creates a trade plan that enters when price closes below a threshold
+# Trade Plan Template - Close Below Entry Strategy
+# ==================================================
+# This template creates a short position when price closes below a threshold level.
+# 
+# STRATEGY: Breakdown/Support-turned-resistance entries  
+# RISK LEVEL: Medium-High (suitable for bear markets or short-term reversals)
+# TIMEFRAME: Intraday to short-term holds
+# 
+# COMMON USE CASES:
+# • Breaking below key support levels
+# • Failed bounce from resistance (short)
+# • Trend continuation after bear flag
+# • Breakdown from consolidation patterns
 
-# Unique identifier for this trade plan (REQUIRED)
-# Format: {SYMBOL}_{YYYYMMDD}_{SEQUENCE}
-# Example: AAPL_20250815_001
-plan_id: "SYMBOL_YYYYMMDD_001"
+# TRADE IDENTIFICATION
+# =====================
 
-# Trading symbol (REQUIRED)
-# Must be 1-10 uppercase letters only
-# Examples: AAPL, MSFT, GOOGL, SPY
-symbol: "SYMBOL"
+# Unique plan identifier (REQUIRED)
+# Format: SYMBOL_YYYYMMDD_NNN (where NNN is sequence number 001-999)
+# This ID must be unique across all your trade plans
+# Example: AAPL_20250815_002, QQQ_20250815_001 (for short trades)
+plan_id: "SYMBOL_YYYYMMDD_001"  # 📝 UPDATE THIS: Your unique plan ID
+
+# Trading instrument symbol (REQUIRED) 
+# Must be valid ticker symbol (1-10 uppercase letters)
+# Note: Ensure your broker allows short selling for this symbol
+# Examples: AAPL, MSFT, SPY (ETFs often easier to short)
+symbol: "SYMBOL"  # 📝 UPDATE THIS: Your trading symbol
 
 # Entry price level (REQUIRED)
 # The price where you want to enter the trade

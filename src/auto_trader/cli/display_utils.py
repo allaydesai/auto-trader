@@ -79,8 +79,8 @@ def display_plans_summary(loader: TradePlanLoader) -> None:
             console.print(f"  {symbol}: {count}")
 
 
-def display_plans_table(plans: list, verbose: bool) -> None:
-    """Display plans in a formatted table."""
+def display_plans_table(plans: list, verbose: bool, show_risk_info: bool = False) -> None:
+    """Display plans in a formatted table with optional risk information."""
     table = Table(title="Trade Plans")
     table.add_column("Plan ID", style="cyan")
     table.add_column("Symbol", style="yellow")
@@ -90,9 +90,33 @@ def display_plans_table(plans: list, verbose: bool) -> None:
     table.add_column("Target", style="green")
     table.add_column("Risk", style="white")
     
+    if show_risk_info:
+        table.add_column("Position Size", style="magenta")
+        table.add_column("$ Risk", style="red")
+    
     if verbose:
         table.add_column("Entry Function", style="blue")
         table.add_column("Timeframe", style="blue")
+    
+    # Initialize risk manager if needed
+    risk_manager = None
+    if show_risk_info:
+        try:
+            from decimal import Decimal
+            from pathlib import Path
+            from ..risk_management import RiskManager
+            
+            # Use default account value for now - can be enhanced later to read from config
+            account_value = Decimal("10000.00")
+            state_file = Path("data/state/portfolio_registry.json")
+            
+            risk_manager = RiskManager(
+                account_value=account_value,
+                state_file=state_file,
+            )
+        except Exception:
+            # If risk calculation fails, continue without it
+            show_risk_info = False
     
     for plan in plans:
         status_color = {
@@ -112,6 +136,23 @@ def display_plans_table(plans: list, verbose: bool) -> None:
             f"${plan.take_profit}",
             str(plan.risk_category),
         ]
+        
+        # Add risk information if requested
+        if show_risk_info and risk_manager:
+            try:
+                result = risk_manager.position_sizer.calculate_position_size(
+                    account_value=risk_manager.account_value,
+                    risk_category=plan.risk_category,
+                    entry_price=plan.entry_level,
+                    stop_loss=plan.stop_loss,
+                )
+                row.extend([
+                    f"{result.position_size:,}",
+                    f"${result.dollar_risk:.0f}",
+                ])
+            except Exception:
+                # If calculation fails for this plan, show N/A
+                row.extend(["N/A", "N/A"])
         
         if verbose:
             row.extend([

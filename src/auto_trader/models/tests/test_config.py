@@ -133,9 +133,16 @@ class TestUserPreferences:
         """Test user preferences with default values."""
         prefs = UserPreferences()
 
-        assert prefs.default_account_value == Decimal("10000")
-        assert prefs.default_risk_category == "conservative"
-        assert prefs.preferred_timeframes == ["15min", "1hour"]
+        # New schema fields
+        assert prefs.account_value == Decimal("10000")
+        assert prefs.default_risk_category == "normal"
+        assert prefs.preferred_timeframes == ["15min", "30min"]
+        assert prefs.default_entry_function == "close_above"
+        assert prefs.default_exit_function == "take_profit_stop_loss"
+        assert prefs.environment == "paper"
+        
+        # Legacy fields (backward compatibility)
+        assert prefs.default_account_value is None
         assert prefs.default_execution_functions == {
             "long": "close_above",
             "short": "close_below",
@@ -144,32 +151,55 @@ class TestUserPreferences:
     def test_custom_user_preferences(self) -> None:
         """Test user preferences with custom values."""
         prefs_data = {
-            "default_account_value": 50000,
-            "default_risk_category": "aggressive",
+            "account_value": 50000,
+            "default_risk_category": "large",
             "preferred_timeframes": ["5min", "30min"],
-            "default_execution_functions": {
-                "long": "trailing_stop",
-                "short": "trailing_stop",
-            },
+            "default_entry_function": "trailing_stop",
+            "default_exit_function": "trailing_stop",
+            "environment": "live",
         }
 
         prefs = UserPreferences(**prefs_data)
 
-        assert prefs.default_account_value == Decimal("50000")
-        assert prefs.default_risk_category == "aggressive"
+        assert prefs.account_value == Decimal("50000")
+        assert prefs.default_risk_category == "large"
         assert prefs.preferred_timeframes == ["5min", "30min"]
-        assert prefs.default_execution_functions["long"] == "trailing_stop"
+        assert prefs.default_entry_function == "trailing_stop"
+        assert prefs.default_exit_function == "trailing_stop"
+        assert prefs.environment == "live"
 
     def test_risk_category_validation(self) -> None:
         """Test risk category validation."""
         # Valid categories
-        for category in ["conservative", "moderate", "aggressive"]:
+        for category in ["small", "normal", "large"]:
             prefs = UserPreferences(default_risk_category=category)
             assert prefs.default_risk_category == category
 
         # Invalid category
         with pytest.raises(ValueError):
             UserPreferences(default_risk_category="invalid")
+            
+    def test_timeframe_validation(self) -> None:
+        """Test timeframe validation."""
+        # Valid timeframes
+        valid_timeframes = ["1min", "5min", "15min", "30min", "1h"]
+        prefs = UserPreferences(preferred_timeframes=valid_timeframes)
+        assert prefs.preferred_timeframes == valid_timeframes
+        
+        # Invalid timeframe
+        with pytest.raises(ValueError, match="Invalid timeframe"):
+            UserPreferences(preferred_timeframes=["invalid_timeframe"])
+            
+    def test_environment_validation(self) -> None:
+        """Test environment validation."""
+        # Valid environments
+        for env in ["paper", "live"]:
+            prefs = UserPreferences(environment=env)
+            assert prefs.environment == env
+            
+        # Invalid environment
+        with pytest.raises(ValueError):
+            UserPreferences(environment="invalid")
 
 
 class TestConfigLoader:
@@ -194,9 +224,10 @@ class TestConfigLoader:
 
             # Create user config file
             user_config = {
-                "default_account_value": 25000,
-                "default_risk_category": "moderate",
+                "account_value": 25000,
+                "default_risk_category": "normal",
                 "preferred_timeframes": ["1min", "5min"],
+                "environment": "paper",
             }
             user_config_file = temp_path / "user_config.yaml"
             with open(user_config_file, "w") as f:
@@ -230,9 +261,10 @@ class TestConfigLoader:
 
         prefs = loader.load_user_preferences()
 
-        assert prefs.default_account_value == Decimal("25000")
-        assert prefs.default_risk_category == "moderate"
+        assert prefs.account_value == Decimal("25000")
+        assert prefs.default_risk_category == "normal"
         assert prefs.preferred_timeframes == ["1min", "5min"]
+        assert prefs.environment == "paper"
 
     def test_load_config_missing_files(self) -> None:
         """Test loading configuration when files don't exist."""
@@ -250,7 +282,7 @@ class TestConfigLoader:
         assert isinstance(config, SystemConfig)
         assert isinstance(prefs, UserPreferences)
         assert config.ibkr.host == "127.0.0.1"  # Default value
-        assert prefs.default_account_value == Decimal("10000")  # Default value
+        assert prefs.account_value == Decimal("10000")  # Default value
 
     def test_validate_configuration_success(self, temp_config_files) -> None:
         """Test successful configuration validation."""
@@ -284,7 +316,7 @@ class TestConfigLoader:
                 yaml.dump(system_config, f)
 
             # User config with low account value
-            user_config = {"default_account_value": 5000}
+            user_config = {"account_value": 5000}
             user_config_file = temp_path / "user_config.yaml"
             with open(user_config_file, "w") as f:
                 yaml.dump(user_config, f)
