@@ -135,7 +135,9 @@ class TestListPlans:
         """Test plan listing with filters."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.plan_commands.TradePlanLoader") as mock_loader_class:
+        with patch("auto_trader.cli.plan_commands.TradePlanLoader") as mock_loader_class, \
+             patch("auto_trader.cli.plan_commands.display_plans_table") as mock_display, \
+             patch("auto_trader.cli.plan_commands.display_stats_summary") as mock_stats:
             mock_plan1 = self.create_mock_plan("PLAN1", "AAPL", "awaiting_entry", "normal")
             mock_plan2 = self.create_mock_plan("PLAN2", "MSFT", "position_open", "small")
             
@@ -156,7 +158,9 @@ class TestListPlans:
         """Test plan listing with sorting options."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.plan_commands.TradePlanLoader") as mock_loader_class:
+        with patch("auto_trader.cli.plan_commands.TradePlanLoader") as mock_loader_class, \
+             patch("auto_trader.cli.plan_commands.display_plans_table") as mock_display, \
+             patch("auto_trader.cli.plan_commands.display_stats_summary") as mock_stats:
             mock_plan = self.create_mock_plan()
             mock_loader = MagicMock()
             mock_loader.load_all_plans.return_value = {"plan1": mock_plan}
@@ -176,7 +180,8 @@ class TestListPlans:
         runner = CliRunner()
 
         with patch("auto_trader.cli.plan_commands.TradePlanLoader") as mock_loader_class, \
-             patch("auto_trader.cli.plan_commands.display_plans_table") as mock_display:
+             patch("auto_trader.cli.plan_commands.display_plans_table") as mock_display, \
+             patch("auto_trader.cli.plan_commands.display_stats_summary") as mock_stats:
             
             mock_plan = self.create_mock_plan()
             mock_loader = MagicMock()
@@ -306,7 +311,8 @@ class TestCreatePlan:
 
         with patch("auto_trader.cli.plan_commands.TemplateManager", side_effect=Exception("Test error")):
             result = runner.invoke(create_plan)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handling calls sys.exit(1)
+            assert "Error during creating plan" in result.output
 
 
 class TestCreatePlanInteractive:
@@ -355,11 +361,11 @@ class TestCreatePlanInteractive:
     
     def test_create_plan_interactive_success(self):
         """Test successful interactive plan creation."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.wizard_utils.TradePlanPreview.show_preview") as mock_preview, \
-             patch("auto_trader.cli.wizard_utils.save_plan_to_yaml") as mock_save:
+             patch("auto_trader.cli.wizard_preview.TradePlanPreview.show_preview") as mock_preview, \
+             patch("auto_trader.cli.wizard_plan_utils.save_plan_to_yaml") as mock_save:
             
             # Setup mocks
             mock_config_class.return_value = self.create_mock_config_loader()
@@ -389,11 +395,11 @@ class TestCreatePlanInteractive:
     
     def test_create_plan_interactive_with_cli_shortcuts(self):
         """Test interactive plan creation with CLI shortcuts."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.wizard_utils.TradePlanPreview.show_preview") as mock_preview, \
-             patch("auto_trader.cli.wizard_utils.save_plan_to_yaml") as mock_save:
+             patch("auto_trader.cli.wizard_preview.TradePlanPreview.show_preview") as mock_preview, \
+             patch("auto_trader.cli.wizard_plan_utils.save_plan_to_yaml") as mock_save:
             
             # Setup mocks
             mock_config_class.return_value = self.create_mock_config_loader()
@@ -423,10 +429,10 @@ class TestCreatePlanInteractive:
     
     def test_create_plan_interactive_user_cancellation(self):
         """Test user cancelling during preview."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.wizard_utils.TradePlanPreview.show_preview") as mock_preview:
+             patch("auto_trader.cli.wizard_preview.TradePlanPreview.show_preview") as mock_preview:
             
             # Setup mocks
             mock_config_class.return_value = self.create_mock_config_loader()
@@ -446,8 +452,8 @@ class TestCreatePlanInteractive:
     
     def test_create_plan_interactive_portfolio_risk_exceeded(self):
         """Test wizard handling when portfolio risk limit is exceeded."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.Prompt.ask") as mock_prompt, \
              patch("auto_trader.cli.wizard_utils.Confirm.ask") as mock_confirm:
             
@@ -476,13 +482,13 @@ class TestCreatePlanInteractive:
             
             result = self.runner.invoke(create_plan_interactive)
             
-            assert result.exit_code == 0
-            # Should show error about portfolio risk limit
+            assert result.exit_code == 1  # Error handling calls sys.exit(1)
+            assert "Error during interactive plan creation" in result.output
     
     def test_create_plan_interactive_keyboard_interrupt(self):
         """Test handling of keyboard interrupt during wizard."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.WizardFieldCollector.collect_symbol", side_effect=KeyboardInterrupt):
             
             mock_config_class.return_value = self.create_mock_config_loader()
@@ -495,19 +501,19 @@ class TestCreatePlanInteractive:
     
     def test_create_plan_interactive_exception_handling(self):
         """Test exception handling in interactive wizard."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader", side_effect=Exception("Config error")):
+        with patch("config.ConfigLoader", side_effect=Exception("Config error")):
             result = self.runner.invoke(create_plan_interactive)
             
-            assert result.exit_code == 0
-            # Should handle error gracefully
+            assert result.exit_code == 1  # Error handling calls sys.exit(1)
+            assert "Error during interactive plan creation" in result.output
     
     def test_create_plan_interactive_output_directory(self):
         """Test interactive plan creation with custom output directory."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.wizard_utils.TradePlanPreview.show_preview") as mock_preview, \
-             patch("auto_trader.cli.wizard_utils.save_plan_to_yaml") as mock_save:
+             patch("auto_trader.cli.wizard_preview.TradePlanPreview.show_preview") as mock_preview, \
+             patch("auto_trader.cli.wizard_plan_utils.save_plan_to_yaml") as mock_save:
             
             # Setup mocks
             mock_config_class.return_value = self.create_mock_config_loader()
@@ -533,11 +539,11 @@ class TestCreatePlanInteractive:
     
     def test_create_plan_interactive_all_cli_shortcuts(self):
         """Test interactive wizard with all possible CLI shortcuts."""
-        with patch("auto_trader.cli.plan_commands.ConfigLoader") as mock_config_class, \
-             patch("auto_trader.cli.plan_commands.RiskManager") as mock_risk_class, \
+        with patch("config.ConfigLoader") as mock_config_class, \
+             patch("auto_trader.risk_management.RiskManager") as mock_risk_class, \
              patch("auto_trader.cli.wizard_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.wizard_utils.TradePlanPreview.show_preview") as mock_preview, \
-             patch("auto_trader.cli.wizard_utils.save_plan_to_yaml") as mock_save:
+             patch("auto_trader.cli.wizard_preview.TradePlanPreview.show_preview") as mock_preview, \
+             patch("auto_trader.cli.wizard_plan_utils.save_plan_to_yaml") as mock_save:
             
             # Setup mocks
             mock_config_class.return_value = self.create_mock_config_loader()

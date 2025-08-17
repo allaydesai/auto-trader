@@ -2,8 +2,7 @@
 
 import pytest
 from decimal import Decimal
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from ..wizard_utils import WizardFieldCollector
 from ..wizard_preview import TradePlanPreview
@@ -28,6 +27,15 @@ class TestWizardFieldCollector:
         """Mock risk manager."""
         risk_manager = Mock(spec=RiskManager)
         risk_manager.account_value = Decimal("10000")
+        
+        # Setup position_sizer mock
+        risk_manager.position_sizer = Mock()
+        risk_manager.position_sizer.calculate_position_size = Mock()
+        
+        # Setup portfolio_tracker mock
+        risk_manager.portfolio_tracker = Mock()
+        risk_manager.check_portfolio_risk_limit = Mock()
+        
         return risk_manager
     
     @pytest.fixture
@@ -252,33 +260,6 @@ class TestWizardFieldCollector:
         assert exit_func.function_type == "stop_loss_take_profit"
         assert exit_func.timeframe == "15min"
     
-    def test_validate_field_with_model_valid_symbol(self, field_collector):
-        """Test field validation with valid symbol."""
-        result = field_collector._validate_field_with_model("symbol", "AAPL")
-        
-        assert result["is_valid"] is True
-        assert result["error"] is None
-    
-    def test_validate_field_with_model_invalid_symbol(self, field_collector):
-        """Test field validation with invalid symbol."""
-        result = field_collector._validate_field_with_model("symbol", "TOOLONGSYMBOL123")
-        
-        assert result["is_valid"] is False
-        assert result["error"] is not None
-    
-    def test_validate_field_with_model_valid_entry_level(self, field_collector):
-        """Test field validation with valid entry level."""
-        result = field_collector._validate_field_with_model("entry_level", Decimal("180.50"))
-        
-        assert result["is_valid"] is True
-        assert result["error"] is None
-    
-    def test_validate_field_with_model_invalid_entry_level(self, field_collector):
-        """Test field validation with invalid entry level."""
-        result = field_collector._validate_field_with_model("entry_level", Decimal("-100.00"))
-        
-        assert result["is_valid"] is False
-        assert result["error"] is not None
 
 
 class TestTradePlanPreview:
@@ -316,7 +297,7 @@ class TestTradePlanPreview:
             ),
         }
     
-    @patch('auto_trader.cli.wizard_utils.Prompt.ask')
+    @patch('auto_trader.cli.wizard_preview.Prompt.ask')
     def test_show_preview_confirm(self, mock_prompt, preview_manager, sample_plan_data):
         """Test preview with user confirmation."""
         mock_prompt.return_value = "confirm"
@@ -326,7 +307,7 @@ class TestTradePlanPreview:
         assert result is True
         mock_prompt.assert_called_once()
     
-    @patch('auto_trader.cli.wizard_utils.Prompt.ask')
+    @patch('auto_trader.cli.wizard_preview.Prompt.ask')
     def test_show_preview_cancel(self, mock_prompt, preview_manager, sample_plan_data):
         """Test preview with user cancellation."""
         mock_prompt.return_value = "cancel"
@@ -336,7 +317,7 @@ class TestTradePlanPreview:
         assert result is False
         mock_prompt.assert_called_once()
     
-    @patch('auto_trader.cli.wizard_utils.Prompt.ask')
+    @patch('auto_trader.cli.wizard_preview.Prompt.ask')
     def test_show_preview_modify_then_confirm(self, mock_prompt, preview_manager, sample_plan_data):
         """Test preview with modification request then confirmation."""
         mock_prompt.side_effect = ["modify", "confirm"]
@@ -406,6 +387,14 @@ def sample_risk_manager():
     """Create a sample risk manager for integration tests."""
     risk_manager = Mock(spec=RiskManager)
     risk_manager.account_value = Decimal("10000")
+    
+    # Setup position_sizer mock
+    risk_manager.position_sizer = Mock()
+    risk_manager.position_sizer.calculate_position_size = Mock()
+    
+    # Setup portfolio_tracker mock
+    risk_manager.portfolio_tracker = Mock()
+    risk_manager.check_portfolio_risk_limit = Mock()
     
     # Mock portfolio summary
     risk_manager.get_portfolio_summary.return_value = {

@@ -101,8 +101,8 @@ def save_plan_to_yaml(
     # Create TradePlan object for validation
     trade_plan = TradePlan(**plan_data)
     
-    # Convert to YAML-compatible dict
-    yaml_data = trade_plan.model_dump()
+    # Convert to YAML-compatible dict with proper serialization
+    yaml_data = trade_plan.model_dump(mode='json')
     
     # Write to file
     with open(output_path, "w") as f:

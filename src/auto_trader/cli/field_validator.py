@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import decimal
 from decimal import Decimal
 from typing import Any, Dict
 
@@ -174,7 +175,7 @@ class WizardFieldValidator:
                     return field_messages["negative"] if decimal_value < 0 else field_messages["zero"]
                 elif abs(decimal_value.as_tuple().exponent) > 4:
                     return field_messages["decimal_places"]
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, decimal.InvalidOperation):
                 pass
         
         return field_messages["default"]

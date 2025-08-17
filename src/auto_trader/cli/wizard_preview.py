@@ -65,14 +65,14 @@ class TradePlanPreview:
         if entry_func:
             preview_table.add_row(
                 "Entry Function", 
-                f"{entry_func.get('function_type', '')} ({entry_func.get('timeframe', '')})"
+                f"{entry_func.function_type} ({entry_func.timeframe})"
             )
         
         exit_func = plan_data.get("exit_function", {})
         if exit_func:
             preview_table.add_row(
                 "Exit Function",
-                f"{exit_func.get('function_type', '')} ({exit_func.get('timeframe', '')})"
+                f"{exit_func.function_type} ({exit_func.timeframe})"
             )
         
         self.console.print("\n")

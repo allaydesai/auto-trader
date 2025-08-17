@@ -59,18 +59,21 @@ class TestGeneratePlanId:
     
     def test_generate_plan_id_max_attempts_exceeded(self):
         """Test plan ID generation when too many files exist."""
-        with patch("auto_trader.cli.wizard_plan_utils.datetime") as mock_datetime:
+        with patch("auto_trader.cli.wizard_plan_utils.datetime") as mock_datetime, \
+             patch("glob.glob") as mock_glob:
             mock_datetime.utcnow.return_value = MagicMock()
             mock_datetime.utcnow.return_value.strftime.return_value = "20250817"
             
-            # Mock Path.exists to always return True (all IDs taken)
-            with patch("pathlib.Path.exists", return_value=True):
-                with pytest.raises(ValueError) as exc_info:
-                    generate_plan_id("AAPL", Path("/tmp"))
-                
-                assert "Unable to generate unique plan ID" in str(exc_info.value)
-                assert "AAPL" in str(exc_info.value)
-                assert "20250817" in str(exc_info.value)
+            # Mock glob to return 999 existing files (all IDs taken)
+            existing_files = [f"/tmp/AAPL_20250817_{i:03d}.yaml" for i in range(1, 1000)]
+            mock_glob.return_value = existing_files
+            
+            with pytest.raises(ValueError) as exc_info:
+                generate_plan_id("AAPL", Path("/tmp"))
+            
+            assert "Unable to generate unique plan ID" in str(exc_info.value)
+            assert "AAPL" in str(exc_info.value)
+            assert "20250817" in str(exc_info.value)
     
     def test_generate_plan_id_sequence_numbers(self):
         """Test plan ID generation sequence numbers."""

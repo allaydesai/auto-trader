@@ -502,29 +502,181 @@ Comprehensive testing suite with 179+ tests:
 
 ### Testing
 
+The Auto-Trader project uses **pytest** as the testing framework with comprehensive coverage requirements.
+
+#### Quick Commands
+
 ```bash
-# Run all tests (179 tests currently passing)
+# Run full test suite (simplest method)
+uv run pytest
+
+# Run with verbose output (shows individual test names)
+uv run pytest -v
+
+# Run with coverage reporting
+uv run pytest --cov=src/auto_trader
+
+# Run specific test file
+uv run pytest src/auto_trader/cli/tests/test_wizard_utils.py -v
+```
+
+#### Comprehensive Testing Commands
+
+```bash
+# Run all tests with detailed output (179+ tests currently passing)
 PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ src/auto_trader/utils/tests/ src/auto_trader/tests/ src/auto_trader/cli/tests/ -v
 
 # Run with coverage report (87% coverage achieved)
 PYTHONPATH=src uv run coverage run --source=src/auto_trader -m pytest src/auto_trader/models/tests/ src/auto_trader/utils/tests/ src/auto_trader/tests/ src/auto_trader/cli/tests/
 PYTHONPATH=src uv run coverage report --show-missing --sort=Cover
 
-# Run specific test modules
-PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_trade_plan.py -v
-PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_validation_engine.py -v
-PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_config_commands.py -v
-PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/test_file_watcher.py -v
-
-# Run tests by category
-PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ -v        # Data models and validation
-PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/ -v           # CLI commands
-PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/ -v         # Utility functions
-PYTHONPATH=src uv run pytest src/auto_trader/tests/ -v              # Integration tests
-
 # Generate HTML coverage report
 PYTHONPATH=src uv run coverage html --directory coverage_html
 ```
+
+#### Test Categories & Organization
+
+**By Test Module:**
+```bash
+# Data models and validation (32+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ -v
+
+# CLI commands and wizard (65+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/ -v
+
+# Utility functions (15+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/ -v
+
+# Integration tests (12+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/tests/ -v
+```
+
+**By Specific Component:**
+```bash
+# Trade plan model validation
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_trade_plan.py -v
+
+# YAML validation engine
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_validation_engine.py -v
+
+# Template management system
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_template_manager.py -v
+
+# CLI configuration commands
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_config_commands.py -v
+
+# Interactive wizard functionality
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_wizard_utils.py -v
+
+# File watching utilities
+PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/test_file_watcher.py -v
+
+# Risk management integration
+PYTHONPATH=src uv run pytest src/auto_trader/tests/test_story_1_3_integration.py -v
+```
+
+#### Test Filtering Options
+
+```bash
+# Run tests matching pattern
+uv run pytest -k "wizard" -v                    # All wizard-related tests
+uv run pytest -k "validation" -v                # All validation tests
+uv run pytest -k "config" -v                    # All config-related tests
+
+# Run tests by marker
+uv run pytest -m "integration" -v               # Integration tests only
+uv run pytest -m "unit" -v                      # Unit tests only
+
+# Run failed tests only
+uv run pytest --lf -v                           # Last failed
+uv run pytest --ff -v                           # Failed first
+
+# Stop on first failure
+uv run pytest -x -v
+```
+
+#### Coverage Analysis
+
+```bash
+# Basic coverage report
+uv run pytest --cov=src/auto_trader --cov-report=term
+
+# Detailed coverage with missing lines
+uv run pytest --cov=src/auto_trader --cov-report=term-missing
+
+# HTML coverage report (opens in browser)
+uv run pytest --cov=src/auto_trader --cov-report=html
+open htmlcov/index.html  # View in browser
+
+# Coverage by module
+uv run pytest --cov=src/auto_trader/models --cov-report=term
+uv run pytest --cov=src/auto_trader/cli --cov-report=term
+```
+
+#### Test Output & Debugging
+
+```bash
+# Extra verbose output
+uv run pytest -vv
+
+# Show local variables on failure
+uv run pytest -l
+
+# Drop into debugger on failure
+uv run pytest --pdb
+
+# Capture output (disable -s to see prints)
+uv run pytest -s -v
+
+# Quiet mode (minimal output)
+uv run pytest -q
+```
+
+#### Performance Testing
+
+```bash
+# Show slowest tests
+uv run pytest --durations=10
+
+# Timeout for slow tests
+uv run pytest --timeout=30
+
+# Parallel execution (if pytest-xdist installed)
+uv run pytest -n auto
+```
+
+#### Test Standards & Requirements
+
+- **Coverage Target**: 80% minimum (currently 87%)
+- **Test Types**: 70% unit tests, 20% integration tests, 10% end-to-end
+- **Naming Convention**: `test_[component]_[action]_[expected_result]`
+- **File Organization**: Tests located next to source code in `tests/` subdirectories
+- **Fixtures**: Use pytest fixtures for setup, located in `conftest.py` files
+- **Mocking**: Use `unittest.mock` for external dependencies
+
+#### Common Test Issues & Solutions
+
+**Import Errors:**
+```bash
+# Ensure PYTHONPATH is set for complex test runs
+PYTHONPATH=src uv run pytest
+
+# Or use pytest discovery from project root
+uv run pytest  # Recommended approach
+```
+
+**Mock Setup Issues:**
+- Risk manager tests require `position_sizer` and `portfolio_tracker` attributes
+- Config loader tests need `user_preferences.account_value` attribute
+- Use `Mock(spec=ClassName)` for type safety
+
+**YAML Serialization:**
+- Use `model_dump(mode='json')` for Pydantic models in YAML tests
+- Decimal values require proper serialization for file tests
+
+**Fixture Dependencies:**
+- Check fixture scope (function, class, module, session)
+- Ensure fixtures are properly imported in test files
 
 ### Code Quality
 

@@ -230,7 +230,7 @@ def list_plans(
 
 @click.command()
 @click.option("--output-dir", type=click.Path(path_type=Path), help="Output directory for created plan")
-def create_plan() -> None:
+def create_plan(output_dir: Optional[Path] = None) -> None:
     """Interactive wizard to create a new trade plan from template."""
     logger.info("Create trade plan wizard started")
     

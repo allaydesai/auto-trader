@@ -78,4 +78,5 @@ class TestListTemplates:
 
         with patch("auto_trader.cli.template_commands.TemplateManager", side_effect=Exception("Test error")):
             result = runner.invoke(list_templates)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handling calls sys.exit(1)
+            assert "Error during listing templates" in result.output

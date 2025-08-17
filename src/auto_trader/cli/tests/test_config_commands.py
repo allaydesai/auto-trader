@@ -67,8 +67,8 @@ class TestValidateConfig:
 
             result = runner.invoke(validate_config)
 
-            assert result.exit_code == 0  # Command runs but validation fails
-            # The actual error display is handled by error_utils
+            assert result.exit_code == 1  # Error handling calls sys.exit(1)
+            assert "Configuration validation failed" in result.output
 
     def test_validate_config_verbose(self):
         """Test verbose configuration validation."""
@@ -97,7 +97,8 @@ class TestValidateConfig:
 
         with patch("auto_trader.cli.config_commands.Settings", side_effect=Exception("Test error")):
             result = runner.invoke(validate_config)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handling calls sys.exit(1)
+            assert "Error during configuration validation" in result.output
 
 
 class TestSetup:
@@ -157,4 +158,5 @@ class TestSetup:
 
         with patch("auto_trader.cli.config_commands.check_existing_files", side_effect=Exception("Test error")):
             result = runner.invoke(setup)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Generic error handler calls sys.exit(1)
+            assert "Error during setup wizard" in result.output
