@@ -1,9 +1,10 @@
 # Source Tree
 
 ## Implementation Status
-- ✅ **Implemented** (Stories 1.1, 1.2, 1.3): Core models, validation, modular CLI, templates
-- ⏸️ **Planned**: Trade engine, IBKR integration, risk management, notifications
-- 🧪 **Testing**: 179+ tests currently passing (87% coverage)
+- ✅ **Implemented** (Stories 1.1, 1.2, 1.3, 1.5.2): Core models, validation, modular CLI, templates, interactive wizard
+- ✅ **New Feature** (Story 1.5.2): Interactive CLI wizard with real-time validation and risk management
+- ⏸️ **Planned**: Trade engine, IBKR integration, notifications
+- 🧪 **Testing**: 200+ tests currently passing (87% coverage) including 27 wizard tests
 - 🔧 **Refactoring**: CLI modularized from 735-line monolith to focused modules
 - ⚡ **Performance**: AsyncIO optimizations for file watching reliability
 
@@ -41,9 +42,10 @@ auto-trader/
 │       │       └── test_file_watcher.py
 │       ├── cli/                 # ✅ Modular CLI interface (refactored)
 │       │   ├── __init__.py
-│       │   ├── commands.py      # ✅ Main entry point (38 lines - refactored)
+│       │   ├── commands.py      # ✅ Main entry point (42 lines - refactored)
 │       │   ├── config_commands.py    # ✅ Configuration management (38 lines)
-│       │   ├── plan_commands.py      # ✅ Trade plan operations (266 lines)
+│       │   ├── plan_commands.py      # ✅ Trade plan operations (397 lines)
+│       │   ├── wizard_utils.py       # ✅ Interactive CLI wizard (467 lines)
 │       │   ├── template_commands.py  # ✅ Template management (80 lines)
 │       │   ├── schema_commands.py    # ✅ Schema utilities (95 lines)
 │       │   ├── monitor_commands.py   # ✅ Monitoring & analysis (202 lines)
@@ -56,10 +58,11 @@ auto-trader/
 │       │   ├── diagnostic_utils.py   # ✅ Diagnostic utility functions
 │       │   ├── schema_utils.py       # ✅ Schema utility functions
 │       │   ├── watch_utils.py        # ✅ File watching utilities
-│       │   └── tests/          # ✅ Comprehensive CLI test suite (65+ tests)
+│       │   └── tests/          # ✅ Comprehensive CLI test suite (90+ tests)
 │       │       ├── conftest.py
 │       │       ├── test_config_commands.py
 │       │       ├── test_plan_commands.py
+│       │       ├── test_wizard_utils.py      # ✅ Interactive wizard tests (27 tests)
 │       │       ├── test_template_commands.py
 │       │       ├── test_schema_commands.py
 │       │       ├── test_monitor_commands.py

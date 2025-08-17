@@ -10,6 +10,7 @@ Personal automated trading system designed to execute discretionary trades with 
 - **Discord Notifications**: Real-time trade alerts and status updates
 - **Simulation Mode**: Test strategies without real money
 - **IBKR Integration**: Direct connection to Interactive Brokers for execution
+- **Interactive CLI Wizard**: Step-by-step trade plan creation with real-time validation and risk management
 - **Modular CLI Interface**: Rich command-line tools organized into focused modules
 - **Live Monitoring**: Real-time dashboard with optimized file watching
 - **Performance Optimizations**: AsyncIO improvements for reliable file monitoring
@@ -96,11 +97,17 @@ default_execution_functions:
 
 ### 4. Create Trade Plans
 
-Create your first trade plan using templates:
+Create your first trade plan using the interactive wizard:
 
 ```bash
-# Create a new trade plan interactively
+# Interactive wizard with real-time validation and risk management
 uv run python -m auto_trader.cli.commands create-plan
+
+# Quick creation with CLI shortcuts
+uv run python -m auto_trader.cli.commands create-plan --symbol AAPL --entry 180.50 --stop 178.00 --target 185.00 --risk normal
+
+# Create from templates (alternative method)
+uv run python -m auto_trader.cli.commands create-plan-template
 
 # List available templates
 uv run python -m auto_trader.cli.commands list-templates --verbose
@@ -170,6 +177,7 @@ auto-trader/
 │           ├── commands.py          # Main CLI entry point (refactored)
 │           ├── config_commands.py   # Configuration management commands
 │           ├── plan_commands.py     # Trade plan management commands
+│           ├── wizard_utils.py      # Interactive wizard utilities
 │           ├── template_commands.py # Template-related commands
 │           ├── schema_commands.py   # Schema validation commands
 │           ├── monitor_commands.py  # Monitoring and analysis commands
@@ -202,11 +210,24 @@ The Auto-Trader uses YAML-based trade plans with comprehensive validation and te
 
 ### Creating Trade Plans
 
-#### Using Templates (Recommended)
+#### Using Interactive Wizard (Recommended)
+
+```bash
+# Interactive wizard with real-time validation and risk management
+uv run python -m auto_trader.cli.commands create-plan
+
+# Quick creation with CLI shortcuts
+uv run python -m auto_trader.cli.commands create-plan --symbol AAPL --entry 180.50 --stop 178.00 --target 185.00 --risk normal
+
+# All available shortcuts
+uv run python -m auto_trader.cli.commands create-plan --symbol MSFT --entry 150.25 --stop 148.00 --target 155.00 --risk small --output-dir custom/path
+```
+
+#### Using Templates (Alternative)
 
 ```bash
 # Interactive plan creation from templates
-uv run python -m auto_trader.cli.commands create-plan
+uv run python -m auto_trader.cli.commands create-plan-template
 
 # View available templates
 uv run python -m auto_trader.cli.commands list-templates --verbose
@@ -330,8 +351,11 @@ uv run python -m auto_trader.cli.commands validate-config [--verbose]
 ### Trade Plan Commands
 
 ```bash
-# Create new trade plan from template
-uv run python -m auto_trader.cli.commands create-plan [--output-dir DIR]
+# Interactive wizard with real-time validation and risk management
+uv run python -m auto_trader.cli.commands create-plan [--symbol SYMBOL] [--entry PRICE] [--stop PRICE] [--target PRICE] [--risk CATEGORY] [--output-dir DIR]
+
+# Create new trade plan from template (alternative)
+uv run python -m auto_trader.cli.commands create-plan-template [--output-dir DIR]
 
 # List available templates
 uv run python -m auto_trader.cli.commands list-templates [--verbose]
@@ -383,7 +407,66 @@ uv run python -m auto_trader.cli.commands help-system
 uv run python -m auto_trader.cli.commands COMMAND --help
 ```
 
+## Interactive CLI Wizard
+
+The Auto-Trader features an advanced interactive CLI wizard for creating trade plans with real-time validation and risk management integration.
+
+### Key Features
+
+- **Real-time Validation**: Each field is validated immediately using the TradePlan model
+- **Risk Management Integration**: Live position sizing calculations and portfolio risk checks
+- **Portfolio Risk Protection**: Enforces 10% maximum portfolio risk limit
+- **CLI Shortcuts**: Pre-populate fields with command-line arguments
+- **Rich Terminal Experience**: Colors, tables, and progress indicators
+- **Error Recovery**: Clear guidance for validation errors with retry options
+
+### Wizard Flow
+
+1. **Portfolio Status**: Shows current risk capacity and open positions
+2. **Symbol Entry**: Validates trading symbol format (1-10 uppercase chars)
+3. **Entry Level**: Validates positive price with max 4 decimal places
+4. **Stop Loss**: Validates stop level and calculates stop distance percentage
+5. **Risk Category**: Select from small (1%), normal (2%), or large (3%)
+6. **Position Sizing**: Real-time calculation with risk breakdown display
+7. **Take Profit**: Validates target and shows risk:reward ratio
+8. **Execution Functions**: Configure entry/exit triggers and timeframes
+9. **Plan Preview**: Rich-formatted summary with modification options
+10. **Save Confirmation**: YAML file generation with unique plan ID
+
+### CLI Shortcuts
+
+```bash
+# Full wizard experience
+uv run python -m auto_trader.cli.commands create-plan
+
+# Pre-populate specific fields
+uv run python -m auto_trader.cli.commands create-plan --symbol AAPL --entry 180.50
+
+# Minimal input required
+uv run python -m auto_trader.cli.commands create-plan --symbol MSFT --entry 150.25 --stop 148.00 --target 155.00 --risk normal
+
+# Custom output location
+uv run python -m auto_trader.cli.commands create-plan --output-dir custom/plans
+```
+
+### Risk Management Features
+
+- **Portfolio Overview**: Current risk usage and available capacity
+- **Real-time Calculations**: Position size updates as you enter prices
+- **Risk Limit Enforcement**: Hard block at 10% portfolio risk with override option
+- **Risk Breakdown**: Shows individual trade risk + current portfolio risk + new total
+- **Adjustment Suggestions**: Recommendations when limits are exceeded
+
 ## Recent Improvements
+
+### Interactive CLI Wizard (v2.0.0)
+Complete interactive wizard implementation with comprehensive features:
+
+- **Real-time Validation**: Field-by-field validation with immediate feedback
+- **Risk Management Integration**: Live position sizing with portfolio risk protection
+- **CLI Shortcuts**: Full command-line argument support for quick creation
+- **Rich Terminal UX**: Enhanced user experience with colors and formatting
+- **Comprehensive Testing**: 27 new test methods covering all wizard components
 
 ### CLI Modularization (v0.2.0)
 The CLI interface has been refactored from a monolithic 735-line file into focused, maintainable modules:

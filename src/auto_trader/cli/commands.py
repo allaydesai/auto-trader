@@ -4,7 +4,7 @@ import click
 
 # Import command groups from separate modules
 from .config_commands import validate_config, setup
-from .plan_commands import validate_plans, list_plans, create_plan
+from .plan_commands import validate_plans, list_plans, create_plan, create_plan_interactive
 from .template_commands import list_templates
 from .schema_commands import show_schema
 from .monitor_commands import monitor, summary, history
@@ -26,6 +26,7 @@ cli.add_command(setup)
 cli.add_command(validate_plans)
 cli.add_command(list_plans)
 cli.add_command(create_plan)
+cli.add_command(create_plan_interactive)
 cli.add_command(list_templates)
 cli.add_command(show_schema)
 cli.add_command(monitor)
