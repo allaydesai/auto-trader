@@ -23,7 +23,17 @@ from ..models import (
 from ..risk_management import RiskManager
 from ..risk_management.risk_models import RiskCheck
 from .field_validator import WizardFieldValidator
-from .wizard_constants import RISK_CATEGORIES, AVAILABLE_TIMEFRAMES, DEFAULT_TIMEFRAME
+from .wizard_constants import (
+    RISK_CATEGORIES, 
+    RISK_CATEGORY_CHOICES,
+    DEFAULT_RISK_CATEGORY,
+    AVAILABLE_TIMEFRAMES, 
+    DEFAULT_TIMEFRAME,
+    ENTRY_FUNCTION_TYPES,
+    EXIT_FUNCTION_TYPES,
+    DEFAULT_ENTRY_FUNCTION_TYPE,
+    DEFAULT_EXIT_FUNCTION_TYPE
+)
 # Import ConfigLoader when needed to avoid circular imports
 
 logger = get_logger("wizard", "cli")
@@ -203,8 +213,8 @@ class WizardFieldCollector:
             while True:
                 choice = Prompt.ask(
                     "\n[cyan]Risk category[/cyan]",
-                    choices=list(risk_options.keys()),
-                    default="normal"
+                    choices=RISK_CATEGORY_CHOICES,
+                    default=DEFAULT_RISK_CATEGORY
                 )
                 category = RiskCategory(choice)
                 break
@@ -231,6 +241,13 @@ class WizardFieldCollector:
             Tuple of (position_size, dollar_risk)
         """
         try:
+            # Validate risk manager and position sizer are available
+            if not hasattr(self.risk_manager, 'position_sizer') or self.risk_manager.position_sizer is None:
+                raise ValueError("Position sizer not available in risk manager")
+            
+            if not hasattr(self.risk_manager, 'account_value') or self.risk_manager.account_value is None:
+                raise ValueError("Account value not available in risk manager")
+            
             # Calculate position size using risk manager
             position_result = self.risk_manager.position_sizer.calculate_position_size(
                 account_value=self.risk_manager.account_value,
@@ -238,6 +255,16 @@ class WizardFieldCollector:
                 entry_price=entry_level,
                 stop_loss=stop_loss
             )
+            
+            # Validate position result before proceeding
+            if (not hasattr(position_result, 'position_size') or 
+                not hasattr(position_result, 'dollar_risk') or
+                not hasattr(position_result, 'portfolio_risk_percentage')):
+                raise ValueError("Invalid position calculation result")
+            
+            # Additional validation to ensure attributes have valid values
+            if position_result.position_size is None or position_result.dollar_risk is None:
+                raise ValueError("Position calculation returned null values")
             
             # Check portfolio risk limit
             portfolio_check = self.risk_manager.check_portfolio_risk_limit(
@@ -335,8 +362,6 @@ class WizardFieldCollector:
             self.console.print(f"[red]❌ {error_msg}[/red]")
             logger.error("Position size calculation failed", error=str(e))
             raise ValueError(error_msg)
-            logger.error("Position size calculation failed", error=str(e))
-            raise
     
     def collect_take_profit(self, initial_value: Optional[str] = None) -> Decimal:
         """
@@ -407,8 +432,8 @@ class WizardFieldCollector:
         self.console.print("\n[cyan]Entry Function:[/cyan]")
         entry_type = Prompt.ask(
             "Entry trigger",
-            choices=["close_above", "close_below"],
-            default="close_above"
+            choices=ENTRY_FUNCTION_TYPES,
+            default=DEFAULT_ENTRY_FUNCTION_TYPE
         )
         
         entry_timeframe = Prompt.ask(
@@ -427,8 +452,8 @@ class WizardFieldCollector:
         self.console.print("\n[cyan]Exit Function:[/cyan]")
         exit_type = Prompt.ask(
             "Exit trigger",
-            choices=["stop_loss_take_profit", "trailing_stop"],
-            default="stop_loss_take_profit"
+            choices=EXIT_FUNCTION_TYPES,
+            default=DEFAULT_EXIT_FUNCTION_TYPE
         )
         
         exit_timeframe = Prompt.ask(

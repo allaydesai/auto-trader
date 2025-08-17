@@ -10,9 +10,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..logging_config import get_logger
-from ..models import TradePlanLoader
 from ..risk_management import RiskManager, InvalidPositionSizeError
-from .display_utils import console as shared_console
+from .wizard_constants import RISK_CATEGORY_CHOICES, RISK_CATEGORY_HELP_TEXT
 from .error_utils import handle_generic_error
 from config import ConfigLoader
 
@@ -40,9 +39,9 @@ logger = get_logger("cli", "cli")
 )
 @click.option(
     "--risk",
-    type=click.Choice(["small", "normal", "large"], case_sensitive=False),
+    type=click.Choice(RISK_CATEGORY_CHOICES, case_sensitive=False),
     default="normal",
-    help="Risk category: small (1%), normal (2%), large (3%)",
+    help=RISK_CATEGORY_HELP_TEXT,
 )
 @click.option(
     "--account-value",
@@ -124,9 +123,9 @@ def calculate_position_size(
         
     except InvalidPositionSizeError as e:
         logger.error("Position size calculation failed", error=str(e))
-        console.print(f"\n❌ [bold red]Calculation Failed[/bold red]")
+        console.print("\n❌ [bold red]Calculation Failed[/bold red]")
         console.print(f"🔧 [yellow]{str(e)}[/yellow]")
-        console.print(f"💡 [dim]Check your entry and stop loss prices[/dim]")
+        console.print("💡 [dim]Check your entry and stop loss prices[/dim]")
         
     except Exception as e:
         handle_generic_error(e, "calculating position size")
@@ -239,9 +238,7 @@ def _display_position_size_result(
     if remaining_capacity >= 0:
         risk_table.add_row("💡 Remaining Capacity:", f"{remaining_capacity:.1f}%")
     
-    # Combine tables
-    content = f"[bold]{symbol} Position Calculation[/bold]\n\n"
-    
+    # Display results
     console.print(Panel(title, style=panel_style))
     console.print(calc_table)
     console.print("\n[bold]Portfolio Risk Analysis:[/bold]")
@@ -249,10 +246,10 @@ def _display_position_size_result(
     
     # Risk warnings
     if not portfolio_check.passed:
-        console.print(f"\n❌ [bold red]Trade Blocked - Portfolio Risk Exceeded[/bold red]")
+        console.print("\n❌ [bold red]Trade Blocked - Portfolio Risk Exceeded[/bold red]")
         console.print(f"🔒 [yellow]{portfolio_check.reason}[/yellow]")
-        console.print(f"🔧 [dim]Reduce position size or close existing positions[/dim]")
-        console.print(f"📚 [dim]Help: auto-trader help risk-management[/dim]")
+        console.print("🔧 [dim]Reduce position size or close existing positions[/dim]")
+        console.print("📚 [dim]Help: auto-trader help risk-management[/dim]")
     elif total_risk > (limit * Decimal("0.8")):  # 80% of limit
         console.print(f"\n⚠️  [yellow]Portfolio risk approaching limit ({total_risk:.1f}% of {limit:.1f}%)[/yellow]")
 
@@ -277,7 +274,7 @@ def _display_portfolio_summary(summary: dict, account_value: float) -> None:
     console.print(overview_table)
     
     # Daily loss tracking
-    console.print(f"\n[bold]Daily Loss Tracking:[/bold]")
+    console.print("\n[bold]Daily Loss Tracking:[/bold]")
     loss_table = Table(show_header=False, box=None)
     loss_table.add_column("Label", style="cyan")
     loss_table.add_column("Value", style="white")
@@ -309,14 +306,14 @@ def _display_portfolio_summary(summary: dict, account_value: float) -> None:
         
         console.print(positions_table)
     else:
-        console.print(f"\n💤 [dim]No open positions[/dim]")
+        console.print("\n💤 [dim]No open positions[/dim]")
     
     # Risk status indicators
     risk_percent = summary['current_risk_percentage']
     limit_percent = summary['risk_limit']
     
     if risk_percent == 0:
-        console.print(f"\n🟢 [green]Portfolio is risk-free[/green]")
+        console.print("\n🟢 [green]Portfolio is risk-free[/green]")
     elif risk_percent < (limit_percent * 0.5):
         console.print(f"\n🟢 [green]Portfolio risk is low ({risk_percent:.1f}%)[/green]")
     elif risk_percent < (limit_percent * 0.8):

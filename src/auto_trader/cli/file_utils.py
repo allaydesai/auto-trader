@@ -9,6 +9,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from .wizard_constants import RISK_CATEGORY_CHOICES, DEFAULT_RISK_CATEGORY
+
 
 console = Console()
 
@@ -195,8 +197,8 @@ def get_plan_data_interactive() -> Dict[str, Any]:
     # Get risk category
     risk_category: str = Prompt.ask(
         "Risk category",
-        choices=["small", "normal", "large"],
-        default="normal"
+        choices=RISK_CATEGORY_CHOICES,
+        default=DEFAULT_RISK_CATEGORY
     )
     
     # Get execution function details

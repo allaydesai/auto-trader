@@ -235,6 +235,82 @@ class TestWizardFieldCollector:
                     RiskCategory.LARGE
                 )
     
+    def test_calculate_position_size_missing_position_sizer(self, field_collector):
+        """Test position size calculation when position_sizer is missing."""
+        # Remove position_sizer from risk_manager
+        delattr(field_collector.risk_manager, 'position_sizer')
+        
+        with pytest.raises(ValueError, match="Position sizer not available"):
+            field_collector.calculate_and_display_position_size(
+                Decimal("180.50"),
+                Decimal("178.00"),
+                RiskCategory.NORMAL
+            )
+    
+    def test_calculate_position_size_none_position_sizer(self, field_collector):
+        """Test position size calculation when position_sizer is None."""
+        # Set position_sizer to None
+        field_collector.risk_manager.position_sizer = None
+        
+        with pytest.raises(ValueError, match="Position sizer not available"):
+            field_collector.calculate_and_display_position_size(
+                Decimal("180.50"),
+                Decimal("178.00"),
+                RiskCategory.NORMAL
+            )
+    
+    def test_calculate_position_size_missing_account_value(self, field_collector):
+        """Test position size calculation when account_value is missing."""
+        # Remove account_value from risk_manager
+        delattr(field_collector.risk_manager, 'account_value')
+        
+        with pytest.raises(ValueError, match="Account value not available"):
+            field_collector.calculate_and_display_position_size(
+                Decimal("180.50"),
+                Decimal("178.00"),
+                RiskCategory.NORMAL
+            )
+    
+    def test_calculate_position_size_none_account_value(self, field_collector):
+        """Test position size calculation when account_value is None."""
+        # Set account_value to None
+        field_collector.risk_manager.account_value = None
+        
+        with pytest.raises(ValueError, match="Account value not available"):
+            field_collector.calculate_and_display_position_size(
+                Decimal("180.50"),
+                Decimal("178.00"),
+                RiskCategory.NORMAL
+            )
+    
+    def test_calculate_position_size_invalid_result(self, field_collector):
+        """Test position size calculation when result is invalid."""
+        # Create a simple object without the required attributes
+        class InvalidResult:
+            pass
+        
+        mock_result = InvalidResult()
+        field_collector.risk_manager.position_sizer.calculate_position_size.return_value = mock_result
+        
+        with pytest.raises(ValueError, match="Invalid position calculation result"):
+            field_collector.calculate_and_display_position_size(
+                Decimal("180.50"),
+                Decimal("178.00"),
+                RiskCategory.NORMAL
+            )
+    
+    def test_calculate_position_size_calculation_exception(self, field_collector):
+        """Test position size calculation when calculation throws exception."""
+        # Make position_sizer.calculate_position_size raise an exception
+        field_collector.risk_manager.position_sizer.calculate_position_size.side_effect = Exception("Calculation failed")
+        
+        with pytest.raises(ValueError, match="Error calculating position size"):
+            field_collector.calculate_and_display_position_size(
+                Decimal("180.50"),
+                Decimal("178.00"),
+                RiskCategory.NORMAL
+            )
+    
     @patch('auto_trader.cli.wizard_utils.Prompt.ask')
     def test_collect_take_profit_valid(self, mock_prompt, field_collector):
         """Test collecting valid take profit."""
