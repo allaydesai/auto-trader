@@ -7,6 +7,35 @@ from typing import Any, Dict
 
 from ..models import ExecutionFunction, RiskCategory, TradePlan
 
+# User-friendly error messages for common validation failures
+FIELD_ERROR_MESSAGES = {
+    "symbol": {
+        "empty": "Symbol cannot be empty",
+        "too_long": "Symbol must be 10 characters or less",
+        "invalid_chars": "Symbol must contain only letters and numbers",
+        "default": "Please enter a valid trading symbol (e.g., AAPL, MSFT)"
+    },
+    "entry_level": {
+        "negative": "Entry price must be positive",
+        "zero": "Entry price cannot be zero",
+        "decimal_places": "Entry price can have at most 4 decimal places",
+        "default": "Please enter a valid positive price"
+    },
+    "stop_loss": {
+        "negative": "Stop loss must be positive",
+        "zero": "Stop loss cannot be zero",
+        "decimal_places": "Stop loss can have at most 4 decimal places",
+        "same_as_entry": "Stop loss cannot equal entry price",
+        "default": "Please enter a valid positive stop loss price"
+    },
+    "take_profit": {
+        "negative": "Take profit must be positive", 
+        "zero": "Take profit cannot be zero",
+        "decimal_places": "Take profit can have at most 4 decimal places",
+        "default": "Please enter a valid positive take profit price"
+    }
+}
+
 
 class WizardFieldValidator:
     """Validates individual fields for trade plan creation wizard."""
@@ -108,20 +137,47 @@ class WizardFieldValidator:
             return {"is_valid": True, "error": None}
             
         except Exception as e:
-            # Extract meaningful error message
-            error_msg = str(e)
-            if "validation error" in error_msg.lower():
-                # Extract the specific field error from Pydantic validation
-                lines = error_msg.split("\n")
-                for line in lines:
-                    if field_name in line and "Input should be" in line:
-                        error_msg = line.split("Input should be")[-1].strip()
-                        break
-                    elif field_name in line:
-                        error_msg = line.strip()
-                        break
-            
+            # Use custom user-friendly error messages
+            error_msg = self._get_user_friendly_error(field_name, value, str(e))
             return {"is_valid": False, "error": error_msg}
+    
+    def _get_user_friendly_error(self, field_name: str, value: Any, original_error: str) -> str:
+        """
+        Convert Pydantic validation errors to user-friendly messages.
+        
+        Args:
+            field_name: Name of the field being validated
+            value: The value that failed validation
+            original_error: Original Pydantic error message
+            
+        Returns:
+            User-friendly error message
+        """
+        if field_name not in FIELD_ERROR_MESSAGES:
+            return original_error
+            
+        field_messages = FIELD_ERROR_MESSAGES[field_name]
+        
+        # Specific validation checks based on field type and value
+        if field_name == "symbol":
+            if not value or not str(value).strip():
+                return field_messages["empty"]
+            elif len(str(value)) > 10:
+                return field_messages["too_long"]
+            elif not str(value).replace(".", "").replace("-", "").isalnum():
+                return field_messages["invalid_chars"]
+        
+        elif field_name in ["entry_level", "stop_loss", "take_profit"]:
+            try:
+                decimal_value = Decimal(str(value))
+                if decimal_value <= 0:
+                    return field_messages["negative"] if decimal_value < 0 else field_messages["zero"]
+                elif abs(decimal_value.as_tuple().exponent) > 4:
+                    return field_messages["decimal_places"]
+            except (ValueError, TypeError):
+                pass
+        
+        return field_messages["default"]
     
     def _create_dummy_data_for_field(self, field_name: str, value: Any) -> Dict[str, Any]:
         """

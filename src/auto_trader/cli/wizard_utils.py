@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from config import ConfigLoader
 
 from rich.console import Console
 from rich.panel import Panel
@@ -17,8 +21,10 @@ from ..models import (
     ValidationEngine,
 )
 from ..risk_management import RiskManager
+from ..risk_management.risk_models import RiskCheck
 from .field_validator import WizardFieldValidator
-from config import ConfigLoader
+from .wizard_constants import RISK_CATEGORIES, AVAILABLE_TIMEFRAMES, DEFAULT_TIMEFRAME
+# Import ConfigLoader when needed to avoid circular imports
 
 logger = get_logger("wizard", "cli")
 console = Console()
@@ -27,7 +33,7 @@ console = Console()
 class WizardFieldCollector:
     """Collect and validate trade plan fields interactively."""
     
-    def __init__(self, config_loader: ConfigLoader, risk_manager: RiskManager) -> None:
+    def __init__(self, config_loader: "ConfigLoader", risk_manager: RiskManager) -> None:
         """
         Initialize field collector with validation and risk management.
         
@@ -181,11 +187,7 @@ class WizardFieldCollector:
         Returns:
             Selected risk category
         """
-        risk_options = {
-            "small": "Small (1% risk)",
-            "normal": "Normal (2% risk)", 
-            "large": "Large (3% risk)"
-        }
+        risk_options = RISK_CATEGORIES
         
         if initial_value and initial_value.lower() in risk_options:
             category = RiskCategory(initial_value.lower())
@@ -272,7 +274,45 @@ class WizardFieldCollector:
                     )
                 )
                 
-                if not Confirm.ask("Continue anyway? (NOT RECOMMENDED)"):
+                # Add comprehensive audit logging for risk limit bypass
+                logger.warning(
+                    "PORTFOLIO RISK LIMIT EXCEEDED - User prompted for bypass",
+                    symbol=self.collected_data.get("symbol", "UNKNOWN"),
+                    current_risk=float(portfolio_check.current_risk),
+                    new_trade_risk=float(portfolio_check.new_trade_risk),
+                    total_risk=float(portfolio_check.total_risk),
+                    risk_limit=float(portfolio_check.limit),
+                    position_size=position_result.position_size,
+                    dollar_risk=float(position_result.dollar_risk)
+                )
+                
+                user_choice = Confirm.ask("Continue anyway? (NOT RECOMMENDED)")
+                
+                if user_choice:
+                    # CRITICAL: Log risk limit bypass for audit trail
+                    logger.error(
+                        "RISK LIMIT BYPASS AUTHORIZED BY USER",
+                        symbol=self.collected_data.get("symbol", "UNKNOWN"),
+                        user_decision="BYPASS_APPROVED",
+                        risk_exceeded_by=float(portfolio_check.total_risk - portfolio_check.limit),
+                        total_risk_percent=float(portfolio_check.total_risk),
+                        position_size=position_result.position_size,
+                        dollar_risk=float(position_result.dollar_risk),
+                        warning="USER_ACCEPTED_EXCESSIVE_RISK"
+                    )
+                    # Continue with creation but mark the plan as high-risk
+                    self.collected_data["risk_bypass_approved"] = True
+                    self.collected_data["risk_bypass_details"] = {
+                        "exceeded_limit_by": float(portfolio_check.total_risk - portfolio_check.limit),
+                        "total_risk": float(portfolio_check.total_risk),
+                        "timestamp": str(datetime.utcnow())
+                    }
+                else:
+                    logger.info(
+                        "Risk limit bypass declined by user",
+                        symbol=self.collected_data.get("symbol", "UNKNOWN"),
+                        user_decision="BYPASS_DECLINED"
+                    )
                     raise ValueError("Portfolio risk limit exceeded - plan creation cancelled")
             
             logger.info(
@@ -285,8 +325,16 @@ class WizardFieldCollector:
             
             return position_result.position_size, position_result.dollar_risk
             
+        except AttributeError as e:
+            error_msg = f"Risk manager not properly initialized: {e}"
+            self.console.print(f"[red]❌ {error_msg}[/red]")
+            logger.error("Risk manager initialization error", error=str(e))
+            raise ValueError(error_msg)
         except Exception as e:
-            self.console.print(f"[red]❌ Error calculating position size: {e}[/red]")
+            error_msg = f"Error calculating position size: {e}"
+            self.console.print(f"[red]❌ {error_msg}[/red]")
+            logger.error("Position size calculation failed", error=str(e))
+            raise ValueError(error_msg)
             logger.error("Position size calculation failed", error=str(e))
             raise
     
@@ -349,9 +397,9 @@ class WizardFieldCollector:
         Returns:
             Tuple of (entry_function, exit_function)
         """
-        # Default timeframes from config
-        timeframes = ["1min", "5min", "15min", "30min", "60min"]
-        default_timeframe = "15min"
+        # Available timeframes from constants
+        timeframes = AVAILABLE_TIMEFRAMES
+        default_timeframe = DEFAULT_TIMEFRAME
         
         self.console.print("\n[bold]⚙️  Execution Functions:[/bold]")
         
@@ -406,8 +454,13 @@ class WizardFieldCollector:
         return entry_function, exit_function
     
     
-    def _display_portfolio_risk_status(self, portfolio_check: Any) -> None:
-        """Display current portfolio risk status."""
+    def _display_portfolio_risk_status(self, portfolio_check: RiskCheck) -> None:
+        """
+        Display current portfolio risk status with detailed breakdown.
+        
+        Args:
+            portfolio_check: Risk check result containing portfolio risk information
+        """
         self.console.print("\n[bold]📊 Portfolio Risk Status:[/bold]")
         
         status_table = Table(show_header=False, box=None)

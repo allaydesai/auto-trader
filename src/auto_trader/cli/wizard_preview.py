@@ -29,7 +29,7 @@ class TradePlanPreview:
             
             choice = Prompt.ask(
                 "\n[cyan]Options[/cyan]",
-                choices=["confirm", "modify", "cancel"],
+                choices=["confirm", "cancel"],
                 default="confirm"
             )
             
@@ -37,8 +37,6 @@ class TradePlanPreview:
                 return True
             elif choice == "cancel":
                 return False
-            elif choice == "modify":
-                self._handle_modification(plan_data)
     
     def _display_plan_preview(self, plan_data: Dict[str, Any]) -> None:
         """Display formatted plan preview."""
@@ -80,7 +78,3 @@ class TradePlanPreview:
         self.console.print("\n")
         self.console.print(preview_table)
     
-    def _handle_modification(self, plan_data: Dict[str, Any]) -> None:
-        """Handle field modification requests."""
-        self.console.print("\n[yellow]Modification feature coming soon...[/yellow]")
-        self.console.print("[dim]For now, cancel and restart wizard to make changes.[/dim]")
