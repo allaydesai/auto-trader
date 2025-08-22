@@ -2,12 +2,13 @@
 
 ## Implementation Status
 
-- ✅ **Trade Plan Management** (Stories 1.1, 1.2): Complete YAML-based trade plan system with validation
+- ✅ **Trade Plan Management** (Stories 1.1, 1.2, 1.5.3): Complete YAML-based system with enhanced management commands
 - ✅ **Interactive CLI Wizard** (Story 1.5.2): Advanced wizard with real-time validation and risk management
+- ✅ **Plan Management Commands** (Story 1.5.3): Comprehensive trade plan management with risk integration
 - ✅ **Configuration System** (Story 1.1): Comprehensive configuration management with validation  
-- ✅ **Modular CLI Interface** (Stories 1.1, 1.2, 1.3, 1.5.2): Enhanced with interactive wizard capabilities
+- ✅ **Modular CLI Interface** (Stories 1.1, 1.2, 1.3, 1.5.2, 1.5.3): Enhanced with management commands
 - ✅ **File Monitoring System**: AsyncIO-optimized file watching with improved reliability
-- ✅ **Comprehensive Testing**: 200+ tests with 87% coverage including wizard components
+- ✅ **Comprehensive Testing**: 300+ tests with 87% coverage including management command tests
 - ⏸️ **Trade Engine**: Awaiting implementation (Story 1.4)
 - ⏸️ **IBKR Integration**: Awaiting implementation (Story 2.1) 
 - ✅ **Risk Management**: Partially implemented (Story 1.5.1) with portfolio tracking and position sizing
@@ -158,7 +159,9 @@ auto-trader create-plan [--symbol SYMBOL] [--entry PRICE] [--stop PRICE] [--targ
 
 **Command Modules:**
 - **config_commands.py** (38 lines): `setup`, `validate-config`
-- **plan_commands.py** (397 lines): `validate-plans`, `list-plans`, `create-plan`, `create-plan-interactive`
+- **plan_commands.py** (392 lines): `validate-plans`, `list-plans`, `create-plan`, `create-plan-interactive`
+- **management_commands.py** (661 lines): `list-plans-enhanced`, `validate-config-enhanced`, `update-plan`, `archive-plans`, `plan-stats`
+- **management_utils.py** (482 lines): Plan management utilities and helper functions
 - **wizard_utils.py** (467 lines): Interactive wizard components and utilities
 - **template_commands.py** (80 lines): `list-templates`
 - **schema_commands.py** (95 lines): `show-schema`
@@ -174,8 +177,102 @@ auto-trader create-plan [--symbol SYMBOL] [--entry PRICE] [--stop PRICE] [--targ
 - Safety defaults (simulation mode enforced)
 - **NEW:** Interactive wizard with real-time validation and risk management
 - **NEW:** CLI shortcuts support for quick plan creation
-- **NEW:** Comprehensive test coverage (90+ CLI tests)
+- **NEW:** Enhanced trade plan management commands with risk integration
+- **NEW:** Comprehensive test coverage (190+ CLI tests)
 - **NEW:** Modular architecture for better maintainability
+
+## ✅ Trade Plan Management Commands System (Implemented)
+
+### Enhanced Plan Management
+**Status:** ✅ Complete (Story 1.5.3)  
+**Responsibility:** Comprehensive trade plan management with full risk management integration and UX compliance
+
+**Command Modules:**
+- **management_commands.py** (661 lines): Core management command implementations
+- **management_utils.py** (482 lines): Utility functions for plan operations
+
+**Key Commands:**
+
+#### `list-plans-enhanced`
+- **Real-time Risk Integration**: Live portfolio risk calculation and display
+- **Color-coded Status Indicators**: UX-compliant status visualization (✅❌⚠️)
+- **Progressive Verbosity**: Default essential info with `--verbose` for details
+- **Status & Symbol Filtering**: Filter by plan status or trading symbol
+- **Multi-criteria Sorting**: Sort by risk level, creation date, or symbol
+- **Portfolio Risk Summary**: Prominently displayed risk capacity and utilization
+
+#### `validate-config-enhanced`
+- **Comprehensive Validation**: All YAML files with error aggregation
+- **Portfolio Risk Checking**: Validates 10% portfolio risk limit across all plans
+- **Single File Support**: Validate specific files with `--file` parameter
+- **Detailed Error Reports**: Categorized validation results with immediate feedback
+- **Business Logic Validation**: Integration with existing ValidationEngine
+
+#### `update-plan`
+- **Field-specific Updates**: Support for entry_level, stop_loss, take_profit, risk_category
+- **Automatic Recalculation**: Real-time position size updates after field changes
+- **Backup System**: Timestamped backup creation before modifications
+- **Fail-safe Confirmations**: User confirmations for destructive operations
+- **Risk Impact Display**: Before/after risk comparison with portfolio impact
+
+#### `archive-plans`
+- **Automated Organization**: Date-based archive structure (YYYY/MM/status)
+- **Fail-safe Operation**: Dry-run mode and confirmation prompts
+- **Batch Processing**: Handles multiple plans with progress feedback
+- **Status-based Archiving**: Archives only completed and cancelled plans
+
+#### `plan-stats`
+- **Portfolio Analysis**: Comprehensive statistics with risk distribution
+- **Symbol Diversity**: Portfolio diversification metrics and insights
+- **Risk Category Distribution**: Analysis of position sizing patterns
+- **Key Performance Indicators**: Summary insights and recommendations
+
+### Risk Management Integration
+**Status:** ✅ Complete (Story 1.5.3)  
+**Responsibility:** Deep integration with existing risk management components
+
+**Key Features:**
+- **Real-time Calculations**: Live position sizing and portfolio risk updates
+- **10% Portfolio Limit**: Hard enforcement with clear warnings and override options
+- **Risk Visualization**: Color-coded indicators and progress bars
+- **Portfolio Capacity**: Remaining risk capacity calculation and display
+- **Risk Impact Analysis**: Before/after risk comparison for modifications
+
+### UX Compliance System
+**Status:** ✅ Complete (Story 1.5.3)  
+**Responsibility:** Consistent user experience across all management commands
+
+**UX Standards:**
+- **Immediate Feedback**: Status indicators (✅❌⚠️) for all operations
+- **Progressive Disclosure**: Essential info first, details on demand with `--verbose`
+- **Fail-safe Design**: Confirmation prompts for destructive operations
+- **Consistent Language**: Unified status terminology across commands
+- **Clear Guidance**: Next-step instructions in command output
+- **Status-at-a-Glance**: Portfolio risk summary prominently displayed
+
+### Data Management
+**Status:** ✅ Complete (Story 1.5.3)  
+**Responsibility:** Safe plan modification and organization with comprehensive backup system
+
+**Features:**
+- **Timestamped Backups**: Automatic backup creation before modifications
+- **Archive Organization**: Hierarchical structure by date and status
+- **State Preservation**: Complete plan history and modification tracking
+- **Directory Management**: Automatic creation of backup and archive directories
+
+### Testing Coverage
+**Status:** ✅ Complete (Story 1.5.3)  
+**Responsibility:** Comprehensive test coverage for all management functionality
+
+**Test Files:**
+- **test_management_utils.py** (343 lines): 19+ utility function tests
+- **test_management_commands.py** (600+ lines): 30+ CLI command tests
+
+**Test Categories:**
+- **Unit Tests**: Individual function testing with mock coverage
+- **Integration Tests**: End-to-end workflow validation
+- **Error Handling Tests**: Exception and edge case coverage
+- **UX Compliance Tests**: Status indicator and verbosity validation
 
 ### File Monitoring System
 **Status:** ✅ Complete with AsyncIO Optimization (Story 1.3)  
