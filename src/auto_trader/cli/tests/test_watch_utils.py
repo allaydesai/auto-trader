@@ -54,6 +54,10 @@ class TestWatchUtils:
             # Setup mock watcher that fails to start
             mock_watcher = Mock()
             mock_watcher.start.return_value = False
+            mock_watcher.get_stats.return_value = {
+                'events_processed': 0,
+                'validation_errors': 0
+            }
             mock_watcher_class.return_value = mock_watcher
             
             start_file_watching(watch_dir, verbose=False)

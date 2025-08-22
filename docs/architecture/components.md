@@ -3,13 +3,14 @@
 ## Implementation Status
 
 - ✅ **Trade Plan Management** (Stories 1.1, 1.2): Complete YAML-based trade plan system with validation
+- ✅ **Interactive CLI Wizard** (Story 1.5.2): Advanced wizard with real-time validation and risk management
 - ✅ **Configuration System** (Story 1.1): Comprehensive configuration management with validation  
-- ✅ **Modular CLI Interface** (Stories 1.1, 1.2, 1.3): Refactored from 735-line monolith to focused modules
+- ✅ **Modular CLI Interface** (Stories 1.1, 1.2, 1.3, 1.5.2): Enhanced with interactive wizard capabilities
 - ✅ **File Monitoring System**: AsyncIO-optimized file watching with improved reliability
-- ✅ **Comprehensive Testing**: 179+ tests with 87% coverage across all modules
+- ✅ **Comprehensive Testing**: 200+ tests with 87% coverage including wizard components
 - ⏸️ **Trade Engine**: Awaiting implementation (Story 1.4)
 - ⏸️ **IBKR Integration**: Awaiting implementation (Story 2.1) 
-- ⏸️ **Risk Management**: Awaiting implementation (Story 1.5)
+- ✅ **Risk Management**: Partially implemented (Story 1.5.1) with portfolio tracking and position sizing
 
 ---
 
@@ -68,6 +69,85 @@
 - `close_below.yaml` - Execute when price closes below threshold  
 - `trailing_stop.yaml` - Dynamic trailing stop strategy
 
+## ✅ Interactive CLI Wizard System (Implemented)
+
+### WizardFieldCollector
+**Status:** ✅ Complete (Story 1.5.2)  
+**Responsibility:** Interactive field collection with real-time validation and risk management integration
+
+**Key Interfaces:**
+- `collect_symbol(initial_value: Optional[str]) -> str` - Symbol input with validation
+- `collect_entry_level(initial_value: Optional[str]) -> Decimal` - Entry price collection
+- `collect_stop_loss(entry_level: Decimal, initial_value: Optional[str]) -> Decimal` - Stop loss with distance calculation
+- `collect_risk_category(initial_value: Optional[str]) -> RiskCategory` - Risk level selection
+- `calculate_and_display_position_size(entry, stop, risk) -> Tuple[int, Decimal]` - Live position sizing
+- `collect_take_profit(initial_value: Optional[str]) -> Decimal` - Target with R:R calculation
+- `collect_execution_functions() -> Tuple[ExecutionFunction, ExecutionFunction]` - Function configuration
+
+**Features:**
+- **Real-time Validation**: Each field validated immediately using TradePlan model
+- **CLI Shortcuts Support**: Pre-populate fields from command-line arguments
+- **Portfolio Risk Integration**: Live portfolio status and risk calculations
+- **Error Recovery**: Clear error messages with specific correction guidance
+- **Progress Indicators**: Visual feedback during field collection process
+
+### TradePlanPreview
+**Status:** ✅ Complete (Story 1.5.2)  
+**Responsibility:** Rich plan preview with modification support before final save
+
+**Key Interfaces:**
+- `show_preview(plan_data: Dict[str, Any]) -> bool` - Display formatted preview
+- `_display_plan_preview(plan_data: Dict[str, Any])` - Rich table formatting
+- `_handle_modification(plan_data: Dict[str, Any])` - Field modification support
+
+**Features:**
+- **Rich Formatting**: Color-coded tables with organized plan details
+- **Confirmation Flow**: User options for confirm/modify/cancel
+- **Field Modification**: Support for editing values before final save
+- **Comprehensive Display**: All plan fields including calculated values
+
+### Risk Management Integration
+**Status:** ✅ Complete (Story 1.5.2)  
+**Responsibility:** Real-time risk calculations and portfolio limit enforcement
+
+**Key Features:**
+- **Portfolio Status Display**: Current risk usage and available capacity at wizard start
+- **Real-time Position Sizing**: Live calculations as user enters entry/stop/risk values
+- **Portfolio Risk Limit Enforcement**: Hard block at 10% maximum with user override option
+- **Risk Breakdown Display**: Individual trade risk + current portfolio risk + new total
+- **Adjustment Suggestions**: Clear recommendations when limits are exceeded
+
+**Risk Protection Flow:**
+1. Display current portfolio risk at wizard start
+2. Calculate position size as fields are entered
+3. Check portfolio risk limit (10% maximum)
+4. Block plan creation if limit exceeded
+5. Provide clear explanation and adjustment suggestions
+6. Allow user override with explicit confirmation
+
+### CLI Command Integration
+**Status:** ✅ Complete (Story 1.5.2)  
+**Responsibility:** Seamless integration with existing CLI architecture
+
+**New Command:**
+```bash
+auto-trader create-plan [--symbol SYMBOL] [--entry PRICE] [--stop PRICE] [--target PRICE] [--risk CATEGORY] [--output-dir DIR]
+```
+
+**CLI Shortcuts:**
+- `--symbol`: Pre-populate trading symbol (e.g., AAPL, MSFT)
+- `--entry`: Pre-populate entry price level
+- `--stop`: Pre-populate stop loss price
+- `--target`: Pre-populate take profit target
+- `--risk`: Pre-populate risk category (small/normal/large)
+- `--output-dir`: Custom output directory for YAML file
+
+**Integration Points:**
+- Extends existing `plan_commands.py` with new interactive command
+- Uses established CLI patterns and error handling
+- Integrates with existing validation engine and models
+- Leverages Rich console framework for enhanced UX
+
 ### Modular CLI Interface System
 **Status:** ✅ Complete (Stories 1.1, 1.2, 1.3) - **Recently Refactored**  
 **Responsibility:** Modular command-line interface organized into focused command groups
@@ -78,7 +158,8 @@
 
 **Command Modules:**
 - **config_commands.py** (38 lines): `setup`, `validate-config`
-- **plan_commands.py** (266 lines): `validate-plans`, `list-plans`, `create-plan`
+- **plan_commands.py** (397 lines): `validate-plans`, `list-plans`, `create-plan`, `create-plan-interactive`
+- **wizard_utils.py** (467 lines): Interactive wizard components and utilities
 - **template_commands.py** (80 lines): `list-templates`
 - **schema_commands.py** (95 lines): `show-schema`
 - **monitor_commands.py** (202 lines): `monitor`, `summary`, `history`
@@ -91,7 +172,9 @@
 - Verbose mode for detailed output
 - File permission error handling with context
 - Safety defaults (simulation mode enforced)
-- **NEW:** Comprehensive test coverage (65+ CLI tests)
+- **NEW:** Interactive wizard with real-time validation and risk management
+- **NEW:** CLI shortcuts support for quick plan creation
+- **NEW:** Comprehensive test coverage (90+ CLI tests)
 - **NEW:** Modular architecture for better maintainability
 
 ### File Monitoring System

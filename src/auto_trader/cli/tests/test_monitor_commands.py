@@ -90,7 +90,8 @@ class TestMonitor:
 
         with patch("auto_trader.cli.monitor_commands.TradePlanLoader", side_effect=Exception("Test error")):
             result = runner.invoke(monitor)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handler calls sys.exit(1)
+            assert "Error during live monitor" in result.output
 
 
 class TestSummary:
@@ -144,7 +145,8 @@ class TestSummary:
 
         with patch("auto_trader.cli.monitor_commands.display_performance_summary", side_effect=Exception("Test error")):
             result = runner.invoke(summary)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handler calls sys.exit(1)
+            assert "Error during generating summary" in result.output
 
 
 class TestHistory:
@@ -200,4 +202,5 @@ class TestHistory:
 
         with patch("auto_trader.cli.monitor_commands.display_trade_history", side_effect=Exception("Test error")):
             result = runner.invoke(history)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handler calls sys.exit(1)
+            assert "Error during loading history" in result.output

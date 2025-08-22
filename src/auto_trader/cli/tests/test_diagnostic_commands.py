@@ -148,4 +148,5 @@ class TestDoctor:
 
         with patch("auto_trader.cli.diagnostic_commands.check_configuration", side_effect=Exception("Test error")):
             result = runner.invoke(doctor)
-            assert result.exit_code == 0  # Error handling prevents crash
+            assert result.exit_code == 1  # Error handler calls sys.exit(1)
+            assert "Error during diagnostic checks" in result.output

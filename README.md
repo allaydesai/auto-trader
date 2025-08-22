@@ -10,6 +10,7 @@ Personal automated trading system designed to execute discretionary trades with 
 - **Discord Notifications**: Real-time trade alerts and status updates
 - **Simulation Mode**: Test strategies without real money
 - **IBKR Integration**: Direct connection to Interactive Brokers for execution
+- **Interactive CLI Wizard**: Step-by-step trade plan creation with real-time validation and risk management
 - **Modular CLI Interface**: Rich command-line tools organized into focused modules
 - **Live Monitoring**: Real-time dashboard with optimized file watching
 - **Performance Optimizations**: AsyncIO improvements for reliable file monitoring
@@ -96,11 +97,17 @@ default_execution_functions:
 
 ### 4. Create Trade Plans
 
-Create your first trade plan using templates:
+Create your first trade plan using the interactive wizard:
 
 ```bash
-# Create a new trade plan interactively
+# Interactive wizard with real-time validation and risk management
 uv run python -m auto_trader.cli.commands create-plan
+
+# Quick creation with CLI shortcuts
+uv run python -m auto_trader.cli.commands create-plan --symbol AAPL --entry 180.50 --stop 178.00 --target 185.00 --risk normal
+
+# Create from templates (alternative method)
+uv run python -m auto_trader.cli.commands create-plan-template
 
 # List available templates
 uv run python -m auto_trader.cli.commands list-templates --verbose
@@ -170,6 +177,7 @@ auto-trader/
 │           ├── commands.py          # Main CLI entry point (refactored)
 │           ├── config_commands.py   # Configuration management commands
 │           ├── plan_commands.py     # Trade plan management commands
+│           ├── wizard_utils.py      # Interactive wizard utilities
 │           ├── template_commands.py # Template-related commands
 │           ├── schema_commands.py   # Schema validation commands
 │           ├── monitor_commands.py  # Monitoring and analysis commands
@@ -202,11 +210,24 @@ The Auto-Trader uses YAML-based trade plans with comprehensive validation and te
 
 ### Creating Trade Plans
 
-#### Using Templates (Recommended)
+#### Using Interactive Wizard (Recommended)
+
+```bash
+# Interactive wizard with real-time validation and risk management
+uv run python -m auto_trader.cli.commands create-plan
+
+# Quick creation with CLI shortcuts
+uv run python -m auto_trader.cli.commands create-plan --symbol AAPL --entry 180.50 --stop 178.00 --target 185.00 --risk normal
+
+# All available shortcuts
+uv run python -m auto_trader.cli.commands create-plan --symbol MSFT --entry 150.25 --stop 148.00 --target 155.00 --risk small --output-dir custom/path
+```
+
+#### Using Templates (Alternative)
 
 ```bash
 # Interactive plan creation from templates
-uv run python -m auto_trader.cli.commands create-plan
+uv run python -m auto_trader.cli.commands create-plan-template
 
 # View available templates
 uv run python -m auto_trader.cli.commands list-templates --verbose
@@ -330,8 +351,11 @@ uv run python -m auto_trader.cli.commands validate-config [--verbose]
 ### Trade Plan Commands
 
 ```bash
-# Create new trade plan from template
-uv run python -m auto_trader.cli.commands create-plan [--output-dir DIR]
+# Interactive wizard with real-time validation and risk management
+uv run python -m auto_trader.cli.commands create-plan [--symbol SYMBOL] [--entry PRICE] [--stop PRICE] [--target PRICE] [--risk CATEGORY] [--output-dir DIR]
+
+# Create new trade plan from template (alternative)
+uv run python -m auto_trader.cli.commands create-plan-template [--output-dir DIR]
 
 # List available templates
 uv run python -m auto_trader.cli.commands list-templates [--verbose]
@@ -383,7 +407,66 @@ uv run python -m auto_trader.cli.commands help-system
 uv run python -m auto_trader.cli.commands COMMAND --help
 ```
 
+## Interactive CLI Wizard
+
+The Auto-Trader features an advanced interactive CLI wizard for creating trade plans with real-time validation and risk management integration.
+
+### Key Features
+
+- **Real-time Validation**: Each field is validated immediately using the TradePlan model
+- **Risk Management Integration**: Live position sizing calculations and portfolio risk checks
+- **Portfolio Risk Protection**: Enforces 10% maximum portfolio risk limit
+- **CLI Shortcuts**: Pre-populate fields with command-line arguments
+- **Rich Terminal Experience**: Colors, tables, and progress indicators
+- **Error Recovery**: Clear guidance for validation errors with retry options
+
+### Wizard Flow
+
+1. **Portfolio Status**: Shows current risk capacity and open positions
+2. **Symbol Entry**: Validates trading symbol format (1-10 uppercase chars)
+3. **Entry Level**: Validates positive price with max 4 decimal places
+4. **Stop Loss**: Validates stop level and calculates stop distance percentage
+5. **Risk Category**: Select from small (1%), normal (2%), or large (3%)
+6. **Position Sizing**: Real-time calculation with risk breakdown display
+7. **Take Profit**: Validates target and shows risk:reward ratio
+8. **Execution Functions**: Configure entry/exit triggers and timeframes
+9. **Plan Preview**: Rich-formatted summary with modification options
+10. **Save Confirmation**: YAML file generation with unique plan ID
+
+### CLI Shortcuts
+
+```bash
+# Full wizard experience
+uv run python -m auto_trader.cli.commands create-plan
+
+# Pre-populate specific fields
+uv run python -m auto_trader.cli.commands create-plan --symbol AAPL --entry 180.50
+
+# Minimal input required
+uv run python -m auto_trader.cli.commands create-plan --symbol MSFT --entry 150.25 --stop 148.00 --target 155.00 --risk normal
+
+# Custom output location
+uv run python -m auto_trader.cli.commands create-plan --output-dir custom/plans
+```
+
+### Risk Management Features
+
+- **Portfolio Overview**: Current risk usage and available capacity
+- **Real-time Calculations**: Position size updates as you enter prices
+- **Risk Limit Enforcement**: Hard block at 10% portfolio risk with override option
+- **Risk Breakdown**: Shows individual trade risk + current portfolio risk + new total
+- **Adjustment Suggestions**: Recommendations when limits are exceeded
+
 ## Recent Improvements
+
+### Interactive CLI Wizard (v2.0.0)
+Complete interactive wizard implementation with comprehensive features:
+
+- **Real-time Validation**: Field-by-field validation with immediate feedback
+- **Risk Management Integration**: Live position sizing with portfolio risk protection
+- **CLI Shortcuts**: Full command-line argument support for quick creation
+- **Rich Terminal UX**: Enhanced user experience with colors and formatting
+- **Comprehensive Testing**: 27 new test methods covering all wizard components
 
 ### CLI Modularization (v0.2.0)
 The CLI interface has been refactored from a monolithic 735-line file into focused, maintainable modules:
@@ -419,29 +502,181 @@ Comprehensive testing suite with 179+ tests:
 
 ### Testing
 
+The Auto-Trader project uses **pytest** as the testing framework with comprehensive coverage requirements.
+
+#### Quick Commands
+
 ```bash
-# Run all tests (179 tests currently passing)
+# Run full test suite (simplest method)
+uv run pytest
+
+# Run with verbose output (shows individual test names)
+uv run pytest -v
+
+# Run with coverage reporting
+uv run pytest --cov=src/auto_trader
+
+# Run specific test file
+uv run pytest src/auto_trader/cli/tests/test_wizard_utils.py -v
+```
+
+#### Comprehensive Testing Commands
+
+```bash
+# Run all tests with detailed output (179+ tests currently passing)
 PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ src/auto_trader/utils/tests/ src/auto_trader/tests/ src/auto_trader/cli/tests/ -v
 
 # Run with coverage report (87% coverage achieved)
 PYTHONPATH=src uv run coverage run --source=src/auto_trader -m pytest src/auto_trader/models/tests/ src/auto_trader/utils/tests/ src/auto_trader/tests/ src/auto_trader/cli/tests/
 PYTHONPATH=src uv run coverage report --show-missing --sort=Cover
 
-# Run specific test modules
-PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_trade_plan.py -v
-PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_validation_engine.py -v
-PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_config_commands.py -v
-PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/test_file_watcher.py -v
-
-# Run tests by category
-PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ -v        # Data models and validation
-PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/ -v           # CLI commands
-PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/ -v         # Utility functions
-PYTHONPATH=src uv run pytest src/auto_trader/tests/ -v              # Integration tests
-
 # Generate HTML coverage report
 PYTHONPATH=src uv run coverage html --directory coverage_html
 ```
+
+#### Test Categories & Organization
+
+**By Test Module:**
+```bash
+# Data models and validation (32+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ -v
+
+# CLI commands and wizard (65+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/ -v
+
+# Utility functions (15+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/ -v
+
+# Integration tests (12+ tests)
+PYTHONPATH=src uv run pytest src/auto_trader/tests/ -v
+```
+
+**By Specific Component:**
+```bash
+# Trade plan model validation
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_trade_plan.py -v
+
+# YAML validation engine
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_validation_engine.py -v
+
+# Template management system
+PYTHONPATH=src uv run pytest src/auto_trader/models/tests/test_template_manager.py -v
+
+# CLI configuration commands
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_config_commands.py -v
+
+# Interactive wizard functionality
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_wizard_utils.py -v
+
+# File watching utilities
+PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/test_file_watcher.py -v
+
+# Risk management integration
+PYTHONPATH=src uv run pytest src/auto_trader/tests/test_story_1_3_integration.py -v
+```
+
+#### Test Filtering Options
+
+```bash
+# Run tests matching pattern
+uv run pytest -k "wizard" -v                    # All wizard-related tests
+uv run pytest -k "validation" -v                # All validation tests
+uv run pytest -k "config" -v                    # All config-related tests
+
+# Run tests by marker
+uv run pytest -m "integration" -v               # Integration tests only
+uv run pytest -m "unit" -v                      # Unit tests only
+
+# Run failed tests only
+uv run pytest --lf -v                           # Last failed
+uv run pytest --ff -v                           # Failed first
+
+# Stop on first failure
+uv run pytest -x -v
+```
+
+#### Coverage Analysis
+
+```bash
+# Basic coverage report
+uv run pytest --cov=src/auto_trader --cov-report=term
+
+# Detailed coverage with missing lines
+uv run pytest --cov=src/auto_trader --cov-report=term-missing
+
+# HTML coverage report (opens in browser)
+uv run pytest --cov=src/auto_trader --cov-report=html
+open htmlcov/index.html  # View in browser
+
+# Coverage by module
+uv run pytest --cov=src/auto_trader/models --cov-report=term
+uv run pytest --cov=src/auto_trader/cli --cov-report=term
+```
+
+#### Test Output & Debugging
+
+```bash
+# Extra verbose output
+uv run pytest -vv
+
+# Show local variables on failure
+uv run pytest -l
+
+# Drop into debugger on failure
+uv run pytest --pdb
+
+# Capture output (disable -s to see prints)
+uv run pytest -s -v
+
+# Quiet mode (minimal output)
+uv run pytest -q
+```
+
+#### Performance Testing
+
+```bash
+# Show slowest tests
+uv run pytest --durations=10
+
+# Timeout for slow tests
+uv run pytest --timeout=30
+
+# Parallel execution (if pytest-xdist installed)
+uv run pytest -n auto
+```
+
+#### Test Standards & Requirements
+
+- **Coverage Target**: 80% minimum (currently 87%)
+- **Test Types**: 70% unit tests, 20% integration tests, 10% end-to-end
+- **Naming Convention**: `test_[component]_[action]_[expected_result]`
+- **File Organization**: Tests located next to source code in `tests/` subdirectories
+- **Fixtures**: Use pytest fixtures for setup, located in `conftest.py` files
+- **Mocking**: Use `unittest.mock` for external dependencies
+
+#### Common Test Issues & Solutions
+
+**Import Errors:**
+```bash
+# Ensure PYTHONPATH is set for complex test runs
+PYTHONPATH=src uv run pytest
+
+# Or use pytest discovery from project root
+uv run pytest  # Recommended approach
+```
+
+**Mock Setup Issues:**
+- Risk manager tests require `position_sizer` and `portfolio_tracker` attributes
+- Config loader tests need `user_preferences.account_value` attribute
+- Use `Mock(spec=ClassName)` for type safety
+
+**YAML Serialization:**
+- Use `model_dump(mode='json')` for Pydantic models in YAML tests
+- Decimal values require proper serialization for file tests
+
+**Fixture Dependencies:**
+- Check fixture scope (function, class, module, session)
+- Ensure fixtures are properly imported in test files
 
 ### Code Quality
 

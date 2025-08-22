@@ -28,7 +28,7 @@ class TestShowSchema:
             "required": ["plan_id", "symbol"]
         }
 
-        with patch("auto_trader.cli.schema_commands.TradePlan") as mock_trade_plan, \
+        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan, \
              patch("auto_trader.cli.schema_commands.display_schema_console") as mock_display:
             
             mock_trade_plan.model_json_schema.return_value = mock_schema
@@ -48,7 +48,7 @@ class TestShowSchema:
             }
         }
 
-        with patch("auto_trader.cli.schema_commands.TradePlan") as mock_trade_plan:
+        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
             mock_trade_plan.model_json_schema.return_value = mock_schema
 
             result = runner.invoke(show_schema, ["--format", "json"])
@@ -66,7 +66,7 @@ class TestShowSchema:
             }
         }
 
-        with patch("auto_trader.cli.schema_commands.TradePlan") as mock_trade_plan:
+        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
             mock_trade_plan.model_json_schema.return_value = mock_schema
 
             result = runner.invoke(show_schema, ["--format", "yaml"])
@@ -88,7 +88,7 @@ class TestShowSchema:
             "required": ["plan_id"]
         }
 
-        with patch("auto_trader.cli.schema_commands.TradePlan") as mock_trade_plan:
+        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
             mock_trade_plan.model_json_schema.return_value = mock_schema
 
             result = runner.invoke(show_schema, ["--field", "plan_id"])
@@ -109,7 +109,7 @@ class TestShowSchema:
             }
         }
 
-        with patch("auto_trader.cli.schema_commands.TradePlan") as mock_trade_plan:
+        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
             mock_trade_plan.model_json_schema.return_value = mock_schema
 
             result = runner.invoke(show_schema, ["--field", "nonexistent"])
@@ -121,6 +121,6 @@ class TestShowSchema:
         """Test exception handling in show_schema."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.schema_commands.TradePlan", side_effect=Exception("Test error")):
+        with patch("auto_trader.models.trade_plan.TradePlan", side_effect=Exception("Test error")):
             result = runner.invoke(show_schema)
             assert result.exit_code == 0  # Error handling prevents crash

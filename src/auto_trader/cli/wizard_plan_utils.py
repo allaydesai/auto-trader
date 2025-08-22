@@ -1,0 +1,112 @@
+"""Plan generation and saving utilities for wizard."""
+
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import yaml
+
+from ..logging_config import get_logger
+from ..models import TradePlan
+from .wizard_constants import MAX_PLANS_PER_DAY_PER_SYMBOL, DEFAULT_TRADE_PLANS_DIR
+
+logger = get_logger("wizard_plan_utils", "cli")
+
+
+def generate_plan_id(symbol: str, output_dir: Optional[Path] = None) -> str:
+    """
+    Generate unique plan ID in SYMBOL_YYYYMMDD_NNN format with duplicate handling.
+    
+    Args:
+        symbol: Trading symbol
+        output_dir: Directory to check for existing plan files
+        
+    Returns:
+        Unique plan ID
+        
+    Raises:
+        ValueError: If unable to generate unique ID after 999 attempts
+    """
+    date_str = datetime.utcnow().strftime("%Y%m%d")
+    base_id = f"{symbol}_{date_str}"
+    
+    # Default output directory
+    if output_dir is None:
+        output_dir = Path(DEFAULT_TRADE_PLANS_DIR)
+    
+    # Find existing files with matching pattern and determine next sequence number
+    import glob
+    existing_files = glob.glob(str(output_dir / f"{base_id}_*.yaml"))
+    
+    # Extract sequence numbers from existing files
+    existing_sequences = set()
+    for file_path in existing_files:
+        filename = Path(file_path).stem  # Remove .yaml extension
+        if filename.startswith(base_id + "_"):
+            try:
+                seq_part = filename[len(base_id) + 1:]  # Extract sequence part
+                sequence_num = int(seq_part)
+                existing_sequences.add(sequence_num)
+            except ValueError:
+                # Skip files that don't match expected pattern
+                continue
+    
+    # Find first available sequence number
+    for sequence_num in range(1, MAX_PLANS_PER_DAY_PER_SYMBOL + 1):
+        if sequence_num not in existing_sequences:
+            plan_id = f"{base_id}_{sequence_num:03d}"
+            logger.info("Plan ID generated", plan_id=plan_id, sequence_num=sequence_num)
+            return plan_id
+    
+    # If we get here, we couldn't find a unique ID
+    error_msg = f"Unable to generate unique plan ID for {symbol} on {date_str} - too many plans exist"
+    logger.error("Plan ID generation failed", symbol=symbol, date=date_str)
+    raise ValueError(error_msg)
+
+
+def save_plan_to_yaml(
+    plan_data: Dict[str, Any], 
+    output_dir: Optional[Path] = None
+) -> Path:
+    """
+    Save trade plan to YAML file.
+    
+    Args:
+        plan_data: Complete plan data
+        output_dir: Optional output directory
+        
+    Returns:
+        Path to saved file
+    """
+    # Default output directory
+    if output_dir is None:
+        output_dir = Path(DEFAULT_TRADE_PLANS_DIR)
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate filename (sanitize plan_id to prevent path traversal)
+    plan_id = plan_data.get("plan_id", "unknown")
+    
+    # Sanitize plan_id: remove path separators and keep only safe characters
+    import re
+    safe_plan_id = re.sub(r'[^\w\-_.]', '', plan_id.replace('/', '').replace('\\', ''))
+    if not safe_plan_id or safe_plan_id != plan_id:
+        logger.warning("Plan ID sanitized for file safety", original=plan_id, sanitized=safe_plan_id)
+        if not safe_plan_id:
+            safe_plan_id = "sanitized_plan"
+    
+    filename = f"{safe_plan_id}.yaml"
+    output_path = output_dir / filename
+    
+    # Create TradePlan object for validation
+    trade_plan = TradePlan(**plan_data)
+    
+    # Convert to YAML-compatible dict with proper serialization
+    yaml_data = trade_plan.model_dump(mode='json')
+    
+    # Write to file
+    with open(output_path, "w") as f:
+        yaml.dump(yaml_data, f, default_flow_style=False, sort_keys=False)
+    
+    logger.info("Plan saved to YAML", path=str(output_path))
+    return output_path

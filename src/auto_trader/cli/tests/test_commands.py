@@ -68,7 +68,7 @@ class TestValidateConfigCommand:
         """Test configuration validation failure."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.commands.Settings") as mock_settings:
+        with patch("auto_trader.cli.config_commands.Settings") as mock_settings:
             mock_settings_instance = MagicMock()
             mock_settings.return_value = mock_settings_instance
 
@@ -130,7 +130,7 @@ class TestValidateConfigCommand:
         """Test validation with verbose output."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.commands.Settings"), patch(
+        with patch("auto_trader.cli.config_commands.Settings"), patch(
             "auto_trader.cli.config_commands.ConfigLoader"
         ) as mock_loader_class, patch(
             "auto_trader.cli.config_commands.display_config_summary"
@@ -148,13 +148,13 @@ class TestValidateConfigCommand:
         """Test validation command exception handling."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.commands.Settings") as mock_settings:
+        with patch("auto_trader.cli.config_commands.Settings") as mock_settings:
             mock_settings.side_effect = Exception("Configuration error")
 
             result = runner.invoke(validate_config)
 
             assert result.exit_code == 1
-            assert "Error during validation" in result.output
+            assert "Error during configuration validation" in result.output
 
 
 class TestSetupCommand:
@@ -252,7 +252,7 @@ class TestSetupCommand:
         result = runner.invoke(setup, ["--output-dir", "/invalid/directory/path"])
 
         assert result.exit_code == 1
-        assert "Setup failed" in result.output
+        assert "Error during setup wizard" in result.output
 
 
 class TestHelpSystemCommand:
@@ -266,12 +266,12 @@ class TestHelpSystemCommand:
 
         assert result.exit_code == 0
         assert "Auto-Trader Help System" in result.output
-        assert "Available Commands" in result.output
+        assert "Configuration Commands:" in result.output
         assert "validate-config" in result.output
         assert "setup" in result.output
-        assert "help-system" in result.output
-        assert "Configuration Files" in result.output
-        assert "Example Usage" in result.output
+        assert "Trade Plan Commands:" in result.output
+        assert "Configuration Files:" in result.output
+        assert "Example Usage:" in result.output
 
 
 class TestCLIGroup:
@@ -303,14 +303,14 @@ class TestHelperFunctions:
     """Test CLI helper functions."""
 
     def test_create_env_file(self) -> None:
-        """Test _create_env_file function."""
-        from auto_trader.cli.commands import _create_env_file
+        """Test create_env_file function."""
+        from auto_trader.cli.file_utils import create_env_file
 
         with tempfile.TemporaryDirectory() as temp_dir:
             env_path = Path(temp_dir) / ".env"
 
-            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt, patch(
-                "auto_trader.cli.config_commands.click.confirm"
+            with patch("auto_trader.cli.file_utils.click.prompt") as mock_prompt, patch(
+                "auto_trader.cli.file_utils.click.confirm"
             ) as mock_confirm:
                 mock_prompt.side_effect = [
                     "https://discord.com/api/webhooks/test",
@@ -318,9 +318,9 @@ class TestHelperFunctions:
                     7496,
                     2,
                 ]
-                mock_confirm.side_effect = [False, True]  # simulation_mode, debug
+                mock_confirm.side_effect = [True]  # debug (simulation_mode is hardcoded to True)
 
-                _create_env_file(env_path)
+                create_env_file(env_path)
 
                 content = env_path.read_text()
                 assert "IBKR_HOST=192.168.1.100" in content
@@ -330,17 +330,17 @@ class TestHelperFunctions:
                     "DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/test"
                     in content
                 )
-                assert "SIMULATION_MODE=false" in content
+                assert "SIMULATION_MODE=true" in content  # Always true for safety
                 assert "DEBUG=true" in content
 
     def test_create_config_file(self) -> None:
-        """Test _create_config_file function."""
-        from auto_trader.cli.commands import _create_config_file
+        """Test create_config_file function."""
+        from auto_trader.cli.file_utils import create_config_file
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.yaml"
 
-            _create_config_file(config_path)
+            create_config_file(config_path)
 
             content = config_path.read_text()
             assert "ibkr:" in content
@@ -354,16 +354,16 @@ class TestHelperFunctions:
             assert "risk" in config_data
 
     def test_create_user_config_file(self) -> None:
-        """Test _create_user_config_file function."""
-        from auto_trader.cli.commands import _create_user_config_file
+        """Test create_user_config_file function."""
+        from auto_trader.cli.file_utils import create_user_config_file
 
         with tempfile.TemporaryDirectory() as temp_dir:
             user_config_path = Path(temp_dir) / "user_config.yaml"
 
-            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt:
+            with patch("auto_trader.cli.file_utils.click.prompt") as mock_prompt:
                 mock_prompt.side_effect = [25000, "aggressive"]
 
-                _create_user_config_file(user_config_path)
+                create_user_config_file(user_config_path)
 
                 content = user_config_path.read_text()
                 assert "default_account_value: 25000" in content

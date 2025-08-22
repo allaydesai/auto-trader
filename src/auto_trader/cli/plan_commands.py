@@ -230,7 +230,7 @@ def list_plans(
 
 @click.command()
 @click.option("--output-dir", type=click.Path(path_type=Path), help="Output directory for created plan")
-def create_plan() -> None:
+def create_plan(output_dir: Optional[Path] = None) -> None:
     """Interactive wizard to create a new trade plan from template."""
     logger.info("Create trade plan wizard started")
     
@@ -267,3 +267,127 @@ def create_plan() -> None:
         
     except Exception as e:
         handle_generic_error("creating plan", e)
+
+
+@click.command("create-plan")
+@click.option("--symbol", help="Trading symbol (e.g., AAPL)")
+@click.option("--entry", help="Entry price level")
+@click.option("--stop", help="Stop loss price")
+@click.option("--target", help="Take profit target")
+@click.option("--risk", help="Risk category (small/normal/large)")
+@click.option("--output-dir", type=click.Path(path_type=Path), help="Output directory for created plan")
+def create_plan_interactive(
+    symbol: Optional[str],
+    entry: Optional[str], 
+    stop: Optional[str],
+    target: Optional[str],
+    risk: Optional[str],
+    output_dir: Optional[Path]
+) -> None:
+    """Interactive CLI wizard to create trade plans with real-time validation and risk management."""
+    from .wizard_utils import WizardFieldCollector
+    from .wizard_preview import TradePlanPreview
+    from .wizard_plan_utils import generate_plan_id, save_plan_to_yaml
+    from ..risk_management import RiskManager
+    from config import ConfigLoader
+    
+    logger.info("Interactive trade plan wizard started")
+    
+    try:
+        # Initialize components
+        config_loader = ConfigLoader()
+        
+        # Initialize risk manager with account value
+        account_value = config_loader.user_preferences.account_value
+        risk_manager = RiskManager(account_value=account_value)
+        
+        # Show portfolio status at start
+        portfolio_summary = risk_manager.get_portfolio_summary()
+        console.print(
+            Panel(
+                f"[blue]📊 PORTFOLIO STATUS[/blue]\n\n"
+                f"Account Value: ${portfolio_summary['account_value']:,.2f}\n"
+                f"Current Risk: {portfolio_summary['current_portfolio_risk']:.2f}%\n"
+                f"Available Capacity: {portfolio_summary['available_risk_capacity_percent']:.2f}%\n"
+                f"Open Positions: {portfolio_summary['position_count']}",
+                title="Portfolio Overview",
+                border_style="blue"
+            )
+        )
+        
+        # Initialize field collector
+        field_collector = WizardFieldCollector(config_loader, risk_manager)
+        
+        console.print("\n[bold]🔧 TRADE PLAN CREATION WIZARD[/bold]")
+        console.print("[dim]Follow the prompts to create a new trade plan with real-time validation[/dim]\n")
+        
+        # Collect all required fields with CLI shortcuts support
+        collected_symbol = field_collector.collect_symbol(symbol)
+        collected_entry = field_collector.collect_entry_level(entry)
+        collected_stop = field_collector.collect_stop_loss(collected_entry, stop)
+        collected_risk = field_collector.collect_risk_category(risk)
+        
+        # Calculate position size and check portfolio limits
+        position_size, dollar_risk = field_collector.calculate_and_display_position_size(
+            collected_entry,
+            collected_stop, 
+            collected_risk
+        )
+        
+        collected_target = field_collector.collect_take_profit(target)
+        entry_func, exit_func = field_collector.collect_execution_functions()
+        
+        # Generate plan ID with duplicate checking
+        plan_id = generate_plan_id(collected_symbol, output_dir)
+        
+        # Prepare complete plan data
+        plan_data = {
+            "plan_id": plan_id,
+            "symbol": collected_symbol,
+            "entry_level": collected_entry,
+            "stop_loss": collected_stop,
+            "take_profit": collected_target,
+            "risk_category": collected_risk,
+            "entry_function": entry_func,
+            "exit_function": exit_func,
+            "calculated_position_size": position_size,
+            "dollar_risk": dollar_risk,
+        }
+        
+        # Show preview and get confirmation
+        preview_manager = TradePlanPreview(console)
+        if not preview_manager.show_preview(plan_data):
+            console.print("[yellow]Plan creation cancelled.[/yellow]")
+            return
+        
+        # Save to YAML file
+        output_path = save_plan_to_yaml(plan_data, output_dir)
+        
+        # Show success message
+        console.print(
+            Panel(
+                f"[green]✅ TRADE PLAN CREATED SUCCESSFULLY[/green]\n\n"
+                f"Plan ID: {plan_id}\n"
+                f"Symbol: {collected_symbol}\n"
+                f"Position Size: {position_size:,} shares\n"
+                f"Dollar Risk: ${dollar_risk:.2f}\n"
+                f"File: {output_path}",
+                title="Success",
+                border_style="green"
+            )
+        )
+        
+        logger.info(
+            "Interactive trade plan created successfully",
+            plan_id=plan_id,
+            symbol=collected_symbol,
+            position_size=position_size,
+            dollar_risk=float(dollar_risk),
+            output_path=str(output_path)
+        )
+        
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Wizard cancelled by user.[/yellow]")
+        logger.info("Interactive wizard cancelled by user")
+    except Exception as e:
+        handle_generic_error("interactive plan creation", e)
