@@ -1,6 +1,7 @@
 """Trade plan management CLI commands for enhanced plan operations."""
 
 import shutil
+from collections import Counter
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -11,16 +12,27 @@ from rich.console import Console
 
 from ..logging_config import get_logger
 from ..models import TradePlanLoader, TradePlanStatus, ValidationEngine
+from ..risk_management import RiskManager
+from config import get_config_loader
 from .error_utils import handle_generic_error
 from .management_utils import (
+    create_plan_backup,
     create_plans_table,
     create_portfolio_summary_panel,
     get_portfolio_risk_summary,
+    PlanManagementError,
     validate_plans_comprehensive,
 )
 
 console = Console()
 logger = get_logger("management_commands", "cli")
+
+
+def _get_risk_manager() -> RiskManager:
+    """Get properly configured risk manager from user preferences."""
+    config_loader = get_config_loader()
+    user_prefs = config_loader.load_user_preferences()
+    return RiskManager(account_value=user_prefs.account_value)
 
 
 @click.command()
@@ -51,21 +63,20 @@ def list_plans_enhanced(
     logger.info("Enhanced plan listing started", status_filter=status, sort_by=sort_by)
     
     try:
-        from ..risk_management import RiskManager
-        
         # Use default plans directory if not specified
         if plans_dir is None:
             plans_dir = Path("data/trade_plans")
         
         # Initialize components
         loader = TradePlanLoader(plans_dir)
-        risk_manager = RiskManager(account_value=Decimal("10000"))  # TODO: Get from config
+        risk_manager = _get_risk_manager()
         
         # Load and filter plans
         if status:
             plans = loader.get_plans_by_status(TradePlanStatus(status))
         else:
-            plans = loader.load_all_plans()
+            plans_dict = loader.load_all_plans()
+            plans = list(plans_dict.values())
         
         if not plans:
             console.print("[yellow]No trade plans found.[/yellow]")
@@ -136,15 +147,13 @@ def validate_config(
     logger.info("Comprehensive validation started", single_file=str(file) if file else None)
     
     try:
-        from ..risk_management import RiskManager
-        
         # Use default plans directory if not specified
         if plans_dir is None:
             plans_dir = Path("data/trade_plans")
         
         # Initialize components
         validation_engine = ValidationEngine()
-        risk_manager = RiskManager(account_value=Decimal("10000"))  # TODO: Get from config
+        risk_manager = _get_risk_manager()
         
         # Perform comprehensive validation
         results = validate_plans_comprehensive(
@@ -274,9 +283,6 @@ def update_plan(
     logger.info("Plan update started", plan_id=plan_id, force=force)
     
     try:
-        from ..risk_management import RiskManager
-        from .management_utils import create_plan_backup, PlanManagementError
-        
         # Use default directories if not specified  
         if plans_dir is None:
             plans_dir = Path("data/trade_plans")
@@ -285,7 +291,7 @@ def update_plan(
             
         # Initialize components
         loader = TradePlanLoader(plans_dir)
-        risk_manager = RiskManager(account_value=Decimal("10000"))  # TODO: Get from config
+        risk_manager = _get_risk_manager()
         
         # Load existing plan
         plan = loader.get_plan_by_id(plan_id)
@@ -545,19 +551,17 @@ def plan_stats(plans_dir: Optional[Path]) -> None:
     logger.info("Plan statistics generation started")
     
     try:
-        from ..risk_management import RiskManager
-        from collections import Counter
-        
         # Use default directory if not specified
         if plans_dir is None:
             plans_dir = Path("data/trade_plans")
         
         # Initialize components
         loader = TradePlanLoader(plans_dir)
-        risk_manager = RiskManager(account_value=Decimal("10000"))  # TODO: Get from config
+        risk_manager = _get_risk_manager()
         
         # Load all plans
-        all_plans = loader.load_all_plans()
+        all_plans_dict = loader.load_all_plans()
+        all_plans = list(all_plans_dict.values())
         
         if not all_plans:
             console.print("[yellow]No trade plans found for analysis.[/yellow]")

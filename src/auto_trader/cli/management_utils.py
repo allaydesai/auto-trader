@@ -15,6 +15,7 @@ from rich.panel import Panel
 from ..logging_config import get_logger
 from ..models import TradePlan, TradePlanLoader, TradePlanStatus, ValidationEngine
 from ..risk_management import RiskManager
+from ..risk_management.portfolio_tracker import PortfolioTracker
 
 console = Console()
 logger = get_logger("management_utils", "cli")
@@ -90,7 +91,7 @@ def get_portfolio_risk_summary(
         Dictionary with portfolio risk metrics
     """
     current_risk = risk_manager.portfolio_tracker.get_current_portfolio_risk()
-    portfolio_limit = Decimal("10.0")  # 10% portfolio limit
+    portfolio_limit = PortfolioTracker.MAX_PORTFOLIO_RISK  # Portfolio risk limit from config
     
     # Calculate total risk from all plans
     total_plan_risk = Decimal("0.0")
@@ -201,7 +202,7 @@ def create_plans_table(
         if validation_result.passed and validation_result.position_size_result:
             risk_percent = validation_result.position_size_result.risk_amount_percent
             position_size = validation_result.position_size_result.position_size
-            risk_indicator = format_risk_indicator(risk_percent, Decimal("10.0"))
+            risk_indicator = format_risk_indicator(risk_percent, PortfolioTracker.MAX_PORTFOLIO_RISK)
             size_display = f"{position_size} shares"
         else:
             risk_indicator = "❌ Invalid"

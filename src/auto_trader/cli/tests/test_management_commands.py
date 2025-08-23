@@ -60,27 +60,26 @@ def sample_plan_data():
 @pytest.fixture
 def mock_risk_manager():
     """Provide mock risk manager for testing."""
-    with patch('auto_trader.cli.management_commands.RiskManager') as mock_rm_class:
-        mock_rm = Mock()
-        mock_rm_class.return_value = mock_rm
-        
-        # Mock validation result
-        mock_validation = Mock()
-        mock_validation.passed = True
-        mock_validation.position_size_result = Mock()
-        mock_validation.position_size_result.position_size = 100
-        mock_validation.position_size_result.risk_amount_percent = Decimal("2.1")
-        mock_validation.position_size_result.risk_amount_dollars = Decimal("250.00")
-        
-        mock_rm.validate_trade_plan.return_value = mock_validation
-        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal("5.2")
-        
-        yield mock_rm
+    mock_rm = Mock()
+    
+    # Mock validation result
+    mock_validation = Mock()
+    mock_validation.passed = True
+    mock_validation.position_size_result = Mock()
+    mock_validation.position_size_result.position_size = 100
+    mock_validation.position_size_result.risk_amount_percent = Decimal("2.1")
+    mock_validation.position_size_result.risk_amount_dollars = Decimal("250.00")
+    
+    mock_rm.validate_trade_plan.return_value = mock_validation
+    mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal("5.2")
+    
+    return mock_rm
 
 
 class TestListPlansEnhanced:
     """Test enhanced plan listing command."""
     
+    @patch('auto_trader.cli.management_commands.RiskManager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
     @patch('auto_trader.cli.management_commands.create_plans_table')
@@ -91,6 +90,7 @@ class TestListPlansEnhanced:
         mock_table,
         mock_risk_summary,
         mock_loader_class,
+        mock_rm_class,
         cli_runner,
         temp_dir,
         mock_risk_manager,
@@ -101,9 +101,10 @@ class TestListPlansEnhanced:
         mock_plan = Mock()
         mock_plan.plan_id = "AAPL_20250822_001"
         mock_plan.symbol = "AAPL"
-        mock_loader.load_all_plans.return_value = [mock_plan]
+        mock_loader.load_all_plans.return_value = {"AAPL_20250822_001": mock_plan}
         mock_loader_class.return_value = mock_loader
         
+        mock_rm_class.return_value = mock_risk_manager
         mock_risk_summary.return_value = {"current_risk_percent": Decimal("5.2")}
         mock_panel.return_value = Mock()
         mock_table.return_value = Mock()
@@ -120,7 +121,7 @@ class TestListPlansEnhanced:
     def test_list_plans_enhanced_no_plans(self, mock_loader_class, cli_runner, temp_dir, mock_risk_manager):
         """Test enhanced listing with no plans found."""
         mock_loader = Mock()
-        mock_loader.load_all_plans.return_value = []
+        mock_loader.load_all_plans.return_value = {}
         mock_loader_class.return_value = mock_loader
         
         result = cli_runner.invoke(list_plans_enhanced, ["--plans-dir", str(temp_dir)])
@@ -167,7 +168,7 @@ class TestListPlansEnhanced:
         """Test enhanced listing in verbose mode."""
         mock_loader = Mock()
         mock_plan = Mock()
-        mock_loader.load_all_plans.return_value = [mock_plan]
+        mock_loader.load_all_plans.return_value = {"TEST_001": mock_plan}
         mock_loader_class.return_value = mock_loader
         
         mock_risk_summary.return_value = {"current_risk_percent": Decimal("5.2")}
@@ -294,12 +295,14 @@ class TestUpdatePlan:
             yaml.dump(sample_plan_data, f)
         return plan_file
     
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     @patch('auto_trader.cli.management_commands.create_plan_backup')
     def test_update_plan_success(
         self,
         mock_backup,
         mock_loader_class,
+        mock_get_risk_manager,
         cli_runner,
         temp_dir,
         sample_plan_data,
@@ -318,6 +321,7 @@ class TestUpdatePlan:
         mock_loader_class.return_value = mock_loader
         
         mock_backup.return_value = temp_dir / "backup_file.yaml"
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         # Run command with force flag to skip confirmation
         result = cli_runner.invoke(
@@ -457,12 +461,14 @@ class TestArchivePlans:
 class TestPlanStats:
     """Test plan statistics command."""
     
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
     def test_plan_stats_success(
         self,
         mock_risk_summary,
         mock_loader_class,
+        mock_get_risk_manager,
         cli_runner,
         temp_dir,
         mock_risk_manager,
@@ -480,14 +486,21 @@ class TestPlanStats:
         mock_plan2.symbol = "MSFT"
         mock_plan2.risk_category = RiskCategory.SMALL
         
-        mock_loader.load_all_plans.return_value = [mock_plan1, mock_plan2]
+        mock_loader.load_all_plans.return_value = {"PLAN1": mock_plan1, "PLAN2": mock_plan2}
         mock_loader_class.return_value = mock_loader
         
         mock_risk_summary.return_value = {
             "current_risk_percent": Decimal("6.2"),
+            "portfolio_limit_percent": Decimal("10.0"),
+            "remaining_capacity_percent": Decimal("3.8"),
+            "capacity_utilization_percent": Decimal("62.0"),
+            "total_plan_risk_percent": Decimal("4.5"),
+            "plan_risks": {},
             "exceeds_limit": False,
             "near_limit": False,
         }
+        
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         result = cli_runner.invoke(plan_stats, ["--plans-dir", str(temp_dir)])
         
@@ -506,7 +519,7 @@ class TestPlanStats:
     ):
         """Test statistics with no plans."""
         mock_loader = Mock()
-        mock_loader.load_all_plans.return_value = []
+        mock_loader.load_all_plans.return_value = {}
         mock_loader_class.return_value = mock_loader
         
         result = cli_runner.invoke(plan_stats, ["--plans-dir", str(temp_dir)])
@@ -530,7 +543,7 @@ class TestErrorHandling:
         
         result = cli_runner.invoke(list_plans_enhanced, ["--plans-dir", str(temp_dir)])
         
-        assert result.exit_code == 0  # Should handle error gracefully
+        assert result.exit_code == 1  # Should handle error gracefully and exit with error code
     
     @patch('auto_trader.cli.management_commands.ValidationEngine')
     def test_validate_config_error_handling(
@@ -544,7 +557,7 @@ class TestErrorHandling:
         
         result = cli_runner.invoke(validate_config, ["--plans-dir", str(temp_dir)])
         
-        assert result.exit_code == 0  # Should handle error gracefully
+        assert result.exit_code == 1  # Should handle error gracefully and exit with error code
 
 
 @pytest.mark.integration
