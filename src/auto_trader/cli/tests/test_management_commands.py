@@ -297,7 +297,7 @@ class TestUpdatePlan:
     
     @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
-    @patch('auto_trader.cli.management_commands.create_plan_backup')
+    @patch('auto_trader.cli.management_utils.create_plan_backup')
     def test_update_plan_success(
         self,
         mock_backup,

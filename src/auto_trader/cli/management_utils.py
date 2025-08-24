@@ -50,30 +50,324 @@ def create_plan_backup(plan_path: Path, backup_dir: Path) -> Path:
     Raises:
         BackupCreationError: If backup creation fails
     """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"{plan_path.stem}.backup.{timestamp}.yaml"
+    backup_path = backup_dir / backup_filename
+    
     try:
-        # Ensure backup directory exists
         backup_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create timestamped backup filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_filename = f"{plan_path.stem}.backup.{timestamp}.yaml"
-        backup_path = backup_dir / backup_filename
-        
-        # Copy original file to backup location
         shutil.copy2(plan_path, backup_path)
-        
-        logger.info(
-            "Plan backup created",
-            original=str(plan_path),
-            backup=str(backup_path),
-        )
-        
+        logger.info("Plan backup created", source=str(plan_path), backup=str(backup_path))
         return backup_path
-        
     except Exception as e:
-        error_msg = f"Failed to create backup for {plan_path.name}: {e}"
-        logger.error("Backup creation failed", error=str(e), plan_path=str(plan_path))
-        raise BackupCreationError(error_msg) from e
+        raise BackupCreationError(f"Failed to create backup: {e}") from e
+
+
+def _sort_plans_by_criteria(plans: List[TradePlan], sort_by: str, risk_manager: RiskManager) -> List[TradePlan]:
+    """
+    Sort plans by specified criteria.
+    
+    Args:
+        plans: List of trade plans to sort
+        sort_by: Sort criteria ('risk', 'symbol', 'date')
+        risk_manager: Risk manager for calculating risk amounts
+        
+    Returns:
+        Sorted list of trade plans
+    """
+    if sort_by == "risk":
+        def get_risk(plan):
+            result = risk_manager.validate_trade_plan(plan)
+            if result.passed and result.position_size_result:
+                return result.position_size_result.risk_amount_percent
+            return Decimal("0")
+        return sorted(plans, key=get_risk, reverse=True)
+    elif sort_by == "symbol":
+        return sorted(plans, key=lambda p: p.symbol)
+    else:  # date (default)
+        return sorted(plans, key=lambda p: p.plan_id, reverse=True)
+
+
+def _display_plan_listing_guidance(verbose: bool, status: Optional[str]) -> None:
+    """
+    Display next-step guidance for plan listing command.
+    
+    Args:
+        verbose: Whether verbose mode is enabled
+        status: Current status filter
+    """
+    console.print()
+    if not verbose:
+        console.print("💡 Use --verbose for detailed information")
+    if not status:
+        console.print("💡 Use --status to filter plans by status")
+    console.print("💡 Use validate-config to check plan health")
+
+
+def process_plan_field_updates(plan: TradePlan, entry_level: Optional[float], stop_loss: Optional[float], 
+                             take_profit: Optional[float], risk_category: Optional[str]) -> Dict[str, Any]:
+    """
+    Process and validate field updates for a trade plan.
+    
+    Args:
+        plan: Original trade plan
+        entry_level: New entry level (if provided)
+        stop_loss: New stop loss (if provided)  
+        take_profit: New take profit (if provided)
+        risk_category: New risk category (if provided)
+        
+    Returns:
+        Dictionary of field updates
+        
+    Raises:
+        PlanUpdateError: If no valid updates provided
+    """
+    updates = {}
+    if entry_level is not None:
+        updates["entry_level"] = Decimal(str(entry_level))
+    if stop_loss is not None:
+        updates["stop_loss"] = Decimal(str(stop_loss))
+    if take_profit is not None:
+        updates["take_profit"] = Decimal(str(take_profit))
+    if risk_category is not None:
+        from ..models.trade_plan import RiskCategory
+        updates["risk_category"] = RiskCategory(risk_category)
+    
+    if not updates:
+        raise PlanUpdateError("No fields specified for update")
+    
+    return updates
+
+
+def create_plan_update_preview_table(plan_id: str, plan: TradePlan, updates: Dict[str, Any]) -> Table:
+    """
+    Create Rich table showing plan update preview.
+    
+    Args:
+        plan_id: Plan identifier
+        plan: Original plan
+        updates: Dictionary of field updates
+        
+    Returns:
+        Rich table for display
+    """
+    preview_table = Table(title=f"📋 Plan Update Preview: {plan_id}")
+    preview_table.add_column("Field", style="cyan")
+    preview_table.add_column("Before", style="white")
+    preview_table.add_column("After", style="yellow")
+    
+    for field, new_value in updates.items():
+        old_value = getattr(plan, field)
+        preview_table.add_row(
+            field.replace("_", " ").title(),
+            str(old_value),
+            str(new_value),
+        )
+    
+    return preview_table
+
+
+def display_plan_risk_impact(original_validation, updated_validation) -> None:
+    """
+    Display risk impact of plan update.
+    
+    Args:
+        original_validation: Risk validation result for original plan
+        updated_validation: Risk validation result for updated plan
+    """
+    console.print("🛡️  Risk Impact:")
+    if original_validation.passed and updated_validation.passed:
+        orig_size = original_validation.position_size_result.position_size
+        new_size = updated_validation.position_size_result.position_size
+        orig_risk = original_validation.position_size_result.risk_amount_dollars
+        new_risk = updated_validation.position_size_result.risk_amount_dollars
+        
+        console.print(f"   Position Size: {orig_size} → {new_size} shares")
+        console.print(f"   Dollar Risk: ${orig_risk:.2f} → ${new_risk:.2f}")
+        console.print("   Portfolio impact calculated after update")
+    else:
+        console.print("   ❌ Risk calculation failed - plan may have validation errors")
+
+
+def organize_plans_for_archive(plans: List[TradePlan]) -> Dict[str, List[TradePlan]]:
+    """
+    Organize plans by archive path structure.
+    
+    Args:
+        plans: List of plans to archive
+        
+    Returns:
+        Dictionary mapping archive paths to plan lists
+    """
+    from collections import defaultdict
+    archive_groups = defaultdict(list)
+    
+    for plan in plans:
+        try:
+            # Extract date from plan_id (format: SYMBOL_YYYYMMDD_NNN)
+            date_part = plan.plan_id.split('_')[1]  # YYYYMMDD
+            year = date_part[:4]
+            month = date_part[4:6]
+            archive_groups[f"{year}/{month}/{plan.status.value}"].append(plan)
+        except (IndexError, ValueError):
+            # Fallback for non-standard plan IDs
+            current_date = datetime.now()
+            fallback_path = f"{current_date.year}/{current_date.month:02d}/unknown_date"
+            archive_groups[fallback_path].append(plan)
+    
+    return dict(archive_groups)
+
+
+def create_archive_preview_table(archive_groups: Dict[str, List[TradePlan]]) -> tuple[Table, int]:
+    """
+    Create preview table for archive operations.
+    
+    Args:
+        archive_groups: Dictionary mapping archive paths to plan lists
+        
+    Returns:
+        Tuple of (Rich table, total plan count)
+    """
+    preview_table = Table(title="Plans to Archive")
+    preview_table.add_column("Plan ID", style="cyan")
+    preview_table.add_column("Status", style="white")
+    preview_table.add_column("Archive Path", style="yellow")
+    
+    total_plans = 0
+    for archive_path, plans in archive_groups.items():
+        for plan in plans:
+            preview_table.add_row(
+                plan.plan_id,
+                plan.status.value,
+                archive_path,
+            )
+            total_plans += 1
+    
+    return preview_table, total_plans
+
+
+def perform_plan_archiving(archive_groups: Dict[str, List[TradePlan]], 
+                          plans_dir: Path, archive_dir: Path) -> int:
+    """
+    Perform actual plan archiving operation.
+    
+    Args:
+        archive_groups: Dictionary mapping archive paths to plan lists
+        plans_dir: Source plans directory
+        archive_dir: Destination archive directory
+        
+    Returns:
+        Number of successfully archived plans
+    """
+    archived_count = 0
+    for archive_path, plans in archive_groups.items():
+        # Create archive directory structure
+        full_archive_path = archive_dir / archive_path
+        full_archive_path.mkdir(parents=True, exist_ok=True)
+        
+        for plan in plans:
+            source_file = plans_dir / f"{plan.plan_id}.yaml"
+            dest_file = full_archive_path / f"{plan.plan_id}.yaml"
+            
+            if source_file.exists():
+                # Move file to archive
+                shutil.move(str(source_file), str(dest_file))
+                archived_count += 1
+                logger.debug(
+                    "Plan archived",
+                    plan_id=plan.plan_id,
+                    source=str(source_file),
+                    dest=str(dest_file),
+                )
+    
+    return archived_count
+
+
+def create_plan_statistics_tables(status_counts, symbol_counts, risk_counts, total_plans):
+    """
+    Create all statistics tables for plan analysis.
+    
+    Args:
+        status_counts: Counter of plan statuses
+        symbol_counts: Counter of plan symbols
+        risk_counts: Counter of risk categories
+        total_plans: Total number of plans
+        
+    Returns:
+        Tuple of (status_table, symbol_table, risk_table)
+    """
+    # Plan Status Distribution
+    status_table = Table(title="📈 Plan Status Distribution", show_header=True)
+    status_table.add_column("Status", style="cyan", width=15)
+    status_table.add_column("Count", style="white", width=8)
+    status_table.add_column("Percentage", style="green", width=12)
+    
+    for status, count in status_counts.most_common():
+        percentage = (count / total_plans) * 100
+        formatted_status = status.replace('_', ' ').title()
+        status_table.add_row(
+            formatted_status,
+            str(count),
+            f"{percentage:.1f}%",
+        )
+    
+    # Symbol Diversity Analysis
+    symbol_table = Table(title="🎯 Symbol Diversity", show_header=True)
+    symbol_table.add_column("Symbol", style="cyan", width=10)
+    symbol_table.add_column("Plans", style="white", width=8)
+    symbol_table.add_column("Portfolio %", style="yellow", width=12)
+    
+    for symbol, count in symbol_counts.most_common(10):  # Top 10 symbols
+        percentage = (count / total_plans) * 100
+        symbol_table.add_row(
+            symbol,
+            str(count),
+            f"{percentage:.1f}%",
+        )
+    
+    # Risk Category Distribution
+    risk_table = Table(title="🛡️ Risk Category Distribution", show_header=True)
+    risk_table.add_column("Risk Category", style="cyan", width=15)
+    risk_table.add_column("Count", style="white", width=8)
+    risk_table.add_column("Portfolio Impact", style="red", width=15)
+    
+    for risk_cat, count in risk_counts.most_common():
+        percentage = (count / total_plans) * 100
+        formatted_risk = risk_cat.replace('_', ' ').title()
+        risk_table.add_row(
+            formatted_risk,
+            str(count),
+            f"{percentage:.1f}%",
+        )
+    
+    return status_table, symbol_table, risk_table
+
+
+def display_plan_insights(total_plans: int, symbol_counts, portfolio_data: Dict[str, Any]) -> None:
+    """
+    Display key insights about plan portfolio.
+    
+    Args:
+        total_plans: Total number of plans
+        symbol_counts: Counter of symbols
+        portfolio_data: Portfolio risk data
+    """
+    console.print("💡 KEY INSIGHTS:")
+    console.print(f"   • Total Plans: {total_plans}")
+    console.print(f"   • Unique Symbols: {len(symbol_counts)}")
+    
+    if symbol_counts:
+        most_active = symbol_counts.most_common(1)[0]
+        console.print(f"   • Most Active Symbol: {most_active[0]} ({most_active[1]} plans)")
+    
+    console.print(f"   • Portfolio Diversification: {len(symbol_counts)} symbols")
+    
+    if portfolio_data["exceeds_limit"]:
+        console.print("   🚨 ALERT: Portfolio risk exceeds 10% limit!")
+    elif portfolio_data["near_limit"]:
+        console.print("   ⚠️  WARNING: Portfolio risk approaching limit")
+    else:
+        console.print("   ✅ Portfolio risk within safe limits")
 
 
 def get_portfolio_risk_summary(
@@ -381,3 +675,197 @@ def validate_plans_comprehensive(
     )
     
     return results
+
+
+def _display_validation_results(results: Dict[str, Any], verbose: bool) -> None:
+    """
+    Display validation results with Rich formatting.
+    
+    Args:
+        results: Validation results dictionary
+        verbose: Whether to show verbose details
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    console.print(f"🔍 PLAN VALIDATION - {timestamp}")
+    console.print()
+    
+    # Display validation summary
+    files_checked = results["files_checked"]
+    syntax_passed = results["syntax_passed"]
+    logic_passed = results["business_logic_passed"]
+    portfolio_passed = results["portfolio_risk_passed"]
+    
+    console.print(f"✅ Checking {files_checked} trade plan files...")
+    console.print(f"✅ YAML syntax validation: {syntax_passed}/{files_checked} passed")
+    
+    if logic_passed == files_checked:
+        console.print(f"✅ Business logic validation: {logic_passed}/{files_checked} passed")
+    else:
+        console.print(f"⚠️  Business logic validation: {logic_passed}/{files_checked} passed")
+    
+    if portfolio_passed:
+        console.print("✅ Portfolio risk validation: PASSED")
+    else:
+        console.print("❌ Portfolio risk validation: FAILED")
+        console.print(f"🚨 CRITICAL: Total portfolio risk would be {results['portfolio_risk_percent']:.1f}% (exceeds 10% limit)")
+    
+    console.print()
+
+
+def _display_validation_file_details(file_results: Dict[str, Dict], verbose: bool) -> None:
+    """
+    Display file-specific validation details.
+    
+    Args:
+        file_results: Dictionary of file validation results
+        verbose: Whether to show verbose details
+    """
+    from rich.table import Table
+    
+    error_files = [f for f, r in file_results.items() if not r["syntax_valid"] or not r["business_logic_valid"]]
+    
+    if error_files or verbose:
+        results_table = Table(title="📋 VALIDATION DETAILS")
+        results_table.add_column("File", style="cyan")
+        results_table.add_column("Status", style="white")
+        results_table.add_column("Issues", style="white")
+        
+        for filename, file_result in file_results.items():
+            if not file_result["syntax_valid"]:
+                status = "❌ SYNTAX ERROR"
+                issues = "; ".join(file_result["errors"][:2])  # Show first 2 errors
+            elif not file_result["business_logic_valid"]:
+                status = "❌ LOGIC ERROR"
+                issues = "; ".join(file_result["errors"][:2])
+            elif verbose:
+                status = "✅ PASSED"
+                issues = "No issues"
+            else:
+                continue  # Skip passed files if not verbose
+            
+            results_table.add_row(filename, status, issues)
+        
+        if results_table.rows:
+            console.print(results_table)
+            console.print()
+
+
+def _display_validation_guidance(file_results: Dict[str, Dict], portfolio_passed: bool) -> None:
+    """
+    Display validation guidance and next steps.
+    
+    Args:
+        file_results: Dictionary of file validation results
+        portfolio_passed: Whether portfolio risk validation passed
+    """
+    error_files = [f for f, r in file_results.items() if not r["syntax_valid"] or not r["business_logic_valid"]]
+    
+    console.print("💡 Use --verbose for detailed error information")
+    if error_files:
+        console.print("🔧 Review and fix errors in failing files")
+    if not portfolio_passed:
+        console.print("⚠️  Reduce plan risk amounts to stay within 10% limit")
+
+
+def _create_and_validate_updated_plan(plan: TradePlan, updates: Dict[str, Any]) -> TradePlan:
+    """
+    Create and validate an updated plan.
+    
+    Args:
+        plan: Original trade plan
+        updates: Dictionary of field updates
+        
+    Returns:
+        Updated and validated trade plan
+        
+    Raises:
+        PlanUpdateError: If plan validation fails
+    """
+    updated_plan_data = plan.model_dump()
+    updated_plan_data.update(updates)
+    
+    from ..models.trade_plan import TradePlan
+    try:
+        return TradePlan(**updated_plan_data)
+    except Exception as e:
+        raise PlanUpdateError(f"Invalid field values: {e}") from e
+
+
+def _display_update_preview_and_confirmation(plan_id: str, plan: TradePlan, updates: Dict[str, Any], 
+                                           original_validation, updated_validation, backup_dir: Path, force: bool) -> bool:
+    """
+    Display update preview and get user confirmation.
+    
+    Args:
+        plan_id: Plan identifier
+        plan: Original plan
+        updates: Field updates
+        original_validation: Original risk validation result
+        updated_validation: Updated risk validation result  
+        backup_dir: Backup directory path
+        force: Whether to skip confirmation
+        
+    Returns:
+        True if should proceed with update, False otherwise
+    """
+    console.print("⚠️  PLAN MODIFICATION WARNING")
+    console.print()
+    
+    preview_table = create_plan_update_preview_table(plan_id, plan, updates)
+    console.print(preview_table)
+    console.print()
+    
+    display_plan_risk_impact(original_validation, updated_validation)
+    console.print()
+    console.print(f"💾 Backup will be created in: {backup_dir}")
+    
+    # Get confirmation unless forced
+    if not force:
+        import click
+        console.print()
+        confirm = click.confirm("Continue with modification?", default=False)
+        if not confirm:
+            console.print("[yellow]Plan update cancelled.[/yellow]")
+            return False
+    
+    return True
+
+
+def _perform_plan_update(plan_id: str, updated_plan: TradePlan, plans_dir: Path, backup_dir: Path) -> Path:
+    """
+    Perform the actual plan file update.
+    
+    Args:
+        plan_id: Plan identifier
+        updated_plan: Updated plan to save
+        plans_dir: Plans directory
+        backup_dir: Backup directory
+        
+    Returns:
+        Path to created backup file
+    """
+    # Create backup and update file
+    plan_file_path = plans_dir / f"{plan_id}.yaml"
+    backup_path = create_plan_backup(plan_file_path, backup_dir)
+    
+    import yaml
+    with open(plan_file_path, 'w') as f:
+        yaml.dump(updated_plan.model_dump(mode='python'), f, default_flow_style=False)
+    
+    return backup_path
+
+
+def _display_update_success(plan_id: str, updated_validation, backup_path: Path) -> None:
+    """
+    Display success message for plan update.
+    
+    Args:
+        plan_id: Plan identifier
+        updated_validation: Updated risk validation result
+        backup_path: Path to backup file
+    """
+    console.print()
+    console.print(f"✅ Plan {plan_id} updated successfully")
+    if updated_validation.passed:
+        console.print(f"📊 Position size recalculated: {updated_validation.position_size_result.position_size} shares")
+    console.print(f"💾 Backup saved: {backup_path}")
