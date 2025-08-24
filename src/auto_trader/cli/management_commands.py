@@ -39,6 +39,7 @@ from .management_utils import (
     _display_update_preview_and_confirmation,
     _perform_plan_update,
     _display_update_success,
+    calculate_all_plan_risks,
 )
 
 console = Console()
@@ -99,17 +100,20 @@ def list_plans_enhanced(
             console.print("[yellow]No trade plans found.[/yellow]")
             return
         
-        # Sort plans using utility function
-        plans = _sort_plans_by_criteria(plans, sort_by, risk_manager)
+        # Pre-calculate all risk data in single pass for performance
+        risk_results = calculate_all_plan_risks(plans, risk_manager)
+        plan_risk_data = risk_results["plan_risk_data"]
+        portfolio_data = risk_results["portfolio_summary"]
         
-        # Get and display portfolio summary
-        portfolio_data = get_portfolio_risk_summary(risk_manager, plans)
+        # Sort plans using pre-calculated risk data
+        plans = _sort_plans_by_criteria(plans, sort_by, plan_risk_data)
+        
+        # Display portfolio summary and plans table using cached data
         portfolio_panel = create_portfolio_summary_panel(portfolio_data)
         console.print(portfolio_panel)
         console.print()
         
-        # Display plans table and guidance
-        plans_table = create_plans_table(plans, risk_manager, show_verbose=verbose)
+        plans_table = create_plans_table(plans, plan_risk_data, show_verbose=verbose)
         console.print(plans_table)
         _display_plan_listing_guidance(verbose, status)
         
@@ -117,6 +121,7 @@ def list_plans_enhanced(
             "Enhanced plan listing completed",
             plans_count=len(plans),
             portfolio_risk=float(portfolio_data["current_risk_percent"]),
+            cache_stats=risk_results.get("cache_stats"),
         )
         
     except Exception as e:
@@ -377,8 +382,9 @@ def plan_stats(plans_dir: Optional[Path]) -> None:
         symbol_counts = Counter(plan.symbol for plan in all_plans)
         risk_counts = Counter(plan.risk_category for plan in all_plans)
         
-        # Get portfolio risk analysis
-        portfolio_data = get_portfolio_risk_summary(risk_manager, all_plans)
+        # Pre-calculate all risk data in single pass for performance
+        risk_results = calculate_all_plan_risks(all_plans, risk_manager)
+        portfolio_data = risk_results["portfolio_summary"]
         
         # Display header and portfolio summary
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -409,6 +415,7 @@ def plan_stats(plans_dir: Optional[Path]) -> None:
             total_plans=total_plans,
             unique_symbols=len(symbol_counts),
             portfolio_risk=float(portfolio_data["current_risk_percent"]),
+            cache_stats=risk_results.get("cache_stats"),
         )
     except Exception as e:
         handle_generic_error("plan statistics", e)

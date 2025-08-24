@@ -81,14 +81,14 @@ class TestListPlansEnhanced:
     
     @patch('auto_trader.cli.management_commands.RiskManager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
-    @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
+    @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
     @patch('auto_trader.cli.management_commands.create_plans_table')
     @patch('auto_trader.cli.management_commands.create_portfolio_summary_panel')
     def test_list_plans_enhanced_success(
         self,
         mock_panel,
         mock_table,
-        mock_risk_summary,
+        mock_calculate_risks,
         mock_loader_class,
         mock_rm_class,
         cli_runner,
@@ -105,7 +105,13 @@ class TestListPlansEnhanced:
         mock_loader_class.return_value = mock_loader
         
         mock_rm_class.return_value = mock_risk_manager
-        mock_risk_summary.return_value = {"current_risk_percent": Decimal("5.2")}
+        
+        # Mock the new calculate_all_plan_risks function
+        mock_calculate_risks.return_value = {
+            "plan_risk_data": {"AAPL_20250822_001": {"risk_percent": Decimal("2.5"), "is_valid": True}},
+            "portfolio_summary": {"current_risk_percent": Decimal("5.2")},
+            "cache_stats": {"cache_hits": 0, "cache_misses": 1}
+        }
         mock_panel.return_value = Mock()
         mock_table.return_value = Mock()
         
@@ -115,7 +121,7 @@ class TestListPlansEnhanced:
         # Verify success
         assert result.exit_code == 0
         mock_loader.load_all_plans.assert_called_once()
-        mock_risk_summary.assert_called_once()
+        mock_calculate_risks.assert_called_once()
     
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     def test_list_plans_enhanced_no_plans(self, mock_loader_class, cli_runner, temp_dir, mock_risk_manager):
@@ -152,14 +158,14 @@ class TestListPlansEnhanced:
         mock_loader.load_all_plans.assert_not_called()
     
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
-    @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
+    @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
     @patch('auto_trader.cli.management_commands.create_plans_table')
     @patch('auto_trader.cli.management_commands.create_portfolio_summary_panel')
     def test_list_plans_enhanced_verbose_mode(
         self,
         mock_panel,
         mock_table,
-        mock_risk_summary,
+        mock_calculate_risks,
         mock_loader_class,
         cli_runner,
         temp_dir,
@@ -171,7 +177,12 @@ class TestListPlansEnhanced:
         mock_loader.load_all_plans.return_value = {"TEST_001": mock_plan}
         mock_loader_class.return_value = mock_loader
         
-        mock_risk_summary.return_value = {"current_risk_percent": Decimal("5.2")}
+        # Mock the new calculate_all_plan_risks function
+        mock_calculate_risks.return_value = {
+            "plan_risk_data": {"TEST_001": {"risk_percent": Decimal("2.5"), "is_valid": True}},
+            "portfolio_summary": {"current_risk_percent": Decimal("5.2")},
+            "cache_stats": {"cache_hits": 0, "cache_misses": 1}
+        }
         
         result = cli_runner.invoke(
             list_plans_enhanced,
@@ -463,10 +474,10 @@ class TestPlanStats:
     
     @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
-    @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
+    @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
     def test_plan_stats_success(
         self,
-        mock_risk_summary,
+        mock_calculate_risks,
         mock_loader_class,
         mock_get_risk_manager,
         cli_runner,
@@ -489,15 +500,23 @@ class TestPlanStats:
         mock_loader.load_all_plans.return_value = {"PLAN1": mock_plan1, "PLAN2": mock_plan2}
         mock_loader_class.return_value = mock_loader
         
-        mock_risk_summary.return_value = {
-            "current_risk_percent": Decimal("6.2"),
-            "portfolio_limit_percent": Decimal("10.0"),
-            "remaining_capacity_percent": Decimal("3.8"),
-            "capacity_utilization_percent": Decimal("62.0"),
-            "total_plan_risk_percent": Decimal("4.5"),
-            "plan_risks": {},
-            "exceeds_limit": False,
-            "near_limit": False,
+        # Mock the new calculate_all_plan_risks function
+        mock_calculate_risks.return_value = {
+            "plan_risk_data": {
+                "PLAN1": {"risk_percent": Decimal("2.5"), "is_valid": True},
+                "PLAN2": {"risk_percent": Decimal("2.0"), "is_valid": True}
+            },
+            "portfolio_summary": {
+                "current_risk_percent": Decimal("6.2"),
+                "portfolio_limit_percent": Decimal("10.0"),
+                "remaining_capacity_percent": Decimal("3.8"),
+                "capacity_utilization_percent": Decimal("62.0"),
+                "total_plan_risk_percent": Decimal("4.5"),
+                "plan_risks": {},
+                "exceeds_limit": False,
+                "near_limit": False,
+            },
+            "cache_stats": {"cache_hits": 0, "cache_misses": 2}
         }
         
         mock_get_risk_manager.return_value = mock_risk_manager

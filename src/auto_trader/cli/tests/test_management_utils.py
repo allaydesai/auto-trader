@@ -190,7 +190,16 @@ class TestTableCreation:
         """Test basic plans table creation."""
         plans = [sample_plan]
         
-        table = create_plans_table(plans, mock_risk_manager, show_verbose=False)
+        # Create mock risk data
+        plan_risk_data = {
+            sample_plan.plan_id: {
+                "risk_percent": Decimal("2.5"),
+                "position_size": 100,
+                "is_valid": True
+            }
+        }
+        
+        table = create_plans_table(plans, plan_risk_data, show_verbose=False)
         
         assert isinstance(table, Table)
         assert table.title == "📊 TRADE PLANS"
@@ -200,7 +209,16 @@ class TestTableCreation:
         """Test verbose plans table creation."""
         plans = [sample_plan]
         
-        table = create_plans_table(plans, mock_risk_manager, show_verbose=True)
+        # Create mock risk data  
+        plan_risk_data = {
+            sample_plan.plan_id: {
+                "risk_percent": Decimal("2.5"),
+                "position_size": 100,
+                "is_valid": True
+            }
+        }
+        
+        table = create_plans_table(plans, plan_risk_data, show_verbose=True)
         
         assert isinstance(table, Table)
         assert len(table.columns) == 9  # Basic + verbose columns

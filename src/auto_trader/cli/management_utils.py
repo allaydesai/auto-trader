@@ -21,6 +21,71 @@ console = Console()
 logger = get_logger("management_utils", "cli")
 
 
+class RiskCalculationCache:
+    """Cache for expensive risk calculation results to improve performance."""
+    
+    def __init__(self):
+        self._cache = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
+    
+    def get_cache_key(self, plan: TradePlan) -> str:
+        """
+        Generate cache key based on plan fields that affect risk calculation.
+        
+        Args:
+            plan: Trade plan to generate key for
+            
+        Returns:
+            Cache key string
+        """
+        # Include fields that affect risk calculation: prices, risk category, position size factors
+        return f"{plan.plan_id}:{plan.entry_level}:{plan.stop_loss}:{plan.take_profit}:{plan.risk_category}"
+    
+    def get(self, plan: TradePlan, risk_manager: RiskManager):
+        """
+        Get cached risk validation result or calculate if not cached.
+        
+        Args:
+            plan: Trade plan to get risk calculation for
+            risk_manager: Risk manager to use for calculation
+            
+        Returns:
+            Risk validation result from cache or fresh calculation
+        """
+        cache_key = self.get_cache_key(plan)
+        
+        if cache_key in self._cache:
+            self._cache_hits += 1
+            return self._cache[cache_key]
+        
+        # Calculate fresh result
+        result = risk_manager.validate_trade_plan(plan)
+        self._cache[cache_key] = result
+        self._cache_misses += 1
+        
+        return result
+    
+    def clear(self):
+        """Clear the cache (useful for testing or when risk parameters change)."""
+        self._cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache performance statistics."""
+        total_requests = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total_requests * 100) if total_requests > 0 else 0
+        
+        return {
+            "cache_hits": self._cache_hits,
+            "cache_misses": self._cache_misses,
+            "total_requests": total_requests,
+            "hit_rate_percent": hit_rate,
+            "cached_items": len(self._cache)
+        }
+
+
 class PlanManagementError(Exception):
     """Base exception for plan management operations."""
     pass
@@ -63,24 +128,24 @@ def create_plan_backup(plan_path: Path, backup_dir: Path) -> Path:
         raise BackupCreationError(f"Failed to create backup: {e}") from e
 
 
-def _sort_plans_by_criteria(plans: List[TradePlan], sort_by: str, risk_manager: RiskManager) -> List[TradePlan]:
+def _sort_plans_by_criteria(plans: List[TradePlan], sort_by: str, 
+                           plan_risk_data: Optional[Dict[str, Any]] = None) -> List[TradePlan]:
     """
-    Sort plans by specified criteria.
+    Sort plans by specified criteria using pre-calculated risk data.
     
     Args:
         plans: List of trade plans to sort
         sort_by: Sort criteria ('risk', 'symbol', 'date')
-        risk_manager: Risk manager for calculating risk amounts
+        plan_risk_data: Pre-calculated risk data from calculate_all_plan_risks()
         
     Returns:
         Sorted list of trade plans
     """
-    if sort_by == "risk":
+    if sort_by == "risk" and plan_risk_data:
+        # Use pre-calculated risk data for efficient sorting
         def get_risk(plan):
-            result = risk_manager.validate_trade_plan(plan)
-            if result.passed and result.position_size_result:
-                return result.position_size_result.risk_amount_percent
-            return Decimal("0")
+            risk_data = plan_risk_data.get(plan.plan_id, {})
+            return risk_data.get("risk_percent", Decimal("0"))
         return sorted(plans, key=get_risk, reverse=True)
     elif sort_by == "symbol":
         return sorted(plans, key=lambda p: p.symbol)
@@ -370,6 +435,111 @@ def display_plan_insights(total_plans: int, symbol_counts, portfolio_data: Dict[
         console.print("   ✅ Portfolio risk within safe limits")
 
 
+def calculate_all_plan_risks(plans: List[TradePlan], risk_manager: RiskManager, 
+                           use_cache: bool = True) -> Dict[str, Any]:
+    """
+    Pre-calculate risk validation results for all plans in a single pass.
+    
+    This function eliminates redundant risk calculations by computing all risk data once
+    and returning it in a structured format for use by sorting, portfolio summary,
+    and table creation functions.
+    
+    Args:
+        plans: List of trade plans to calculate risks for
+        risk_manager: Risk manager for calculations
+        use_cache: Whether to use caching (default True)
+        
+    Returns:
+        Dictionary containing all risk calculation results
+    """
+    import time
+    start_time = time.time()
+    
+    # Initialize cache if using caching
+    cache = RiskCalculationCache() if use_cache else None
+    
+    # Pre-calculate all risk validations
+    plan_risk_data = {}
+    active_plan_risks = {}
+    total_plan_risk = Decimal("0.0")
+    
+    for plan in plans:
+        # Get risk validation result (cached or fresh)
+        if cache:
+            validation_result = cache.get(plan, risk_manager)
+        else:
+            validation_result = risk_manager.validate_trade_plan(plan)
+        
+        # Store comprehensive risk data for this plan
+        plan_risk_data[plan.plan_id] = {
+            "plan": plan,
+            "validation_result": validation_result,
+            "risk_percent": Decimal("0"),
+            "position_size": 0,
+            "dollar_risk": Decimal("0"),
+            "is_valid": validation_result.passed,
+        }
+        
+        # Calculate risk metrics if validation passed
+        if validation_result.passed and validation_result.position_size_result:
+            risk_percent = validation_result.position_size_result.risk_amount_percent
+            position_size = validation_result.position_size_result.position_size
+            dollar_risk = validation_result.position_size_result.risk_amount_dollars
+            
+            plan_risk_data[plan.plan_id].update({
+                "risk_percent": risk_percent,
+                "position_size": position_size,
+                "dollar_risk": dollar_risk,
+            })
+            
+            # Track active plan risks for portfolio summary
+            if plan.status in [TradePlanStatus.AWAITING_ENTRY, TradePlanStatus.POSITION_OPEN]:
+                total_plan_risk += risk_percent
+                active_plan_risks[plan.plan_id] = {
+                    "risk_percent": risk_percent,
+                    "position_size": position_size,
+                    "dollar_risk": dollar_risk,
+                }
+    
+    # Calculate portfolio summary data
+    current_risk = risk_manager.portfolio_tracker.get_current_portfolio_risk()
+    portfolio_limit = PortfolioTracker.MAX_PORTFOLIO_RISK
+    remaining_capacity = max(Decimal("0"), portfolio_limit - current_risk)
+    capacity_percent = (remaining_capacity / portfolio_limit) * 100
+    
+    # Calculate execution time
+    execution_time = time.time() - start_time
+    
+    # Compile complete results
+    results = {
+        "plan_risk_data": plan_risk_data,  # Individual plan risk data
+        "portfolio_summary": {
+            "current_risk_percent": current_risk,
+            "portfolio_limit_percent": portfolio_limit,
+            "remaining_capacity_percent": remaining_capacity,
+            "capacity_utilization_percent": capacity_percent,
+            "total_plan_risk_percent": total_plan_risk,
+            "plan_risks": active_plan_risks,
+            "exceeds_limit": current_risk > portfolio_limit,
+            "near_limit": current_risk > (portfolio_limit * Decimal("0.8")),
+        },
+        "cache_stats": cache.get_stats() if cache else None,
+        "performance": {
+            "execution_time_seconds": execution_time,
+            "plans_processed": len(plans),
+            "calculations_per_second": len(plans) / execution_time if execution_time > 0 else 0
+        }
+    }
+    
+    if cache:
+        logger.debug("Risk calculation performance", 
+                    execution_time=execution_time,
+                    plans_processed=len(plans),
+                    **cache.get_stats())
+    
+    return results
+
+
 def get_portfolio_risk_summary(
     risk_manager: RiskManager,
     plans: List[TradePlan],
@@ -459,15 +629,15 @@ def format_plan_status(status: TradePlanStatus) -> str:
 
 def create_plans_table(
     plans: List[TradePlan],
-    risk_manager: RiskManager,
+    plan_risk_data: Optional[Dict[str, Any]] = None,
     show_verbose: bool = False,
 ) -> Table:
     """
-    Create Rich table for plan display with risk integration.
+    Create Rich table for plan display with pre-calculated risk data.
     
     Args:
         plans: List of trade plans to display
-        risk_manager: Risk manager for calculations
+        plan_risk_data: Pre-calculated risk data from calculate_all_plan_risks()
         show_verbose: Whether to show verbose details
         
     Returns:
@@ -490,16 +660,20 @@ def create_plans_table(
     
     # Add rows for each plan
     for plan in plans:
-        # Calculate risk and position size
-        validation_result = risk_manager.validate_trade_plan(plan)
-        
-        if validation_result.passed and validation_result.position_size_result:
-            risk_percent = validation_result.position_size_result.risk_amount_percent
-            position_size = validation_result.position_size_result.position_size
-            risk_indicator = format_risk_indicator(risk_percent, PortfolioTracker.MAX_PORTFOLIO_RISK)
-            size_display = f"{position_size} shares"
+        # Use pre-calculated risk data if available
+        if plan_risk_data and plan.plan_id in plan_risk_data:
+            risk_data = plan_risk_data[plan.plan_id]
+            if risk_data["is_valid"]:
+                risk_percent = risk_data["risk_percent"]
+                position_size = risk_data["position_size"]
+                risk_indicator = format_risk_indicator(risk_percent, PortfolioTracker.MAX_PORTFOLIO_RISK)
+                size_display = f"{position_size} shares"
+            else:
+                risk_indicator = "❌ Invalid"
+                size_display = "N/A"
         else:
-            risk_indicator = "❌ Invalid"
+            # Fallback for backward compatibility (should not happen in normal flow)
+            risk_indicator = "❓ No Data"
             size_display = "N/A"
         
         # Basic columns
