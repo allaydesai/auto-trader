@@ -579,6 +579,219 @@ class TestErrorHandling:
         assert result.exit_code == 1  # Should handle error gracefully and exit with error code
 
 
+class TestErrorHandlingInCommands:
+    """Test specific error handling in CLI commands."""
+    
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.TradePlanLoader')
+    def test_list_plans_enhanced_file_system_error(self, mock_loader_class, mock_risk_manager, cli_runner, temp_dir):
+        """Test list_plans_enhanced handles file system errors properly."""
+        mock_risk_manager.return_value = Mock()
+        
+        # Mock TradePlanLoader to raise IOError
+        mock_loader = Mock()
+        mock_loader.load_all_plans.side_effect = IOError("Permission denied")
+        mock_loader_class.return_value = mock_loader
+        
+        result = cli_runner.invoke(list_plans_enhanced, [
+            '--plans-dir', str(temp_dir)
+        ])
+        
+        # Should handle error gracefully and exit with error code
+        assert result.exit_code == 1
+        assert "Failed to access plan files" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.validate_plans_comprehensive')
+    def test_validate_config_file_system_error(self, mock_validate, mock_risk_manager, cli_runner, temp_dir):
+        """Test validate_config handles file system errors properly."""
+        mock_risk_manager.return_value = Mock()
+        
+        # Mock validate_plans_comprehensive to raise IOError
+        mock_validate.side_effect = IOError("Permission denied")
+        
+        result = cli_runner.invoke(validate_config, [
+            '--plans-dir', str(temp_dir)
+        ])
+        
+        # Should handle error gracefully and exit with error code
+        assert result.exit_code == 1
+        assert "Failed to access validation files" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.TradePlanLoader')
+    def test_update_plan_backup_creation_error(self, mock_loader_class, mock_risk_manager, cli_runner, temp_dir):
+        """Test update_plan handles backup creation errors properly."""
+        from ..management_utils import BackupCreationError
+        
+        mock_risk_manager.return_value = Mock()
+        
+        # Mock TradePlanLoader to return a plan
+        mock_loader = Mock()
+        mock_plan = Mock()
+        mock_plan.plan_id = 'TEST_001'
+        mock_plan.model_dump.return_value = {
+            'plan_id': 'TEST_001',
+            'symbol': 'AAPL',
+            'entry_level': 180.50,
+            'stop_loss': 178.00,
+            'take_profit': 185.00,
+            'risk_category': 'normal',
+            'entry_function': {
+                'function_type': 'close_above',
+                'parameters': {'threshold': '180.50'},
+                'timeframe': '15min'
+            },
+            'exit_function': {
+                'function_type': 'stop_loss_take_profit',
+                'parameters': {},
+                'timeframe': '1min'
+            }
+        }
+        mock_loader.get_plan_by_id.return_value = mock_plan
+        mock_loader_class.return_value = mock_loader
+        
+        # Mock _perform_plan_update to raise BackupCreationError
+        with patch('auto_trader.cli.management_commands._perform_plan_update') as mock_perform:
+            mock_perform.side_effect = BackupCreationError("Backup failed")
+            
+            result = cli_runner.invoke(update_plan, [
+                'TEST_001',
+                '--entry-level', '181.00',
+                '--plans-dir', str(temp_dir),
+                '--force'
+            ])
+            
+            assert result.exit_code == 1
+            assert "Failed to create backup before plan update" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.TradePlanLoader')
+    def test_update_plan_backup_verification_error(self, mock_loader_class, mock_risk_manager, cli_runner, temp_dir):
+        """Test update_plan handles backup verification errors properly."""
+        from ..management_utils import BackupVerificationError
+        
+        mock_risk_manager.return_value = Mock()
+        
+        # Mock TradePlanLoader to return a plan
+        mock_loader = Mock()
+        mock_plan = Mock()
+        mock_plan.plan_id = 'TEST_001'
+        mock_plan.model_dump.return_value = {
+            'plan_id': 'TEST_001',
+            'symbol': 'AAPL',
+            'entry_level': 180.50,
+            'stop_loss': 178.00,
+            'take_profit': 185.00,
+            'risk_category': 'normal',
+            'entry_function': {
+                'function_type': 'close_above',
+                'parameters': {'threshold': '180.50'},
+                'timeframe': '15min'
+            },
+            'exit_function': {
+                'function_type': 'stop_loss_take_profit',
+                'parameters': {},
+                'timeframe': '1min'
+            }
+        }
+        mock_loader.get_plan_by_id.return_value = mock_plan
+        mock_loader_class.return_value = mock_loader
+        
+        # Mock _perform_plan_update to raise BackupVerificationError
+        with patch('auto_trader.cli.management_commands._perform_plan_update') as mock_perform:
+            mock_perform.side_effect = BackupVerificationError("Verification failed")
+            
+            result = cli_runner.invoke(update_plan, [
+                'TEST_001',
+                '--entry-level', '181.00',
+                '--plans-dir', str(temp_dir),
+                '--force'
+            ])
+            
+            assert result.exit_code == 1
+            assert "Backup verification failed, plan update cancelled" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.TradePlanLoader')
+    def test_archive_plans_file_system_error(self, mock_loader_class, mock_risk_manager, cli_runner, temp_dir):
+        """Test archive_plans handles file system errors properly."""
+        mock_risk_manager.return_value = Mock()
+        
+        # Mock TradePlanLoader to raise IOError
+        mock_loader = Mock()
+        mock_loader.get_plans_by_status.side_effect = IOError("Permission denied")
+        mock_loader_class.return_value = mock_loader
+        
+        result = cli_runner.invoke(archive_plans, [
+            '--plans-dir', str(temp_dir),
+            '--force'
+        ])
+        
+        # Should handle error gracefully and exit with error code
+        assert result.exit_code == 1
+        assert "Failed to access archiving files" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.TradePlanLoader')
+    def test_plan_stats_file_system_error(self, mock_loader_class, mock_risk_manager, cli_runner, temp_dir):
+        """Test plan_stats handles file system errors properly."""
+        mock_risk_manager.return_value = Mock()
+        
+        # Mock TradePlanLoader to raise IOError
+        mock_loader = Mock()
+        mock_loader.load_all_plans.side_effect = IOError("Permission denied")
+        mock_loader_class.return_value = mock_loader
+        
+        result = cli_runner.invoke(plan_stats, [
+            '--plans-dir', str(temp_dir)
+        ])
+        
+        # Should handle error gracefully and exit with error code
+        assert result.exit_code == 1
+        assert "Failed to access plan files" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.TradePlanLoader')
+    def test_list_plans_enhanced_plan_loading_error(self, mock_loader_class, mock_risk_manager, cli_runner, temp_dir):
+        """Test list_plans_enhanced handles plan loading errors."""
+        from ..management_utils import PlanLoadingError
+        
+        mock_risk_manager.return_value = Mock()
+        mock_loader = Mock()
+        mock_loader.load_all_plans.side_effect = PlanLoadingError("Loading failed")
+        mock_loader_class.return_value = mock_loader
+        
+        result = cli_runner.invoke(list_plans_enhanced, [
+            '--plans-dir', str(temp_dir)
+        ])
+        
+        assert result.exit_code == 1
+        assert "Failed to load trade plans" in result.output
+
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
+    @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
+    def test_list_plans_enhanced_risk_calculation_error(self, mock_calc_risks, mock_risk_manager, cli_runner, temp_dir):
+        """Test list_plans_enhanced handles risk calculation errors."""
+        from ..management_utils import RiskCalculationError
+        
+        mock_risk_manager.return_value = Mock()
+        mock_calc_risks.side_effect = RiskCalculationError("Risk calculation failed")
+        
+        # Create a minimal setup to get past initial loading
+        with patch('auto_trader.cli.management_commands.TradePlanLoader') as mock_loader_class:
+            mock_loader = Mock()
+            mock_loader.load_all_plans.return_value = {'TEST_001': Mock()}
+            mock_loader_class.return_value = mock_loader
+            
+            result = cli_runner.invoke(list_plans_enhanced, [
+                '--plans-dir', str(temp_dir)
+            ])
+            
+            assert result.exit_code == 1
+            assert "Failed to calculate plan risks" in result.output
+
+
 @pytest.mark.integration
 class TestIntegrationScenarios:
     """Integration tests for management commands."""

@@ -21,7 +21,14 @@ from .management_utils import (
     create_portfolio_summary_panel,
     get_portfolio_risk_summary,
     PlanManagementError,
+    PlanLoadingError,
+    ValidationError,
+    FileSystemError,
+    RiskCalculationError,
+    BackupCreationError,
+    BackupVerificationError,
     validate_plans_comprehensive,
+    verify_backup,
     _sort_plans_by_criteria,
     _display_plan_listing_guidance,
     process_plan_field_updates,
@@ -124,8 +131,22 @@ def list_plans_enhanced(
             cache_stats=risk_results.get("cache_stats"),
         )
         
-    except Exception as e:
-        handle_generic_error("enhanced plan listing", e)
+    except (IOError, OSError, PermissionError) as e:
+        console.print(f"[red]File system error: {e}[/red]")
+        logger.error("Enhanced plan listing failed - file system error", error=str(e))
+        raise click.ClickException("Failed to access plan files")
+    except PlanLoadingError as e:
+        console.print(f"[red]Plan loading error: {e}[/red]")
+        logger.error("Enhanced plan listing failed - plan loading", error=str(e))
+        raise click.ClickException("Failed to load trade plans")
+    except RiskCalculationError as e:
+        console.print(f"[red]Risk calculation error: {e}[/red]")
+        logger.error("Enhanced plan listing failed - risk calculation", error=str(e))
+        raise click.ClickException("Failed to calculate plan risks")
+    except PlanManagementError as e:
+        console.print(f"[red]Plan management error: {e}[/red]")
+        logger.error("Enhanced plan listing failed - management error", error=str(e))
+        raise click.ClickException("Plan listing operation failed")
 
 
 @click.command()
@@ -177,8 +198,22 @@ def validate_config(
             portfolio_passed=results["portfolio_risk_passed"],
         )
         
-    except Exception as e:
-        handle_generic_error("comprehensive validation", e)
+    except (IOError, OSError, PermissionError) as e:
+        console.print(f"[red]File system error: {e}[/red]")
+        logger.error("Comprehensive validation failed - file system error", error=str(e))
+        raise click.ClickException("Failed to access validation files")
+    except ValidationError as e:
+        console.print(f"[red]Validation error: {e}[/red]")
+        logger.error("Comprehensive validation failed - validation error", error=str(e))
+        raise click.ClickException("Validation operation failed")
+    except RiskCalculationError as e:
+        console.print(f"[red]Risk calculation error: {e}[/red]")
+        logger.error("Comprehensive validation failed - risk calculation", error=str(e))
+        raise click.ClickException("Failed to calculate portfolio risks")
+    except PlanManagementError as e:
+        console.print(f"[red]Plan management error: {e}[/red]")
+        logger.error("Comprehensive validation failed - management error", error=str(e))
+        raise click.ClickException("Validation operation failed")
 
 @click.command()
 @click.argument("plan_id", type=str)
@@ -264,10 +299,30 @@ def update_plan(
             backup_path=str(backup_path),
         )
         
+    except (IOError, OSError, PermissionError) as e:
+        console.print(f"[red]File system error: {e}[/red]")
+        logger.error("Plan update failed - file system error", plan_id=plan_id, error=str(e))
+        raise click.ClickException("Failed to access plan files")
+    except PlanLoadingError as e:
+        console.print(f"[red]Plan loading error: {e}[/red]")
+        logger.error("Plan update failed - plan loading", plan_id=plan_id, error=str(e))
+        raise click.ClickException("Failed to load plan")
+    except BackupCreationError as e:
+        console.print(f"[red]Backup creation error: {e}[/red]")
+        logger.error("Plan update failed - backup creation", plan_id=plan_id, error=str(e))
+        raise click.ClickException("Failed to create backup before plan update")
+    except BackupVerificationError as e:
+        console.print(f"[red]Backup verification error: {e}[/red]")
+        logger.error("Plan update failed - backup verification", plan_id=plan_id, error=str(e))
+        raise click.ClickException("Backup verification failed, plan update cancelled")
+    except RiskCalculationError as e:
+        console.print(f"[red]Risk calculation error: {e}[/red]")
+        logger.error("Plan update failed - risk calculation", plan_id=plan_id, error=str(e))
+        raise click.ClickException("Failed to calculate plan risks")
     except PlanManagementError as e:
         console.print(f"[red]Plan management error: {e}[/red]")
-    except Exception as e:
-        handle_generic_error("plan update", e)
+        logger.error("Plan update failed - management error", plan_id=plan_id, error=str(e))
+        raise click.ClickException("Plan update operation failed")
 
 
 @click.command()
@@ -346,8 +401,22 @@ def archive_plans(
             archive_dir=str(archive_dir),
         )
         
-    except Exception as e:
-        handle_generic_error("plan archiving", e)
+    except (IOError, OSError, PermissionError) as e:
+        console.print(f"[red]File system error: {e}[/red]")
+        logger.error("Plan archiving failed - file system error", error=str(e))
+        raise click.ClickException("Failed to access archiving files")
+    except PlanLoadingError as e:
+        console.print(f"[red]Plan loading error: {e}[/red]")
+        logger.error("Plan archiving failed - plan loading", error=str(e))
+        raise click.ClickException("Failed to load plans for archiving")
+    except FileSystemError as e:
+        console.print(f"[red]Archive operation error: {e}[/red]")
+        logger.error("Plan archiving failed - file system operation", error=str(e))
+        raise click.ClickException("Failed to perform archiving operation")
+    except PlanManagementError as e:
+        console.print(f"[red]Plan management error: {e}[/red]")
+        logger.error("Plan archiving failed - management error", error=str(e))
+        raise click.ClickException("Archiving operation failed")
 
 
 @click.command()
@@ -417,5 +486,19 @@ def plan_stats(plans_dir: Optional[Path]) -> None:
             portfolio_risk=float(portfolio_data["current_risk_percent"]),
             cache_stats=risk_results.get("cache_stats"),
         )
-    except Exception as e:
-        handle_generic_error("plan statistics", e)
+    except (IOError, OSError, PermissionError) as e:
+        console.print(f"[red]File system error: {e}[/red]")
+        logger.error("Plan statistics failed - file system error", error=str(e))
+        raise click.ClickException("Failed to access plan files")
+    except PlanLoadingError as e:
+        console.print(f"[red]Plan loading error: {e}[/red]")
+        logger.error("Plan statistics failed - plan loading", error=str(e))
+        raise click.ClickException("Failed to load trade plans")
+    except RiskCalculationError as e:
+        console.print(f"[red]Risk calculation error: {e}[/red]")
+        logger.error("Plan statistics failed - risk calculation", error=str(e))
+        raise click.ClickException("Failed to calculate plan statistics")
+    except PlanManagementError as e:
+        console.print(f"[red]Plan management error: {e}[/red]")
+        logger.error("Plan statistics failed - management error", error=str(e))
+        raise click.ClickException("Statistics operation failed")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import yaml
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -40,7 +41,8 @@ class RiskCalculationCache:
             Cache key string
         """
         # Include fields that affect risk calculation: prices, risk category, position size factors
-        return f"{plan.plan_id}:{plan.entry_level}:{plan.stop_loss}:{plan.take_profit}:{plan.risk_category}"
+        # NOTE: plan_id is NOT included since cache should hit for plans with same risk parameters
+        return f"{plan.symbol}:{plan.entry_level}:{plan.stop_loss}:{plan.take_profit}:{plan.risk_category}"
     
     def get(self, plan: TradePlan, risk_manager: RiskManager):
         """
@@ -96,8 +98,33 @@ class BackupCreationError(PlanManagementError):
     pass
 
 
+class BackupVerificationError(PlanManagementError):
+    """Raised when backup verification fails."""
+    pass
+
+
 class PlanUpdateError(PlanManagementError):
     """Raised when plan update operation fails."""
+    pass
+
+
+class PlanLoadingError(PlanManagementError):
+    """Raised when plan loading fails."""
+    pass
+
+
+class ValidationError(PlanManagementError):
+    """Raised when plan validation fails."""
+    pass
+
+
+class FileSystemError(PlanManagementError):
+    """Raised when file system operations fail."""
+    pass
+
+
+class RiskCalculationError(PlanManagementError):
+    """Raised when risk calculations fail."""
     pass
 
 
@@ -121,11 +148,69 @@ def create_plan_backup(plan_path: Path, backup_dir: Path) -> Path:
     
     try:
         backup_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        raise BackupCreationError(f"Failed to create backup directory {backup_dir}: {e}") from e
+    
+    try:
         shutil.copy2(plan_path, backup_path)
-        logger.info("Plan backup created", source=str(plan_path), backup=str(backup_path))
-        return backup_path
-    except Exception as e:
-        raise BackupCreationError(f"Failed to create backup: {e}") from e
+    except (OSError, PermissionError, shutil.SameFileError) as e:
+        raise BackupCreationError(f"Failed to copy plan file to backup: {e}") from e
+    
+    logger.info("Plan backup created", source=str(plan_path), backup=str(backup_path))
+    return backup_path
+
+
+def verify_backup(original_path: Path, backup_path: Path) -> bool:
+    """
+    Verify backup integrity by comparing file content and metadata.
+    
+    Args:
+        original_path: Path to original plan file
+        backup_path: Path to backup file
+        
+    Returns:
+        True if backup is valid
+        
+    Raises:
+        BackupVerificationError: If backup verification fails
+    """
+    try:
+        if not backup_path.exists():
+            raise BackupVerificationError(f"Backup file does not exist: {backup_path}")
+        
+        if not backup_path.is_file():
+            raise BackupVerificationError(f"Backup path is not a file: {backup_path}")
+        
+        # Compare file sizes
+        original_size = original_path.stat().st_size
+        backup_size = backup_path.stat().st_size
+        
+        if original_size != backup_size:
+            raise BackupVerificationError(
+                f"Backup size mismatch: original={original_size}, backup={backup_size}"
+            )
+        
+        # Verify backup contains valid YAML content
+        try:
+            with open(backup_path, 'r') as f:
+                backup_content = f.read()
+            
+            if not backup_content.strip():
+                raise BackupVerificationError("Backup file is empty")
+                
+            # Basic YAML format check
+            yaml.safe_load(backup_content)
+            
+        except yaml.YAMLError as e:
+            raise BackupVerificationError(f"Backup contains invalid YAML: {e}") from e
+        except IOError as e:
+            raise BackupVerificationError(f"Cannot read backup file: {e}") from e
+        
+        logger.info("Backup verification passed", backup=str(backup_path))
+        return True
+        
+    except (OSError, PermissionError) as e:
+        raise BackupVerificationError(f"Cannot access backup file: {e}") from e
 
 
 def _sort_plans_by_criteria(plans: List[TradePlan], sort_by: str, 
@@ -493,6 +578,8 @@ def calculate_all_plan_risks(plans: List[TradePlan], risk_manager: RiskManager,
             })
             
             # Track active plan risks for portfolio summary
+            # NOTE: total_plan_risk is sum of individual plan risks, which may differ
+            # from actual portfolio risk if positions are partially executed
             if plan.status in [TradePlanStatus.AWAITING_ENTRY, TradePlanStatus.POSITION_OPEN]:
                 total_plan_risk += risk_percent
                 active_plan_risks[plan.plan_id] = {
@@ -501,11 +588,11 @@ def calculate_all_plan_risks(plans: List[TradePlan], risk_manager: RiskManager,
                     "dollar_risk": dollar_risk,
                 }
     
-    # Calculate portfolio summary data
+    # Calculate portfolio summary data using ACTUAL portfolio risk from tracker
     current_risk = risk_manager.portfolio_tracker.get_current_portfolio_risk()
     portfolio_limit = PortfolioTracker.MAX_PORTFOLIO_RISK
     remaining_capacity = max(Decimal("0"), portfolio_limit - current_risk)
-    capacity_percent = (remaining_capacity / portfolio_limit) * 100
+    utilization_percent = (current_risk / portfolio_limit) * 100
     
     # Calculate execution time
     execution_time = time.time() - start_time
@@ -517,7 +604,7 @@ def calculate_all_plan_risks(plans: List[TradePlan], risk_manager: RiskManager,
             "current_risk_percent": current_risk,
             "portfolio_limit_percent": portfolio_limit,
             "remaining_capacity_percent": remaining_capacity,
-            "capacity_utilization_percent": capacity_percent,
+            "capacity_utilization_percent": utilization_percent,
             "total_plan_risk_percent": total_plan_risk,
             "plan_risks": active_plan_risks,
             "exceeds_limit": current_risk > portfolio_limit,
@@ -574,13 +661,13 @@ def get_portfolio_risk_summary(
                 }
     
     remaining_capacity = max(Decimal("0"), portfolio_limit - current_risk)
-    capacity_percent = (remaining_capacity / portfolio_limit) * 100
+    utilization_percent = (current_risk / portfolio_limit) * 100
     
     return {
         "current_risk_percent": current_risk,
         "portfolio_limit_percent": portfolio_limit,
         "remaining_capacity_percent": remaining_capacity,
-        "capacity_utilization_percent": capacity_percent,
+        "capacity_utilization_percent": utilization_percent,
         "total_plan_risk_percent": total_plan_risk,
         "plan_risks": plan_risks,
         "exceeds_limit": current_risk > portfolio_limit,
@@ -827,9 +914,15 @@ def validate_plans_comprehensive(
             else:
                 file_result["errors"] = validation_result.errors
                 
-        except Exception as e:
+        except (IOError, OSError, PermissionError) as e:
+            file_result["errors"].append(f"File access error: {e}")
+            logger.error("Plan validation failed - file access", file=str(file_path), error=str(e))
+        except (yaml.YAMLError, UnicodeDecodeError) as e:
+            file_result["errors"].append(f"File format error: {e}")
+            logger.error("Plan validation failed - format error", file=str(file_path), error=str(e))
+        except ValueError as e:
             file_result["errors"].append(f"Validation error: {e}")
-            logger.error("Plan validation failed", file=str(file_path), error=str(e))
+            logger.error("Plan validation failed - validation error", file=str(file_path), error=str(e))
         
         results["file_results"][file_path.name] = file_result
     
@@ -961,8 +1054,10 @@ def _create_and_validate_updated_plan(plan: TradePlan, updates: Dict[str, Any]) 
     from ..models.trade_plan import TradePlan
     try:
         return TradePlan(**updated_plan_data)
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         raise PlanUpdateError(f"Invalid field values: {e}") from e
+    except Exception as e:
+        raise PlanUpdateError(f"Unexpected error creating updated plan: {e}") from e
 
 
 def _display_update_preview_and_confirmation(plan_id: str, plan: TradePlan, updates: Dict[str, Any], 
@@ -1007,7 +1102,7 @@ def _display_update_preview_and_confirmation(plan_id: str, plan: TradePlan, upda
 
 def _perform_plan_update(plan_id: str, updated_plan: TradePlan, plans_dir: Path, backup_dir: Path) -> Path:
     """
-    Perform the actual plan file update.
+    Perform the actual plan file update with backup verification.
     
     Args:
         plan_id: Plan identifier
@@ -1017,15 +1112,41 @@ def _perform_plan_update(plan_id: str, updated_plan: TradePlan, plans_dir: Path,
         
     Returns:
         Path to created backup file
+        
+    Raises:
+        BackupVerificationError: If backup verification fails
+        FileSystemError: If file operations fail
     """
-    # Create backup and update file
     plan_file_path = plans_dir / f"{plan_id}.yaml"
-    backup_path = create_plan_backup(plan_file_path, backup_dir)
     
-    import yaml
-    with open(plan_file_path, 'w') as f:
-        yaml.dump(updated_plan.model_dump(mode='python'), f, default_flow_style=False)
+    # Create backup first
+    try:
+        backup_path = create_plan_backup(plan_file_path, backup_dir)
+    except BackupCreationError as e:
+        raise FileSystemError(f"Failed to create backup before update: {e}") from e
     
+    # Verify backup integrity before proceeding
+    try:
+        verify_backup(plan_file_path, backup_path)
+        logger.info("Backup verification passed, proceeding with plan update", 
+                   plan_id=plan_id, backup=str(backup_path))
+    except BackupVerificationError as e:
+        # Cleanup failed backup if verification fails
+        try:
+            backup_path.unlink()
+        except OSError:
+            pass  # Ignore cleanup failures
+        raise FileSystemError(f"Backup verification failed, update cancelled: {e}") from e
+    
+    # Proceed with file update only after successful backup verification
+    try:
+        with open(plan_file_path, 'w') as f:
+            yaml.dump(updated_plan.model_dump(mode='python'), f, default_flow_style=False)
+    except (IOError, OSError, PermissionError, yaml.YAMLError) as e:
+        raise FileSystemError(f"Failed to write updated plan file: {e}") from e
+    
+    logger.info("Plan update completed successfully", 
+               plan_id=plan_id, backup=str(backup_path))
     return backup_path
 
 
