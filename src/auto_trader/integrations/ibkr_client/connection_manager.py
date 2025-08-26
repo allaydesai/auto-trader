@@ -7,11 +7,8 @@ from typing import Optional
 
 from loguru import logger
 
-from .circuit_breaker import CircuitBreaker, CircuitBreakerError
-from .client import ConnectionState, IBKRClient
-import sys
-sys.path.insert(0, str(Path(__file__).parents[4] / "src"))
-
+from .circuit_breaker import CircuitBreaker, CircuitBreakerError, CircuitBreakerState
+from .client import ConnectionState, IBKRClient, ConnectionStatus
 from config import Settings
 
 
@@ -98,7 +95,7 @@ class ConnectionManager:
         """
         return self._client.is_connected()
 
-    def get_connection_status(self):
+    def get_connection_status(self) -> ConnectionStatus:
         """
         Get current connection status.
         
@@ -107,7 +104,7 @@ class ConnectionManager:
         """
         return self._client.get_connection_status()
 
-    def get_circuit_breaker_state(self):
+    def get_circuit_breaker_state(self) -> CircuitBreakerState:
         """
         Get circuit breaker state.
         

@@ -8,10 +8,6 @@ from ib_async import IB
 from loguru import logger
 from pydantic import BaseModel
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parents[4] / "src"))
-
 from config import ConfigLoader, Settings
 
 
