@@ -13,51 +13,76 @@ from rich.console import Console
 from ..logging_config import get_logger
 from ..models import TradePlanLoader, TradePlanStatus, ValidationEngine
 from ..risk_management import RiskManager
-from config import get_config_loader
+from config import ConfigLoader, Settings
 from .error_utils import handle_generic_error
+from .command_helpers import (
+    _get_risk_manager,
+    _load_and_filter_plans,
+    _display_plans_listing_output,
+    _log_plans_listing_completion,
+    _setup_update_directories,
+    _load_and_validate_plan_for_update,
+    _prepare_plan_update_data,
+    _log_plan_update_completion,
+    _setup_archive_directories,
+    _get_archivable_plans,
+    _display_archive_preview,
+    _get_archive_confirmation,
+    _display_archive_success,
+    _calculate_plan_statistics,
+    _display_statistics_output,
+    _log_statistics_completion,
+    handle_command_errors
+)
 from .management_utils import (
-    create_plan_backup,
-    create_plans_table,
-    create_portfolio_summary_panel,
-    get_portfolio_risk_summary,
     PlanManagementError,
     PlanLoadingError,
-    ValidationError,
     FileSystemError,
     RiskCalculationError,
-    BackupCreationError,
-    BackupVerificationError,
-    validate_plans_comprehensive,
-    verify_backup,
+    PlanUpdateError,
     _sort_plans_by_criteria,
     _display_plan_listing_guidance,
     process_plan_field_updates,
-    create_plan_update_preview_table,
-    display_plan_risk_impact,
-    organize_plans_for_archive,
-    create_archive_preview_table,
-    perform_plan_archiving,
-    create_plan_statistics_tables,
-    display_plan_insights,
-    _display_validation_results,
-    _display_validation_file_details,
-    _display_validation_guidance,
     _create_and_validate_updated_plan,
     _display_update_preview_and_confirmation,
     _perform_plan_update,
     _display_update_success,
+)
+from .backup_utils import (
+    create_plan_backup,
+    verify_backup,
+    BackupCreationError,
+    BackupVerificationError,
+)
+from .risk_utils import (
     calculate_all_plan_risks,
+    get_portfolio_risk_summary,
+    create_portfolio_summary_panel,
+)
+from .display_utils_extended import (
+    create_plans_listing_table as create_plans_table,
+    create_plan_update_preview_table,
+    display_plan_risk_impact,
+    create_statistics_overview_table as create_plan_statistics_tables,
+    display_plan_insights,
+)
+from .archive_utils import (
+    organize_plans_for_archive,
+    create_archive_preview_table,
+    perform_plan_archiving,
+)
+from .validation_utils import (
+    validate_all_plans as validate_plans_comprehensive,
+    _display_validation_results,
+    _display_validation_file_details,
+    _display_validation_guidance,
+    ValidationError,
 )
 
 console = Console()
 logger = get_logger("management_commands", "cli")
 
 
-def _get_risk_manager() -> RiskManager:
-    """Get properly configured risk manager from user preferences."""
-    config_loader = get_config_loader()
-    user_prefs = config_loader.load_user_preferences()
-    return RiskManager(account_value=user_prefs.account_value)
 
 
 @click.command()
@@ -92,44 +117,26 @@ def list_plans_enhanced(
         if plans_dir is None:
             plans_dir = Path("data/trade_plans")
         
-        # Initialize components
+        # Initialize components and load plans
         loader = TradePlanLoader(plans_dir)
         risk_manager = _get_risk_manager()
-        
-        # Load and filter plans
-        if status:
-            plans = loader.get_plans_by_status(TradePlanStatus(status))
-        else:
-            plans_dict = loader.load_all_plans()
-            plans = list(plans_dict.values())
+        plans = _load_and_filter_plans(loader, status)
         
         if not plans:
             console.print("[yellow]No trade plans found.[/yellow]")
             return
         
-        # Pre-calculate all risk data in single pass for performance
+        # Pre-calculate all risk data and sort plans
         risk_results = calculate_all_plan_risks(plans, risk_manager)
         plan_risk_data = risk_results["plan_risk_data"]
         portfolio_data = risk_results["portfolio_summary"]
+        # Convert dict to list for sorting function compatibility
+        risk_data_list = list(plan_risk_data.values()) if isinstance(plan_risk_data, dict) else plan_risk_data
+        plans = _sort_plans_by_criteria(plans, sort_by, risk_data_list)
         
-        # Sort plans using pre-calculated risk data
-        plans = _sort_plans_by_criteria(plans, sort_by, plan_risk_data)
-        
-        # Display portfolio summary and plans table using cached data
-        portfolio_panel = create_portfolio_summary_panel(portfolio_data)
-        console.print(portfolio_panel)
-        console.print()
-        
-        plans_table = create_plans_table(plans, plan_risk_data, show_verbose=verbose)
-        console.print(plans_table)
-        _display_plan_listing_guidance(verbose, status)
-        
-        logger.info(
-            "Enhanced plan listing completed",
-            plans_count=len(plans),
-            portfolio_risk=float(portfolio_data["current_risk_percent"]),
-            cache_stats=risk_results.get("cache_stats"),
-        )
+        # Display results and log completion
+        _display_plans_listing_output(plans, plan_risk_data, portfolio_data, verbose, status)
+        _log_plans_listing_completion(plans, portfolio_data, risk_results)
         
     except (IOError, OSError, PermissionError) as e:
         console.print(f"[red]File system error: {e}[/red]")
@@ -258,46 +265,37 @@ def update_plan(
     logger.info("Plan update started", plan_id=plan_id, force=force)
     
     try:
-        # Use default directories if not specified  
-        if plans_dir is None:
-            plans_dir = Path("data/trade_plans")
-        if backup_dir is None:
-            backup_dir = Path("data/trade_plans/backups")
-            
-        # Initialize components and load plan
+        # Setup directories and initialize components
+        plans_dir, backup_dir = _setup_update_directories(plans_dir, backup_dir)
         loader = TradePlanLoader(plans_dir)
         risk_manager = _get_risk_manager()
         
-        plan = loader.get_plan_by_id(plan_id)
+        # Load and validate plan exists
+        plan = _load_and_validate_plan_for_update(plan_id, loader)
         if not plan:
-            console.print(f"[red]Error: Plan '{plan_id}' not found.[/red]")
             return
         
-        # Process field updates and create validated updated plan
+        # Process updates and prepare data
         updates = process_plan_field_updates(plan, entry_level, stop_loss, take_profit, risk_category)
-        updated_plan = _create_and_validate_updated_plan(plan, updates)
         
-        # Calculate risk impact for preview
-        original_validation = risk_manager.validate_trade_plan(plan)
-        updated_validation = risk_manager.validate_trade_plan(updated_plan)
-        
-        # Display preview and get confirmation
-        should_proceed = _display_update_preview_and_confirmation(
-            plan_id, plan, updates, original_validation, updated_validation, backup_dir, force
-        )
-        if not should_proceed:
+        if not updates:
+            console.print("[yellow]No fields specified for update.[/yellow]")
             return
+            
+        updated_plan, original_validation, updated_validation = _prepare_plan_update_data(plan, updates, risk_manager)
+        
+        # Display preview and get confirmation (skip if force flag)
+        if not force:
+            should_proceed = _display_update_preview_and_confirmation(
+                plan_id, plan, updates, original_validation, updated_validation
+            )
+            if not should_proceed:
+                return
         
         # Perform update and display success
         backup_path = _perform_plan_update(plan_id, updated_plan, plans_dir, backup_dir)
         _display_update_success(plan_id, updated_validation, backup_path)
-        
-        logger.info(
-            "Plan update completed",
-            plan_id=plan_id,
-            updates=list(updates.keys()),
-            backup_path=str(backup_path),
-        )
+        _log_plan_update_completion(plan_id, updates, backup_path)
         
     except (IOError, OSError, PermissionError) as e:
         console.print(f"[red]File system error: {e}[/red]")
@@ -348,52 +346,28 @@ def archive_plans(
     logger.info("Plan archiving started", dry_run=dry_run, force=force)
     
     try:
-        # Use default directories if not specified
-        if plans_dir is None:
-            plans_dir = Path("data/trade_plans")
-        if archive_dir is None:
-            archive_dir = Path("data/trade_plans/archive")
-        
-        # Get archivable plans
+        # Setup directories and load archivable plans
+        plans_dir, archive_dir = _setup_archive_directories(plans_dir, archive_dir)
         loader = TradePlanLoader(plans_dir)
-        archivable_statuses = [TradePlanStatus.COMPLETED, TradePlanStatus.CANCELLED]
-        archivable_plans = []
-        
-        for status in archivable_statuses:
-            plans = loader.get_plans_by_status(status)
-            archivable_plans.extend(plans)
+        archivable_plans = _get_archivable_plans(loader)
         
         if not archivable_plans:
             console.print("[yellow]No plans found for archiving.[/yellow]")
             return
         
-        # Organize plans for archiving and create preview
+        # Organize plans and display preview
         archive_groups = organize_plans_for_archive(archivable_plans)
+        total_plans, should_continue = _display_archive_preview(archive_groups, dry_run)
         
-        console.print("📁 PLAN ARCHIVE PREVIEW")
-        console.print()
-        
-        preview_table, total_plans = create_archive_preview_table(archive_groups)
-        console.print(preview_table)
-        console.print(f"\n📊 Total plans to archive: {total_plans}")
-        
-        if dry_run:
-            console.print("\n💡 This was a dry run. Use --force to perform actual archiving.")
+        if not should_continue:  # dry run completed
             return
         
         # Get confirmation and perform archiving
-        if not force:
-            console.print()
-            confirm = click.confirm(f"Archive {total_plans} plans to {archive_dir}?", default=False)
-            if not confirm:
-                console.print("[yellow]Plan archiving cancelled.[/yellow]")
-                return
+        if not _get_archive_confirmation(total_plans, archive_dir, force):
+            return
         
         archived_count = perform_plan_archiving(archive_groups, plans_dir, archive_dir)
-        
-        # Display success summary
-        console.print(f"\n✅ Successfully archived {archived_count} plans")
-        console.print(f"📁 Archive location: {archive_dir}")
+        _display_archive_success(archived_count, archive_dir)
         
         logger.info(
             "Plan archiving completed",
@@ -430,11 +404,10 @@ def plan_stats(plans_dir: Optional[Path]) -> None:
     logger.info("Plan statistics generation started")
     
     try:
-        # Use default directory if not specified
+        # Setup directory and load plans
         if plans_dir is None:
             plans_dir = Path("data/trade_plans")
         
-        # Initialize components and load plans
         loader = TradePlanLoader(plans_dir)
         risk_manager = _get_risk_manager()
         
@@ -445,47 +418,16 @@ def plan_stats(plans_dir: Optional[Path]) -> None:
             console.print("[yellow]No trade plans found for analysis.[/yellow]")
             return
         
-        # Calculate statistics
-        from collections import Counter
-        status_counts = Counter(plan.status for plan in all_plans)
-        symbol_counts = Counter(plan.symbol for plan in all_plans)
-        risk_counts = Counter(plan.risk_category for plan in all_plans)
-        
-        # Pre-calculate all risk data in single pass for performance
+        # Calculate statistics and risk data
+        status_counts, symbol_counts, risk_counts = _calculate_plan_statistics(all_plans)
         risk_results = calculate_all_plan_risks(all_plans, risk_manager)
         portfolio_data = risk_results["portfolio_summary"]
         
-        # Display header and portfolio summary
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        console.print(f"📊 PLAN STATISTICS - {timestamp}")
-        console.print()
-        
-        portfolio_panel = create_portfolio_summary_panel(portfolio_data)
-        console.print(portfolio_panel)
-        console.print()
-        
-        # Create and display statistics tables
+        # Display output and log completion
         total_plans = len(all_plans)
-        status_table, symbol_table, risk_table = create_plan_statistics_tables(
-            status_counts, symbol_counts, risk_counts, total_plans
-        )
+        _display_statistics_output(portfolio_data, status_counts, symbol_counts, risk_counts, total_plans)
+        _log_statistics_completion(total_plans, symbol_counts, portfolio_data, risk_results)
         
-        console.print(status_table)
-        console.print()
-        console.print(symbol_table)
-        console.print()
-        console.print(risk_table)
-        console.print()
-        # Display insights
-        display_plan_insights(total_plans, symbol_counts, portfolio_data)
-        
-        logger.info(
-            "Plan statistics completed",
-            total_plans=total_plans,
-            unique_symbols=len(symbol_counts),
-            portfolio_risk=float(portfolio_data["current_risk_percent"]),
-            cache_stats=risk_results.get("cache_stats"),
-        )
     except (IOError, OSError, PermissionError) as e:
         console.print(f"[red]File system error: {e}[/red]")
         logger.error("Plan statistics failed - file system error", error=str(e))

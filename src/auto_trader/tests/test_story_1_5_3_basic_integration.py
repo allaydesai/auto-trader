@@ -61,25 +61,28 @@ class TestStory153BasicIntegration:
         return plan_file
 
     @patch('auto_trader.cli.management_commands._get_risk_manager')
-    @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
-    @patch('auto_trader.cli.management_commands.create_plans_table')
-    @patch('auto_trader.cli.management_commands.create_portfolio_summary_panel')
+    @patch('auto_trader.cli.command_helpers.create_plans_listing_table')
+    @patch('auto_trader.cli.command_helpers.create_portfolio_summary_panel')
     def test_list_plans_basic_functionality(
-        self, mock_panel, mock_table, mock_portfolio, mock_risk_manager
+        self, mock_panel, mock_table, mock_risk_manager
     ):
         """Test that list_plans_enhanced can load plans without crashing."""
-        # Setup basic mocks
-        mock_risk_manager.return_value = MagicMock()
-        mock_portfolio.return_value = {
-            "current_risk_percent": Decimal("2.0"),
-            "portfolio_limit_percent": Decimal("10.0"),
-            "remaining_capacity_percent": Decimal("8.0"),
-            "capacity_utilization_percent": Decimal("20.0"),
-            "total_plan_risk_percent": Decimal("2.0"),
-            "plan_risks": {},
-            "exceeds_limit": False,
-            "near_limit": False,
-        }
+        # Setup risk manager mock with proper portfolio tracker
+        mock_rm = MagicMock()
+        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal("2.0")
+        mock_rm.portfolio_tracker.MAX_PORTFOLIO_RISK = Decimal("10.0")
+        
+        # Mock validation result
+        mock_validation = MagicMock()
+        mock_validation.passed = True
+        mock_validation.position_size_result = MagicMock()
+        mock_validation.position_size_result.risk_amount_percent = Decimal("2.0")
+        mock_validation.position_size_result.position_size = 100
+        mock_validation.position_size_result.risk_amount_dollars = Decimal("200.0")
+        
+        mock_rm.validate_trade_plan.return_value = mock_validation
+        mock_risk_manager.return_value = mock_rm
+        
         mock_panel.return_value = MagicMock()
         mock_table.return_value = MagicMock()
         
@@ -94,9 +97,6 @@ class TestStory153BasicIntegration:
         # Should not crash and should load the plan
         assert result.exit_code == 0
         
-        # Verify that the plans were loaded (portfolio summary was called)
-        mock_portfolio.assert_called_once()
-        
         # Verify that table creation was called
         mock_table.assert_called_once()
 
@@ -109,8 +109,13 @@ class TestStory153BasicIntegration:
         # Setup mocks
         mock_risk_manager.return_value = MagicMock()
         mock_validate.return_value = {
+            "total_files": 1,
+            "files_passed": 1,
+            "files_failed": 0,
             "files_checked": 1,
+            "syntax_errors": 0,
             "syntax_passed": 1,
+            "business_logic_errors": 0,
             "business_logic_passed": 1,
             "portfolio_risk_passed": True,
             "portfolio_risk_percent": 2.0,
@@ -118,9 +123,12 @@ class TestStory153BasicIntegration:
                 "TEST_001.yaml": {
                     "syntax_valid": True,
                     "business_logic_valid": True,
-                    "errors": []
+                    "errors": [],
+                    "passed": True,
+                    "error_count": 0
                 },
-            }
+            },
+            "summary": {}
         }
         
         # Create a test plan
@@ -135,7 +143,7 @@ class TestStory153BasicIntegration:
         assert result.exit_code == 0
         
         # Should show validation results
-        assert "PLAN VALIDATION" in result.output
+        assert "VALIDATION RESULTS" in result.output
         
         # Verify validation function was called
         mock_validate.assert_called_once()
@@ -172,8 +180,22 @@ class TestStory153BasicIntegration:
         self, mock_portfolio, mock_risk_manager
     ):
         """Test that plan_stats can generate statistics without crashing."""
-        # Setup mocks
-        mock_risk_manager.return_value = MagicMock()
+        # Setup risk manager mock with proper portfolio tracker
+        mock_rm = MagicMock()
+        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal("4.0")
+        mock_rm.portfolio_tracker.MAX_PORTFOLIO_RISK = Decimal("10.0")
+        
+        # Mock validation result
+        mock_validation = MagicMock()
+        mock_validation.passed = True
+        mock_validation.position_size_result = MagicMock()
+        mock_validation.position_size_result.risk_amount_percent = Decimal("2.0")
+        mock_validation.position_size_result.position_size = 100
+        mock_validation.position_size_result.risk_amount_dollars = Decimal("200.0")
+        
+        mock_rm.validate_trade_plan.return_value = mock_validation
+        mock_risk_manager.return_value = mock_rm
+        
         mock_portfolio.return_value = {
             "current_risk_percent": Decimal("4.0"),
             "portfolio_limit_percent": Decimal("10.0"),
@@ -229,7 +251,8 @@ class TestStory153BasicIntegration:
         assert "PLAN STATISTICS" in result.output
         
         # Should show different statuses
-        assert "Status" in result.output or "status" in result.output.lower()
+        output_text = result.output.lower()
+        assert "awaiting entry" in output_text or "completed" in output_text or "cancelled" in output_text
 
     def test_empty_directory_handling(self):
         """Test that commands handle empty directories gracefully."""

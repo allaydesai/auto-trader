@@ -79,18 +79,18 @@ def mock_risk_manager():
 class TestListPlansEnhanced:
     """Test enhanced plan listing command."""
     
-    @patch('auto_trader.cli.management_commands.RiskManager')
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
-    @patch('auto_trader.cli.management_commands.create_plans_table')
-    @patch('auto_trader.cli.management_commands.create_portfolio_summary_panel')
+    @patch('auto_trader.cli.management_commands._display_plans_listing_output')
+    @patch('auto_trader.cli.management_commands._log_plans_listing_completion')
     def test_list_plans_enhanced_success(
         self,
-        mock_panel,
-        mock_table,
+        mock_log_completion,
+        mock_display_output,
         mock_calculate_risks,
         mock_loader_class,
-        mock_rm_class,
+        mock_get_risk_manager,
         cli_runner,
         temp_dir,
         mock_risk_manager,
@@ -104,16 +104,14 @@ class TestListPlansEnhanced:
         mock_loader.load_all_plans.return_value = {"AAPL_20250822_001": mock_plan}
         mock_loader_class.return_value = mock_loader
         
-        mock_rm_class.return_value = mock_risk_manager
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         # Mock the new calculate_all_plan_risks function
         mock_calculate_risks.return_value = {
-            "plan_risk_data": {"AAPL_20250822_001": {"risk_percent": Decimal("2.5"), "is_valid": True}},
-            "portfolio_summary": {"current_risk_percent": Decimal("5.2")},
+            "plan_risk_data": [{"plan_id": "AAPL_20250822_001", "risk_percent": Decimal("2.5"), "validation_result": Mock()}],
+            "portfolio_summary": {"current_risk_percent": Decimal("5.2"), "max_risk_percent": Decimal("10.0"), "capacity_percent": Decimal("50.0")},
             "cache_stats": {"cache_hits": 0, "cache_misses": 1}
         }
-        mock_panel.return_value = Mock()
-        mock_table.return_value = Mock()
         
         # Run command
         result = cli_runner.invoke(list_plans_enhanced, ["--plans-dir", str(temp_dir)])
@@ -122,6 +120,7 @@ class TestListPlansEnhanced:
         assert result.exit_code == 0
         mock_loader.load_all_plans.assert_called_once()
         mock_calculate_risks.assert_called_once()
+        mock_display_output.assert_called_once()
     
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     def test_list_plans_enhanced_no_plans(self, mock_loader_class, cli_runner, temp_dir, mock_risk_manager):
@@ -153,20 +152,20 @@ class TestListPlansEnhanced:
             ["--plans-dir", str(temp_dir), "--status", "awaiting_entry"]
         )
         
-        # Should call get_plans_by_status instead of load_all_plans
+        # Should call both load_all_plans (to populate cache) and get_plans_by_status (to filter)
+        mock_loader.load_all_plans.assert_called_once()
         mock_loader.get_plans_by_status.assert_called_once()
-        mock_loader.load_all_plans.assert_not_called()
     
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
-    @patch('auto_trader.cli.management_commands.create_plans_table')
-    @patch('auto_trader.cli.management_commands.create_portfolio_summary_panel')
+    @patch('auto_trader.cli.management_commands._display_plans_listing_output')
     def test_list_plans_enhanced_verbose_mode(
         self,
-        mock_panel,
-        mock_table,
+        mock_display_output,
         mock_calculate_risks,
         mock_loader_class,
+        mock_get_risk_manager,
         cli_runner,
         temp_dir,
         mock_risk_manager,
@@ -177,10 +176,12 @@ class TestListPlansEnhanced:
         mock_loader.load_all_plans.return_value = {"TEST_001": mock_plan}
         mock_loader_class.return_value = mock_loader
         
+        mock_get_risk_manager.return_value = mock_risk_manager
+        
         # Mock the new calculate_all_plan_risks function
         mock_calculate_risks.return_value = {
-            "plan_risk_data": {"TEST_001": {"risk_percent": Decimal("2.5"), "is_valid": True}},
-            "portfolio_summary": {"current_risk_percent": Decimal("5.2")},
+            "plan_risk_data": [{"plan_id": "TEST_001", "risk_percent": Decimal("2.5"), "validation_result": Mock()}],
+            "portfolio_summary": {"current_risk_percent": Decimal("5.2"), "max_risk_percent": Decimal("10.0"), "capacity_percent": Decimal("50.0")},
             "cache_stats": {"cache_hits": 0, "cache_misses": 1}
         }
         
@@ -189,20 +190,28 @@ class TestListPlansEnhanced:
             ["--plans-dir", str(temp_dir), "--verbose"]
         )
         
-        # Verify verbose flag passed to table creation
-        mock_table.assert_called_once()
-        args, kwargs = mock_table.call_args
-        assert kwargs.get('show_verbose') == True
+        # Verify verbose flag passed to display function
+        mock_display_output.assert_called_once()
+        args, kwargs = mock_display_output.call_args
+        assert args[3] == True  # verbose parameter is 4th positional argument
 
 
 class TestValidateConfig:
     """Test comprehensive validation command."""
     
     @patch('auto_trader.cli.management_commands.validate_plans_comprehensive')
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.ValidationEngine')
+    @patch('auto_trader.cli.management_commands._display_validation_results')
+    @patch('auto_trader.cli.management_commands._display_validation_file_details')
+    @patch('auto_trader.cli.management_commands._display_validation_guidance')
     def test_validate_config_success(
         self,
+        mock_display_guidance,
+        mock_display_file_details,
+        mock_display_results,
         mock_validation_engine_class,
+        mock_get_risk_manager,
         mock_validate_comprehensive,
         cli_runner,
         temp_dir,
@@ -219,19 +228,29 @@ class TestValidateConfig:
             "portfolio_risk_percent": Decimal("6.5"),
         }
         mock_validate_comprehensive.return_value = mock_results
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         result = cli_runner.invoke(validate_config, ["--plans-dir", str(temp_dir)])
         
         assert result.exit_code == 0
-        assert "3 trade plan files" in result.output
-        assert "3/3 passed" in result.output
         mock_validate_comprehensive.assert_called_once()
+        mock_display_results.assert_called_once()
+        mock_display_file_details.assert_called_once()
+        mock_display_guidance.assert_called_once()
     
     @patch('auto_trader.cli.management_commands.validate_plans_comprehensive')
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.ValidationEngine')
+    @patch('auto_trader.cli.management_commands._display_validation_results')
+    @patch('auto_trader.cli.management_commands._display_validation_file_details')
+    @patch('auto_trader.cli.management_commands._display_validation_guidance')
     def test_validate_config_with_errors(
         self,
+        mock_display_guidance,
+        mock_display_file_details,
+        mock_display_results,
         mock_validation_engine_class,
+        mock_get_risk_manager,
         mock_validate_comprehensive,
         cli_runner,
         temp_dir,
@@ -253,18 +272,28 @@ class TestValidateConfig:
             "portfolio_risk_percent": Decimal("11.2"),
         }
         mock_validate_comprehensive.return_value = mock_results
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         result = cli_runner.invoke(validate_config, ["--plans-dir", str(temp_dir)])
         
         assert result.exit_code == 0
-        assert "FAILED" in result.output
-        assert "11.2%" in result.output
+        mock_display_results.assert_called_once()
+        mock_display_file_details.assert_called_once()
+        mock_display_guidance.assert_called_once()
     
     @patch('auto_trader.cli.management_commands.validate_plans_comprehensive')
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.ValidationEngine')
+    @patch('auto_trader.cli.management_commands._display_validation_results')
+    @patch('auto_trader.cli.management_commands._display_validation_file_details')
+    @patch('auto_trader.cli.management_commands._display_validation_guidance')
     def test_validate_config_single_file(
         self,
+        mock_display_guidance,
+        mock_display_file_details,
+        mock_display_results,
         mock_validation_engine_class,
+        mock_get_risk_manager,
         mock_validate_comprehensive,
         cli_runner,
         temp_dir,
@@ -283,6 +312,7 @@ class TestValidateConfig:
             "file_results": {},
         }
         mock_validate_comprehensive.return_value = mock_results
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         result = cli_runner.invoke(
             validate_config,
@@ -292,6 +322,7 @@ class TestValidateConfig:
         assert result.exit_code == 0
         # Verify single file passed to validation
         mock_validate_comprehensive.assert_called_once()
+        mock_display_results.assert_called_once()
         args, kwargs = mock_validate_comprehensive.call_args
         assert kwargs["single_file"] == test_file
 
@@ -308,10 +339,14 @@ class TestUpdatePlan:
     
     @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
-    @patch('auto_trader.cli.management_utils.create_plan_backup')
+    @patch('auto_trader.cli.management_commands._perform_plan_update')
+    @patch('auto_trader.cli.management_commands._display_update_success')
+    @patch('auto_trader.cli.management_commands._log_plan_update_completion')
     def test_update_plan_success(
         self,
-        mock_backup,
+        mock_log_completion,
+        mock_display_success,
+        mock_perform_update,
         mock_loader_class,
         mock_get_risk_manager,
         cli_runner,
@@ -328,10 +363,11 @@ class TestUpdatePlan:
         mock_plan = Mock()
         mock_plan.plan_id = sample_plan_data["plan_id"]
         mock_plan.model_dump.return_value = sample_plan_data
-        mock_loader.get_plan_by_id.return_value = mock_plan
+        mock_loader.load_all_plans.return_value = {}  # Mock the load call
+        mock_loader.get_plan.return_value = mock_plan
         mock_loader_class.return_value = mock_loader
         
-        mock_backup.return_value = temp_dir / "backup_file.yaml"
+        mock_perform_update.return_value = temp_dir / "backup_file.yaml"
         mock_get_risk_manager.return_value = mock_risk_manager
         
         # Run command with force flag to skip confirmation
@@ -346,21 +382,26 @@ class TestUpdatePlan:
         )
         
         assert result.exit_code == 0
-        assert "updated successfully" in result.output
-        mock_backup.assert_called_once()
+        mock_perform_update.assert_called_once()
+        mock_display_success.assert_called_once()
+        mock_log_completion.assert_called_once()
     
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     def test_update_plan_not_found(
         self,
         mock_loader_class,
+        mock_get_risk_manager,
         cli_runner,
         temp_dir,
         mock_risk_manager,
     ):
         """Test update of non-existent plan."""
         mock_loader = Mock()
-        mock_loader.get_plan_by_id.return_value = None
+        mock_loader.load_all_plans.return_value = {}  # Mock the load call
+        mock_loader.get_plan.return_value = None
         mock_loader_class.return_value = mock_loader
+        mock_get_risk_manager.return_value = mock_risk_manager
         
         result = cli_runner.invoke(
             update_plan,
@@ -370,15 +411,19 @@ class TestUpdatePlan:
         assert result.exit_code == 0
         assert "not found" in result.output
     
+    @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     def test_update_plan_no_fields(
         self,
         mock_loader_class,
+        mock_get_risk_manager,
         cli_runner,
         temp_dir,
         mock_risk_manager,
     ):
         """Test update with no fields specified."""
+        mock_get_risk_manager.return_value = mock_risk_manager
+        
         result = cli_runner.invoke(
             update_plan,
             ["AAPL_20250822_001", "--plans-dir", str(temp_dir)]
@@ -475,8 +520,12 @@ class TestPlanStats:
     @patch('auto_trader.cli.management_commands._get_risk_manager')
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     @patch('auto_trader.cli.management_commands.calculate_all_plan_risks')
+    @patch('auto_trader.cli.management_commands._display_statistics_output')
+    @patch('auto_trader.cli.management_commands._log_statistics_completion')
     def test_plan_stats_success(
         self,
+        mock_log_completion,
+        mock_display_output,
         mock_calculate_risks,
         mock_loader_class,
         mock_get_risk_manager,
@@ -502,19 +551,16 @@ class TestPlanStats:
         
         # Mock the new calculate_all_plan_risks function
         mock_calculate_risks.return_value = {
-            "plan_risk_data": {
-                "PLAN1": {"risk_percent": Decimal("2.5"), "is_valid": True},
-                "PLAN2": {"risk_percent": Decimal("2.0"), "is_valid": True}
-            },
+            "plan_risk_data": [
+                {"plan_id": "PLAN1", "risk_percent": Decimal("2.5"), "validation_result": Mock()},
+                {"plan_id": "PLAN2", "risk_percent": Decimal("2.0"), "validation_result": Mock()}
+            ],
             "portfolio_summary": {
                 "current_risk_percent": Decimal("6.2"),
-                "portfolio_limit_percent": Decimal("10.0"),
-                "remaining_capacity_percent": Decimal("3.8"),
-                "capacity_utilization_percent": Decimal("62.0"),
-                "total_plan_risk_percent": Decimal("4.5"),
-                "plan_risks": {},
-                "exceeds_limit": False,
-                "near_limit": False,
+                "max_risk_percent": Decimal("10.0"),
+                "capacity_percent": Decimal("38.0"),
+                "total_plans_evaluated": 2,
+                "plans_with_errors": 0
             },
             "cache_stats": {"cache_hits": 0, "cache_misses": 2}
         }
@@ -524,9 +570,8 @@ class TestPlanStats:
         result = cli_runner.invoke(plan_stats, ["--plans-dir", str(temp_dir)])
         
         assert result.exit_code == 0
-        assert "PLAN STATISTICS" in result.output
-        assert "Total Plans: 2" in result.output
-        assert "Unique Symbols: 2" in result.output
+        mock_display_output.assert_called_once()
+        mock_log_completion.assert_called_once()
     
     @patch('auto_trader.cli.management_commands.TradePlanLoader')
     def test_plan_stats_no_plans(
@@ -648,7 +693,8 @@ class TestErrorHandlingInCommands:
                 'timeframe': '1min'
             }
         }
-        mock_loader.get_plan_by_id.return_value = mock_plan
+        mock_loader.get_plan.return_value = mock_plan
+        mock_loader.load_all_plans.return_value = {}
         mock_loader_class.return_value = mock_loader
         
         # Mock _perform_plan_update to raise BackupCreationError
@@ -695,7 +741,8 @@ class TestErrorHandlingInCommands:
                 'timeframe': '1min'
             }
         }
-        mock_loader.get_plan_by_id.return_value = mock_plan
+        mock_loader.get_plan.return_value = mock_plan
+        mock_loader.load_all_plans.return_value = {}
         mock_loader_class.return_value = mock_loader
         
         # Mock _perform_plan_update to raise BackupVerificationError
