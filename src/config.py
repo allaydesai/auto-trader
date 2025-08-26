@@ -20,6 +20,12 @@ class IBKRConfig(BaseModel):
     timeout: int = Field(
         default=30, ge=5, le=300, description="Connection timeout in seconds"
     )
+    reconnect_attempts: int = Field(
+        default=5, ge=1, le=10, description="Maximum reconnection attempts"
+    )
+    graceful_shutdown: bool = Field(
+        default=True, description="Close positions on shutdown"
+    )
 
 
 class RiskConfig(BaseModel):
