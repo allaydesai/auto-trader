@@ -11,10 +11,11 @@ Personal automated trading system designed to execute discretionary trades with 
 - **Simulation Mode**: Test strategies without real money
 - **IBKR Integration**: Direct connection to Interactive Brokers for execution
 - **Interactive CLI Wizard**: Step-by-step trade plan creation with real-time validation and risk management
+- **Enhanced Plan Management**: Comprehensive commands for plan listing, validation, modification, and archiving
 - **Modular CLI Interface**: Rich command-line tools organized into focused modules
 - **Live Monitoring**: Real-time dashboard with optimized file watching
 - **Performance Optimizations**: AsyncIO improvements for reliable file monitoring
-- **Comprehensive Testing**: 179+ tests with 87% code coverage
+- **Comprehensive Testing**: 300+ tests with 87% code coverage
 - **Template System**: Pre-built trade plan templates for quick strategy creation
 - **Structured Logging**: Comprehensive audit trail with separate log files
 
@@ -177,6 +178,8 @@ auto-trader/
 │           ├── commands.py          # Main CLI entry point (refactored)
 │           ├── config_commands.py   # Configuration management commands
 │           ├── plan_commands.py     # Trade plan management commands
+│           ├── management_commands.py # Enhanced plan management commands
+│           ├── management_utils.py  # Plan management utilities
 │           ├── wizard_utils.py      # Interactive wizard utilities
 │           ├── template_commands.py # Template-related commands
 │           ├── schema_commands.py   # Schema validation commands
@@ -197,6 +200,10 @@ auto-trader/
 │       │   ├── close_above.yaml     # Close above execution template
 │       │   ├── close_below.yaml     # Close below execution template
 │       │   └── trailing_stop.yaml   # Trailing stop template
+│       ├── backups/                 # Timestamped plan backups
+│       ├── archive/                 # Organized archived plans
+│       │   ├── YYYY/MM/completed/   # Completed plans by date
+│       │   └── YYYY/MM/cancelled/   # Cancelled plans by date
 │       └── *.yaml                   # Your trade plan files
 ├── logs/                            # Application logs
 ├── config.yaml                      # System configuration
@@ -269,6 +276,7 @@ uv run python -m auto_trader.cli.commands validate-plans --plans-dir /path/to/pl
 
 ### Managing Trade Plans
 
+#### Basic Plan Listing
 ```bash
 # List all loaded plans
 uv run python -m auto_trader.cli.commands list-plans
@@ -278,6 +286,30 @@ uv run python -m auto_trader.cli.commands list-plans --status awaiting_entry
 
 # Filter by symbol
 uv run python -m auto_trader.cli.commands list-plans --symbol AAPL --verbose
+```
+
+#### Enhanced Plan Management (New)
+```bash
+# Enhanced plan listing with risk integration
+uv run python -m auto_trader.cli.commands list-plans-enhanced --verbose
+
+# Filter and sort plans with portfolio risk display
+uv run python -m auto_trader.cli.commands list-plans-enhanced --status awaiting_entry --sort-by risk
+
+# Comprehensive plan validation with portfolio risk checking
+uv run python -m auto_trader.cli.commands validate-config-enhanced --verbose
+
+# Validate single file
+uv run python -m auto_trader.cli.commands validate-config-enhanced --file data/trade_plans/AAPL_001.yaml
+
+# Update plan fields with automatic recalculation
+uv run python -m auto_trader.cli.commands update-plan AAPL_20250822_001 --entry-level 181.00 --force
+
+# Archive completed plans with organized structure
+uv run python -m auto_trader.cli.commands archive-plans --dry-run
+
+# Generate comprehensive portfolio statistics
+uv run python -m auto_trader.cli.commands plan-stats
 ```
 
 ### Execution Functions
@@ -365,6 +397,21 @@ uv run python -m auto_trader.cli.commands validate-plans [--plans-dir DIR] [--ve
 
 # List loaded trade plans
 uv run python -m auto_trader.cli.commands list-plans [--status STATUS] [--symbol SYMBOL] [--verbose]
+
+# Enhanced plan management (new commands)
+uv run python -m auto_trader.cli.commands list-plans-enhanced [--status STATUS] [--sort-by risk|date|symbol] [--verbose]
+
+# Comprehensive validation with portfolio risk checking
+uv run python -m auto_trader.cli.commands validate-config-enhanced [--file FILE] [--verbose]
+
+# Update plan fields with automatic recalculation and backup
+uv run python -m auto_trader.cli.commands update-plan PLAN_ID [--entry-level PRICE] [--stop-loss PRICE] [--take-profit PRICE] [--risk-category CATEGORY] [--force]
+
+# Archive completed plans with organized structure
+uv run python -m auto_trader.cli.commands archive-plans [--dry-run] [--force]
+
+# Generate portfolio statistics and analysis
+uv run python -m auto_trader.cli.commands plan-stats
 ```
 
 ### Schema & Template Commands
@@ -459,6 +506,17 @@ uv run python -m auto_trader.cli.commands create-plan --output-dir custom/plans
 
 ## Recent Improvements
 
+### Enhanced Trade Plan Management Commands (v2.1.0)
+Comprehensive trade plan management system with full risk integration:
+
+- **Enhanced Plan Listing**: Real-time risk integration with color-coded status indicators
+- **Advanced Validation**: Portfolio-wide risk checking with comprehensive error reporting
+- **Safe Plan Modification**: Field updates with automatic recalculation and backup system
+- **Plan Organization**: Automated archiving with date-based organizational structure
+- **Portfolio Analytics**: Comprehensive statistics with risk distribution and insights
+- **UX Compliance**: Progressive verbosity, fail-safe confirmations, and immediate feedback
+- **Extensive Testing**: 100+ new tests covering all management functionality
+
 ### Interactive CLI Wizard (v2.0.0)
 Complete interactive wizard implementation with comprehensive features:
 
@@ -490,13 +548,14 @@ Fixed critical AsyncIO patterns in file watching system:
 - Eliminated potential deadlock conditions
 
 ### Test Coverage Expansion
-Comprehensive testing suite with 179+ tests:
+Comprehensive testing suite with 300+ tests:
 
 - **87% code coverage** (exceeding 80% target)
-- **CLI module tests**: Full coverage of all command groups
+- **CLI module tests**: Full coverage of all command groups including management commands
 - **Integration tests**: End-to-end workflow validation
 - **Utility tests**: File watching and AsyncIO components
 - **Model tests**: Pydantic validation and data models
+- **Management tests**: Complete coverage of plan management functionality
 
 ## Development
 
@@ -523,7 +582,7 @@ uv run pytest src/auto_trader/cli/tests/test_wizard_utils.py -v
 #### Comprehensive Testing Commands
 
 ```bash
-# Run all tests with detailed output (179+ tests currently passing)
+# Run all tests with detailed output (300+ tests currently passing)
 PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ src/auto_trader/utils/tests/ src/auto_trader/tests/ src/auto_trader/cli/tests/ -v
 
 # Run with coverage report (87% coverage achieved)
@@ -541,7 +600,7 @@ PYTHONPATH=src uv run coverage html --directory coverage_html
 # Data models and validation (32+ tests)
 PYTHONPATH=src uv run pytest src/auto_trader/models/tests/ -v
 
-# CLI commands and wizard (65+ tests)
+# CLI commands and wizard (190+ tests)
 PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/ -v
 
 # Utility functions (15+ tests)
@@ -567,6 +626,12 @@ PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_config_commands.py -
 
 # Interactive wizard functionality
 PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_wizard_utils.py -v
+
+# Enhanced plan management commands
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_management_commands.py -v
+
+# Plan management utilities
+PYTHONPATH=src uv run pytest src/auto_trader/cli/tests/test_management_utils.py -v
 
 # File watching utilities
 PYTHONPATH=src uv run pytest src/auto_trader/utils/tests/test_file_watcher.py -v

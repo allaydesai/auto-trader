@@ -1,0 +1,16 @@
+entry_function:
+  function_type: close_above
+  parameters:
+    threshold: '180.50'
+  timeframe: 15min
+entry_level: 180.5
+exit_function:
+  function_type: stop_loss_take_profit
+  parameters: {}
+  timeframe: 1min
+plan_id: AAPL_20250822_001
+risk_category: normal
+status: awaiting_entry
+stop_loss: 178.0
+symbol: AAPL
+take_profit: 185.0
