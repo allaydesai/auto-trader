@@ -149,7 +149,7 @@ class TestMarketDataManager:
         """Test processing of bar updates."""
         # Create mock bar data
         mock_bar = MagicMock()
-        mock_bar.time = datetime.now(UTC).timestamp()
+        mock_bar.time = datetime.now(UTC)  # Use datetime object, not timestamp
         mock_bar.open_ = 180.50
         mock_bar.high = 181.00
         mock_bar.low = 180.00
@@ -179,7 +179,7 @@ class TestMarketDataManager:
         manager = MarketDataManager(mock_ib_client, mock_cache, test_callback)
         
         mock_bar = MagicMock()
-        mock_bar.time = datetime.now(UTC).timestamp()
+        mock_bar.time = datetime.now(UTC)  # Use datetime object, not timestamp
         mock_bar.open_ = 180.50
         mock_bar.high = 181.00
         mock_bar.low = 180.00
@@ -267,3 +267,112 @@ class TestMarketDataManager:
         # Should return without error
         assert manager._stats["bars_received"] == 0
         assert manager._stats["data_quality_errors"] == 0
+
+    def test_add_remove_subscriber(self, manager):
+        """Test adding and removing market data subscribers."""
+        callback_called = []
+        
+        def test_callback(bar_data):
+            callback_called.append(bar_data)
+        
+        # Add subscriber
+        manager.add_subscriber("test_subscriber", test_callback)
+        assert len(manager._subscribers) == 1
+        assert "test_subscriber" in manager._subscribers
+        
+        # Remove subscriber
+        removed = manager.remove_subscriber("test_subscriber")
+        assert removed is True
+        assert len(manager._subscribers) == 0
+        
+        # Try to remove non-existent subscriber
+        removed = manager.remove_subscriber("non_existent")
+        assert removed is False
+    
+    def test_add_remove_execution_engine_callback(self, manager):
+        """Test adding and removing execution engine callbacks."""
+        callback_called = []
+        
+        def test_callback(bar_data):
+            callback_called.append(bar_data)
+        
+        # Add execution engine callback
+        manager.add_execution_engine_callback(test_callback)
+        assert len(manager._execution_engine_callbacks) == 1
+        
+        # Remove execution engine callback
+        removed = manager.remove_execution_engine_callback(test_callback)
+        assert removed is True
+        assert len(manager._execution_engine_callbacks) == 0
+        
+        # Try to remove non-existent callback
+        def other_callback(bar_data):
+            pass
+        removed = manager.remove_execution_engine_callback(other_callback)
+        assert removed is False
+
+    @pytest.mark.asyncio
+    async def test_distribution_system(self, manager, mock_cache):
+        """Test market data distribution to subscribers and execution engines."""
+        subscriber_calls = []
+        execution_calls = []
+        
+        def subscriber_callback(bar_data):
+            subscriber_calls.append(bar_data)
+        
+        def execution_callback(bar_data):
+            execution_calls.append(bar_data)
+        
+        # Add subscribers
+        manager.add_subscriber("subscriber1", subscriber_callback)
+        manager.add_execution_engine_callback(execution_callback)
+        
+        # Create mock bar data
+        mock_bar = MagicMock()
+        mock_bar.time = datetime.now(UTC)
+        mock_bar.open_ = 100.0
+        mock_bar.high = 101.0
+        mock_bar.low = 99.0
+        mock_bar.close = 100.5
+        mock_bar.volume = 1000.0
+        
+        # Process bar update
+        await manager._on_bar_update(mock_bar, "AAPL", "5min")
+        
+        # Verify distribution
+        assert len(subscriber_calls) == 1
+        assert len(execution_calls) == 1
+        assert subscriber_calls[0].symbol == "AAPL"
+        assert execution_calls[0].symbol == "AAPL"
+        
+        # Check statistics
+        stats = manager.get_stats()
+        assert stats["subscribers_count"] == 1
+        assert stats["execution_callbacks_count"] == 1
+        assert stats["distribution_errors"] == 0
+
+    @pytest.mark.asyncio
+    async def test_distribution_error_handling(self, manager, mock_cache):
+        """Test error handling in distribution system."""
+        def failing_callback(bar_data):
+            raise Exception("Callback error")
+        
+        # Add failing subscriber and execution callback
+        manager.add_subscriber("failing_subscriber", failing_callback)
+        manager.add_execution_engine_callback(failing_callback)
+        
+        # Create mock bar data
+        mock_bar = MagicMock()
+        mock_bar.time = datetime.now(UTC)
+        mock_bar.open_ = 100.0
+        mock_bar.high = 101.0
+        mock_bar.low = 99.0
+        mock_bar.close = 100.5
+        mock_bar.volume = 1000.0
+        
+        # Process bar update
+        await manager._on_bar_update(mock_bar, "AAPL", "5min")
+        
+        # Check that errors were tracked
+        stats = manager.get_stats()
+        assert stats["distribution_errors"] == 2  # One for subscriber, one for execution callback
