@@ -11,6 +11,7 @@ from auto_trader.models.market_data_cache import MarketDataCache
 from .market_data_distribution import MarketDataDistributor
 from .subscription_manager import SubscriptionManager
 from .bar_converter import BarConverter
+from .market_data_orchestrator import MarketDataOrchestrator
 
 
 class MarketDataManager:
@@ -40,6 +41,7 @@ class MarketDataManager:
         self._distributor = MarketDataDistributor()
         self._subscription_manager = SubscriptionManager(ib_client)
         self._bar_converter = BarConverter()
+        self._orchestrator = MarketDataOrchestrator(self._subscription_manager, self._cache)
         
         # Statistics
         self._bars_received = 0
@@ -74,20 +76,9 @@ class MarketDataManager:
         if not bar_sizes:
             bar_sizes = ["5min"]
         
-        results = {}
-        
-        for symbol in symbols:
-            for bar_size in bar_sizes:
-                key = f"{symbol}:{bar_size}"
-                callback = self._create_bar_callback(symbol, bar_size)
-                success = await self._subscription_manager.create_subscription(
-                    symbol, bar_size, callback
-                )
-                results[key] = success
-                if success:
-                    self._cache.add_subscription(symbol)
-        
-        return results
+        return await self._orchestrator.orchestrate_subscriptions(
+            symbols, bar_sizes, self._create_bar_callback
+        )
     
     def _create_bar_callback(self, symbol: str, bar_size: BarSizeType) -> Callable[[any], any]:
         """
@@ -112,11 +103,7 @@ class MarketDataManager:
         Args:
             symbols: List of symbols to unsubscribe
         """
-        await self._subscription_manager.remove_subscriptions_for_symbols(symbols)
-        
-        # Clean up cache
-        for symbol in symbols:
-            self._cache.remove_subscription(symbol)
+        await self._orchestrator._handle_symbol_removals(set(symbols))
     
     async def sync_with_active_plans(
         self,
@@ -128,25 +115,9 @@ class MarketDataManager:
         Args:
             required_symbols: Set of symbols that should be subscribed
         """
-        current_symbols = self._subscription_manager.get_active_symbols()
-        
-        # Add new subscriptions
-        new_symbols = required_symbols - current_symbols
-        if new_symbols:
-            logger.info(
-                "Adding new market data subscriptions",
-                symbols=list(new_symbols)
-            )
-            await self.subscribe_symbols(list(new_symbols))
-        
-        # Remove unused subscriptions
-        unused_symbols = current_symbols - required_symbols
-        if unused_symbols:
-            logger.info(
-                "Removing unused market data subscriptions",
-                symbols=list(unused_symbols)
-            )
-            await self.unsubscribe_symbols(list(unused_symbols))
+        await self._orchestrator.orchestrate_symbol_sync(
+            required_symbols, self._create_bar_callback
+        )
     
     async def _on_bar_update(
         self,
@@ -203,8 +174,9 @@ class MarketDataManager:
             "cache_stats": self._cache.get_memory_usage()
         }
         
-        # Merge stats from components
-        stats.update(self._subscription_manager.get_stats())
+        # Get orchestrated stats that combine all components
+        orchestrated_stats = self._orchestrator.get_orchestration_stats()
+        stats.update(orchestrated_stats)
         stats.update(self._distributor.get_stats())
         stats.update(self._bar_converter.get_stats())
         
@@ -214,11 +186,7 @@ class MarketDataManager:
         """Clean up all subscriptions and resources."""
         logger.info("Cleaning up market data subscriptions")
         
-        # Clean up subscription manager
-        await self._subscription_manager.cleanup()
-        
-        # Clear cache
-        self._cache.clear_cache()
+        await self._orchestrator.orchestrate_cleanup()
         
         logger.info(
             "Market data cleanup complete",
