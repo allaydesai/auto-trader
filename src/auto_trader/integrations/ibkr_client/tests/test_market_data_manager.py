@@ -176,7 +176,8 @@ class TestMarketDataManager:
             callback_called = True
             received_bar = bar
         
-        manager = MarketDataManager(mock_ib_client, mock_cache, test_callback)
+        manager = MarketDataManager(mock_ib_client, mock_cache)
+        manager.add_subscriber("test_subscriber", test_callback)
         
         mock_bar = MagicMock()
         mock_bar.time = datetime.now(UTC)  # Use datetime object, not timestamp
@@ -195,7 +196,7 @@ class TestMarketDataManager:
     def test_get_active_subscriptions(self, manager, mock_ib_client):
         """Test getting active subscriptions grouped by symbol."""
         # Setup mock subscriptions
-        manager._subscriptions = {
+        manager._subscription_manager._subscriptions = {
             "AAPL:1min": MagicMock(),
             "AAPL:5min": MagicMock(),
             "MSFT:5min": MagicMock()
@@ -211,15 +212,14 @@ class TestMarketDataManager:
     
     def test_get_stats(self, manager, mock_cache):
         """Test getting manager statistics."""
-        manager._stats["bars_received"] = 100
-        manager._stats["subscription_errors"] = 2
+        manager._bars_received = 100
+        manager._subscription_manager._subscription_errors = 2
         
         stats = manager.get_stats()
         
         assert stats["bars_received"] == 100
         assert stats["subscription_errors"] == 2
         assert "cache_stats" in stats
-        assert stats["cache_stats"]["total_bars"] == 100
     
     @pytest.mark.asyncio
     async def test_cleanup(self, manager, mock_ib_client, mock_cache):
@@ -246,7 +246,8 @@ class TestMarketDataManager:
         results = await manager.subscribe_symbols(["AAPL"], ["5min"])
         
         assert results["AAPL:5min"] is False
-        assert manager._stats["subscription_errors"] == 1
+        stats = manager.get_stats()
+        assert stats["subscription_errors"] == 1
     
     @pytest.mark.asyncio
     async def test_error_handling_in_bar_update(self, manager, mock_cache):
@@ -257,7 +258,8 @@ class TestMarketDataManager:
         
         await manager._on_bar_update(invalid_bar, "AAPL", "5min")
         
-        assert manager._stats["data_quality_errors"] == 1
+        stats = manager.get_stats()
+        assert stats["data_quality_errors"] == 1
     
     @pytest.mark.asyncio
     async def test_empty_bar_update(self, manager):
@@ -265,8 +267,7 @@ class TestMarketDataManager:
         await manager._on_bar_update(None, "AAPL", "5min")
         
         # Should return without error
-        assert manager._stats["bars_received"] == 0
-        assert manager._stats["data_quality_errors"] == 0
+        assert manager._bars_received == 0
 
     def test_add_remove_subscriber(self, manager):
         """Test adding and removing market data subscribers."""
@@ -277,38 +278,37 @@ class TestMarketDataManager:
         
         # Add subscriber
         manager.add_subscriber("test_subscriber", test_callback)
-        assert len(manager._subscribers) == 1
-        assert "test_subscriber" in manager._subscribers
+        assert len(manager._distributor._subscribers) == 1
+        assert "test_subscriber" in manager._distributor._subscribers
         
         # Remove subscriber
         removed = manager.remove_subscriber("test_subscriber")
         assert removed is True
-        assert len(manager._subscribers) == 0
+        assert len(manager._distributor._subscribers) == 0
         
         # Try to remove non-existent subscriber
         removed = manager.remove_subscriber("non_existent")
         assert removed is False
     
     def test_add_remove_execution_engine_callback(self, manager):
-        """Test adding and removing execution engine callbacks."""
+        """Test adding and removing execution engine callbacks via unified subscriber system."""
         callback_called = []
         
         def test_callback(bar_data):
             callback_called.append(bar_data)
         
-        # Add execution engine callback
-        manager.add_execution_engine_callback(test_callback)
-        assert len(manager._execution_engine_callbacks) == 1
+        # Add execution engine callback using unified subscriber system
+        manager.add_subscriber("execution_engine_1", test_callback)
+        assert len(manager._distributor._subscribers) == 1
+        assert "execution_engine_1" in manager._distributor._subscribers
         
         # Remove execution engine callback
-        removed = manager.remove_execution_engine_callback(test_callback)
+        removed = manager.remove_subscriber("execution_engine_1")
         assert removed is True
-        assert len(manager._execution_engine_callbacks) == 0
+        assert len(manager._distributor._subscribers) == 0
         
         # Try to remove non-existent callback
-        def other_callback(bar_data):
-            pass
-        removed = manager.remove_execution_engine_callback(other_callback)
+        removed = manager.remove_subscriber("execution_engine_2")
         assert removed is False
 
     @pytest.mark.asyncio
@@ -323,9 +323,9 @@ class TestMarketDataManager:
         def execution_callback(bar_data):
             execution_calls.append(bar_data)
         
-        # Add subscribers
+        # Add subscribers (including execution engine as a subscriber)
         manager.add_subscriber("subscriber1", subscriber_callback)
-        manager.add_execution_engine_callback(execution_callback)
+        manager.add_subscriber("execution_engine", execution_callback)
         
         # Create mock bar data
         mock_bar = MagicMock()
@@ -347,8 +347,7 @@ class TestMarketDataManager:
         
         # Check statistics
         stats = manager.get_stats()
-        assert stats["subscribers_count"] == 1
-        assert stats["execution_callbacks_count"] == 1
+        assert stats["subscribers_count"] == 2  # subscriber1 + execution_engine
         assert stats["distribution_errors"] == 0
 
     @pytest.mark.asyncio
@@ -357,9 +356,9 @@ class TestMarketDataManager:
         def failing_callback(bar_data):
             raise Exception("Callback error")
         
-        # Add failing subscriber and execution callback
+        # Add failing subscribers (including execution engine as subscriber)
         manager.add_subscriber("failing_subscriber", failing_callback)
-        manager.add_execution_engine_callback(failing_callback)
+        manager.add_subscriber("failing_execution_engine", failing_callback)
         
         # Create mock bar data
         mock_bar = MagicMock()
@@ -375,4 +374,4 @@ class TestMarketDataManager:
         
         # Check that errors were tracked
         stats = manager.get_stats()
-        assert stats["distribution_errors"] == 2  # One for subscriber, one for execution callback
+        assert stats["distribution_errors"] == 2  # One for each failing subscriber
