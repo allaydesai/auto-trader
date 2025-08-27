@@ -89,24 +89,31 @@ class IBKRClient:
             logger.info("Already connected to IBKR")
             return
 
-        ibkr_config = self._config_loader.system_config.ibkr
+        # Use settings that respect environment variables
+        host = self._settings.ibkr_host
+        port = self._settings.ibkr_port
+        client_id = self._settings.ibkr_client_id
+        
+        # Timeout comes from config (no env var for this)
+        timeout = self._config_loader.system_config.ibkr.timeout
+        
         self._connection_status.state = ConnectionState.CONNECTING
         self._connection_start_time = datetime.now().timestamp()
 
         try:
             logger.info(
                 "Connecting to IBKR",
-                host=ibkr_config.host,
-                port=ibkr_config.port,
-                client_id=ibkr_config.client_id,
-                timeout=ibkr_config.timeout
+                host=host,
+                port=port,
+                client_id=client_id,
+                timeout=timeout
             )
 
             await self._ib.connectAsync(
-                host=ibkr_config.host,
-                port=ibkr_config.port,
-                clientId=ibkr_config.client_id,
-                timeout=ibkr_config.timeout
+                host=host,
+                port=port,
+                clientId=client_id,
+                timeout=timeout
             )
 
             # Get account information and detect paper trading
