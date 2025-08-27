@@ -1,16 +1,16 @@
 """Market data subscription management for IBKR integration."""
 
 import asyncio
-from datetime import datetime, UTC
+from datetime import UTC
 from typing import Dict, List, Set, Optional, Callable, Any
 from decimal import Decimal
 
-from ib_async import IB, Stock, BarDataList, RealTimeBar, Contract
+from ib_async import IB, Stock, RealTimeBar, Contract
 from loguru import logger
 
 from auto_trader.models.market_data import (
-    BarData, MarketData, BarSizeType, BAR_SIZE_MAPPING,
-    SubscriptionError, DataQualityError
+    BarData, BarSizeType, BAR_SIZE_MAPPING,
+    SubscriptionError
 )
 from auto_trader.models.market_data_cache import MarketDataCache
 
