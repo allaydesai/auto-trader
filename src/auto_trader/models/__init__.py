@@ -27,6 +27,22 @@ from .error_reporting import (
 )
 from .template_manager import TemplateManager
 from .plan_loader import TradePlanLoader, TradePlanFileWatcher
+from .enums import (
+    OrderType,
+    OrderSide,
+    OrderStatus,
+    OrderAction,
+    BracketOrderType,
+    TimeInForce,
+)
+from .order import (
+    Order,
+    OrderRequest,
+    OrderResult,
+    BracketOrder,
+    OrderEvent,
+    OrderModification,
+)
 
 __all__ = [
     "Settings",
@@ -51,4 +67,17 @@ __all__ = [
     "TemplateManager",
     "TradePlanLoader",
     "TradePlanFileWatcher",
+    # Order models
+    "OrderType",
+    "OrderSide",
+    "OrderStatus",
+    "OrderAction",
+    "BracketOrderType",
+    "TimeInForce",
+    "Order",
+    "OrderRequest",
+    "OrderResult",
+    "BracketOrder",
+    "OrderEvent",
+    "OrderModification",
 ]
