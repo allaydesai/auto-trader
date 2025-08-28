@@ -101,8 +101,8 @@ class TestMarketDataExecutionAdapter:
 
     def test_unsupported_bar_size(self, market_data_adapter, sample_bar):
         """Test handling of unsupported bar size."""
-        # Create bar with unsupported size
-        unsupported_bar = BarData(
+        # Create bar with unsupported size using model_construct to bypass validation
+        unsupported_bar = BarData.model_construct(
             symbol="AAPL",
             timestamp=datetime.now(UTC),
             open_price=Decimal("180.00"),

@@ -3,6 +3,7 @@
 import asyncio
 import pytest
 from datetime import datetime, timedelta, UTC
+from decimal import Decimal
 from unittest.mock import Mock, AsyncMock, patch
 from typing import List
 
@@ -18,10 +19,10 @@ def sample_bar():
     return BarData(
         symbol="AAPL",
         timestamp=datetime.now(UTC),
-        open_price=180.00,
-        high_price=182.00,
-        low_price=179.50,
-        close_price=181.50,
+        open_price=Decimal("180.00"),
+        high_price=Decimal("182.00"),
+        low_price=Decimal("179.50"),
+        close_price=Decimal("181.50"),
         volume=1000000,
         bar_size="1min",
     )
@@ -178,10 +179,10 @@ class TestBarCloseDetector:
         sample_bar = BarData(
             symbol="AAPL",
             timestamp=expected_close,
-            open_price=180.00,
-            high_price=182.00,
-            low_price=179.50,
-            close_price=181.50,
+            open_price=Decimal("180.00"),
+            high_price=Decimal("182.00"),
+            low_price=Decimal("179.50"),
+            close_price=Decimal("181.50"),
             volume=1000000,
             bar_size="1min",
         )

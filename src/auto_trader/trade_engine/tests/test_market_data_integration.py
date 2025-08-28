@@ -52,13 +52,15 @@ def historical_bars():
     base_time = datetime.now(UTC) - timedelta(minutes=20)
     
     for i in range(20):
+        # Use proper decimal formatting to avoid precision issues
+        price_adjustment = round(i * 0.1, 2)
         bar = BarData(
             symbol="AAPL",
             timestamp=base_time + timedelta(minutes=i),
-            open_price=Decimal("179.00") + Decimal(str(i * 0.1)),
-            high_price=Decimal("180.00") + Decimal(str(i * 0.1)),
-            low_price=Decimal("178.50") + Decimal(str(i * 0.1)),
-            close_price=Decimal("179.50") + Decimal(str(i * 0.1)),
+            open_price=Decimal("179.00") + Decimal(str(price_adjustment)),
+            high_price=Decimal("180.00") + Decimal(str(price_adjustment)),
+            low_price=Decimal("178.50") + Decimal(str(price_adjustment)),
+            close_price=Decimal("179.50") + Decimal(str(price_adjustment)),
             volume=1000000 + (i * 10000),
             bar_size="1min",
         )
@@ -203,6 +205,10 @@ class TestMarketDataIntegration:
         """Test execution functions with multiple timeframes from market data."""
         registry = execution_system["registry"]
         detector = execution_system["detector"]
+        
+        # Clear any existing functions from fixture
+        registry.clear_all()
+        registry.register("close_above", CloseAboveFunction)
         
         # Create functions for multiple timeframes
         timeframes = [Timeframe.ONE_MIN, Timeframe.FIVE_MIN, Timeframe.FIFTEEN_MIN]
@@ -369,29 +375,17 @@ class TestMarketDataIntegration:
         """Test how market data errors propagate to execution functions."""
         function = execution_system["function"]
         
-        # Create invalid bar data (negative prices)
-        invalid_bar = BarData(
-            symbol="AAPL",
-            timestamp=datetime.now(UTC),
-            open_price=Decimal("-180.00"),  # Invalid negative price
-            high_price=Decimal("182.00"),
-            low_price=Decimal("179.50"),
-            close_price=Decimal("181.50"),
-            volume=1000000,
-            bar_size="1min",
-        )
-        
-        # This should be caught by pydantic validation
+        # Test that invalid bar data creation raises validation error
         with pytest.raises(Exception):  # ValidationError from pydantic
-            context = ExecutionContext(
+            invalid_bar = BarData(
                 symbol="AAPL",
-                timeframe=Timeframe.ONE_MIN,
-                current_bar=invalid_bar,
-                historical_bars=[],
-                trade_plan_params={"threshold_price": 180.00},
-                position_state=None,
-                account_balance=Decimal("10000"),
-                timestamp=datetime.now(UTC)
+                timestamp=datetime.now(UTC),
+                open_price=Decimal("-180.00"),  # Invalid negative price
+                high_price=Decimal("182.00"),
+                low_price=Decimal("179.50"),
+                close_price=Decimal("181.50"),
+                volume=1000000,
+                bar_size="1min",
             )
 
     async def test_real_time_data_flow_simulation(
@@ -411,7 +405,7 @@ class TestMarketDataIntegration:
                 timeframe=Timeframe.ONE_MIN,
                 current_bar=bar_data,
                 historical_bars=historical_bars,
-                trade_plan_params={"threshold_price": 180.50},
+                trade_plan_params={"threshold_price": 181.00},
                 position_state=None,
                 account_balance=Decimal("10000"),
                 timestamp=datetime.now(UTC)
@@ -426,7 +420,7 @@ class TestMarketDataIntegration:
         
         # Simulate sequence of bar updates with price progression
         base_time = datetime.now(UTC)
-        prices = [180.00, 180.25, 180.75, 181.00]  # Price moves above threshold
+        prices = [180.00, 180.25, 180.75, 181.50]  # Price moves above threshold of 181.00 (from fixture)
         
         for i, price in enumerate(prices):
             bar = BarData(

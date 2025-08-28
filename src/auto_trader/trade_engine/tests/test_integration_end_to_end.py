@@ -39,10 +39,24 @@ def mock_bar_close_detector():
     detector = Mock(spec=BarCloseDetector)
     detector.add_callback = Mock()
     detector.update_bar_data = Mock()
-    detector.monitor_timeframe = AsyncMock()
     detector.stop_monitoring = AsyncMock()
-    detector.get_monitored = Mock(return_value={})
     detector.get_timing_stats = Mock(return_value={})
+    
+    # Track monitored symbols/timeframes
+    monitored_data = {}
+    
+    async def mock_monitor_timeframe(symbol, timeframe):
+        if symbol not in monitored_data:
+            monitored_data[symbol] = []
+        if timeframe.value not in monitored_data[symbol]:
+            monitored_data[symbol].append(timeframe.value)
+    
+    def mock_get_monitored():
+        return monitored_data.copy()
+    
+    detector.monitor_timeframe = AsyncMock(side_effect=mock_monitor_timeframe)
+    detector.get_monitored = Mock(side_effect=mock_get_monitored)
+    
     return detector
 
 
@@ -289,38 +303,46 @@ class TestEndToEndIntegration:
         mock_function.name = "failing_function"
         mock_function.evaluate = AsyncMock(side_effect=ValueError("Test error"))
         
-        # Mock registry to return failing function
-        registry.get_functions_by_timeframe = Mock(return_value=[mock_function])
+        # Store original method for restoration
+        original_get_functions = registry.get_functions_by_timeframe
         
-        market_data_adapter.add_signal_callback(order_adapter.handle_execution_signal)
-        
-        # Start monitoring and feed data
-        await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
-        
-        # Feed sufficient historical data
-        for i in range(25):
-            bar = create_sample_bar(close_price=180.50)
-            market_data_adapter.on_market_data_update(bar)
-        
-        # Simulate bar close
-        trigger_bar = create_sample_bar(close_price=181.25)
-        bar_close_event = BarCloseEvent(
-            symbol="AAPL",
-            timeframe=Timeframe.ONE_MIN,
-            close_time=datetime.now(UTC),
-            bar_data=trigger_bar,
-            next_close_time=datetime.now(UTC) + timedelta(minutes=1),
-        )
-        
-        # Should not crash on error
-        await market_data_adapter._on_bar_close(bar_close_event)
-        
-        # Error should be logged
-        logs = execution_logger.query_logs({"has_error": True})
-        assert len(logs) > 0
-        
-        # No order should be placed
-        order_adapter.order_execution_manager.place_market_order.assert_not_called()
+        try:
+            # Mock registry to return failing function
+            registry.get_functions_by_timeframe = Mock(return_value=[mock_function])
+            
+            market_data_adapter.add_signal_callback(order_adapter.handle_execution_signal)
+            
+            # Start monitoring and feed data
+            await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
+            
+            # Feed sufficient historical data
+            for i in range(25):
+                bar = create_sample_bar(close_price=180.50)
+                market_data_adapter.on_market_data_update(bar)
+            
+            # Simulate bar close
+            trigger_bar = create_sample_bar(close_price=181.25)
+            bar_close_event = BarCloseEvent(
+                symbol="AAPL",
+                timeframe=Timeframe.ONE_MIN,
+                close_time=datetime.now(UTC),
+                bar_data=trigger_bar,
+                next_close_time=datetime.now(UTC) + timedelta(minutes=1),
+            )
+            
+            # Should not crash on error
+            await market_data_adapter._on_bar_close(bar_close_event)
+            
+            # Error should be logged
+            logs = execution_logger.query_logs({"has_error": True})
+            assert len(logs) > 0
+            
+            # No order should be placed
+            order_adapter.order_execution_manager.place_market_order.assert_not_called()
+            
+        finally:
+            # Always restore original method to prevent test pollution
+            registry.get_functions_by_timeframe = original_get_functions
 
     @pytest.mark.asyncio
     async def test_signal_callback_error_handling(
@@ -350,12 +372,12 @@ class TestEndToEndIntegration:
         # Start monitoring and feed data
         await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
         
-        # Feed sufficient data
+        # Feed sufficient data (below threshold)
         for i in range(25):
             bar = create_sample_bar(close_price=180.50)
             market_data_adapter.on_market_data_update(bar)
         
-        # Trigger signal
+        # Trigger signal (above threshold of 181.00)
         trigger_bar = create_sample_bar(close_price=181.25)
         market_data_adapter.on_market_data_update(trigger_bar)
         

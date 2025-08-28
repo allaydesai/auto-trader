@@ -254,6 +254,7 @@ class ExecutionOrderAdapter:
                 stop_loss_price=position.current_price * Decimal("0.95"),
                 take_profit_price=position.current_price * Decimal("1.05"),
                 risk_category=self.default_risk_category,
+                calculated_position_size=abs(position.quantity),  # Exit the entire position
                 notes=f"Exit triggered by {function_name}: {signal.reasoning}",
             )
             

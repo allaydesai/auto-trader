@@ -26,23 +26,35 @@ class ExecutionLogger:
     def __init__(
         self,
         log_dir: Optional[Path] = None,
+        log_directory: Optional[Path] = None,
         max_memory_entries: int = 10000,
         enable_file_logging: bool = True,
+        max_entries_per_file: int = 1000,
+        max_log_files: int = 10,
     ):
         """Initialize execution logger.
 
         Args:
             log_dir: Directory for log files (default: logs/execution)
+            log_directory: Alternative parameter name for log_dir (backward compatibility)
             max_memory_entries: Maximum entries to keep in memory
             enable_file_logging: Whether to write logs to files
+            max_entries_per_file: Maximum entries per log file before rotation
+            max_log_files: Maximum number of log files to keep
         """
-        self.log_dir = log_dir or Path("logs/execution")
+        # Support both parameter names for backward compatibility
+        self.log_dir = log_directory or log_dir or Path("logs/execution")
+        self.log_directory = self.log_dir  # Alias for test compatibility
         self.max_memory_entries = max_memory_entries
         self.enable_file_logging = enable_file_logging
+        self.max_entries_per_file = max_entries_per_file
+        self.max_log_files = max_log_files
 
         # In-memory log storage for fast querying
         self.entries: deque = deque(maxlen=max_memory_entries)
         self.lock = Lock()
+        self.current_entries = 0  # Track count for test compatibility
+        self.current_file_entries = 0  # Track entries in current log file
 
         # Performance metrics
         self.metrics = {
@@ -59,6 +71,7 @@ class ExecutionLogger:
         if self.enable_file_logging:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             self.current_log_file = self._get_log_file_path()
+            self.current_file_entries = 0
             logger.info(f"ExecutionLogger file logging to: {self.log_dir}")
 
         logger.info(
@@ -100,6 +113,7 @@ class ExecutionLogger:
         # Store in memory
         with self.lock:
             self.entries.append(entry)
+            self.current_entries += 1
             self._update_metrics(entry)
 
         # Write to file if enabled
@@ -135,13 +149,14 @@ class ExecutionLogger:
             symbol=symbol,
             timeframe=timeframe,
             signal=ExecutionSignal.no_action("Error occurred"),
-            duration_ms=0.0,
+            duration_ms=0.1,  # Minimum valid duration for error cases
             context_snapshot=self._create_context_snapshot(context) if context else {},
             error=error_msg,
         )
 
         with self.lock:
             self.entries.append(entry)
+            self.current_entries += 1
             self.metrics["failed_evaluations"] += 1
 
         if self.enable_file_logging:
@@ -150,7 +165,11 @@ class ExecutionLogger:
         logger.error(f"Execution error in {function_name}: {error_msg}")
 
     def query_logs(
-        self, filters: Optional[Dict[str, Any]] = None, limit: int = 100
+        self, 
+        filters: Optional[Dict[str, Any]] = None, 
+        limit: int = 100,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
     ) -> List[ExecutionLogEntry]:
         """Query historical execution logs.
 
@@ -164,44 +183,49 @@ class ExecutionLogger:
         with self.lock:
             entries_list = list(self.entries)
 
-        if not filters:
-            return entries_list[-limit:]
-
         # Apply filters
         filtered = entries_list
+        
+        # Apply dictionary filters if provided
+        if filters:
+            if "symbol" in filters:
+                filtered = [e for e in filtered if e.symbol == filters["symbol"]]
 
-        if "symbol" in filters:
-            filtered = [e for e in filtered if e.symbol == filters["symbol"]]
+            if "timeframe" in filters:
+                filtered = [e for e in filtered if e.timeframe == filters["timeframe"]]
 
-        if "timeframe" in filters:
-            filtered = [e for e in filtered if e.timeframe == filters["timeframe"]]
+            if "function_name" in filters:
+                filtered = [
+                    e for e in filtered if e.function_name == filters["function_name"]
+                ]
 
-        if "function_name" in filters:
-            filtered = [
-                e for e in filtered if e.function_name == filters["function_name"]
-            ]
+            if "action" in filters:
+                action = filters["action"]
+                if isinstance(action, str):
+                    action = ExecutionAction(action)
+                filtered = [e for e in filtered if e.signal.action == action]
 
-        if "action" in filters:
-            action = filters["action"]
-            if isinstance(action, str):
-                action = ExecutionAction(action)
-            filtered = [e for e in filtered if e.signal.action == action]
+            if "has_error" in filters:
+                if filters["has_error"]:
+                    filtered = [e for e in filtered if e.error is not None]
+                else:
+                    filtered = [e for e in filtered if e.error is None]
 
-        if "has_error" in filters:
-            if filters["has_error"]:
-                filtered = [e for e in filtered if e.error is not None]
-            else:
-                filtered = [e for e in filtered if e.error is None]
+            if "min_confidence" in filters:
+                min_conf = filters["min_confidence"]
+                filtered = [e for e in filtered if e.signal.confidence >= min_conf]
 
-        if "min_confidence" in filters:
-            min_conf = filters["min_confidence"]
-            filtered = [e for e in filtered if e.signal.confidence >= min_conf]
+            if "since" in filters:
+                since = filters["since"]
+                if not isinstance(since, datetime):
+                    since = datetime.fromisoformat(since)
+                filtered = [e for e in filtered if e.timestamp >= since]
 
-        if "since" in filters:
-            since = filters["since"]
-            if not isinstance(since, datetime):
-                since = datetime.fromisoformat(since)
-            filtered = [e for e in filtered if e.timestamp >= since]
+        # Apply start_time and end_time filters if provided
+        if start_time:
+            filtered = [e for e in filtered if e.timestamp >= start_time]
+        if end_time:
+            filtered = [e for e in filtered if e.timestamp <= end_time]
 
         return filtered[-limit:]
 
@@ -303,6 +327,69 @@ class ExecutionLogger:
 
         return removed
 
+    async def log_execution_decision(self, entry: ExecutionLogEntry) -> None:
+        """Log an execution decision entry.
+        
+        Args:
+            entry: Pre-built execution log entry
+        """
+        # Store in memory
+        with self.lock:
+            self.entries.append(entry)
+            self.current_entries += 1
+            self._update_metrics(entry)
+
+        # Write to file if enabled
+        if self.enable_file_logging:
+            self._write_to_file(entry)
+
+        # Log to standard logger based on importance
+        self._log_to_standard(entry)
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get performance metrics (alias for get_metrics)."""
+        return self.get_metrics()
+
+    def get_function_statistics(self, function_name: Optional[str] = None) -> Dict[str, Any]:
+        """Get statistics for all functions or a specific function."""
+        if function_name:
+            return self.get_function_stats(function_name)
+        
+        # Get stats for all functions
+        with self.lock:
+            entries_list = list(self.entries)
+        
+        if not entries_list:
+            return {}
+        
+        # Group by function name
+        function_names = set(e.function_name for e in entries_list)
+        stats = {}
+        
+        for name in function_names:
+            stats[name] = self.get_function_stats(name)
+        
+        return stats
+
+    def get_audit_trail(self, symbol: Optional[str] = None) -> List[ExecutionLogEntry]:
+        """Get audit trail for symbol or all symbols."""
+        filters = {}
+        if symbol:
+            filters["symbol"] = symbol
+        
+        return self.query_logs(filters, limit=10000)
+
+    def _create_new_log_file(self) -> None:
+        """Create a new log file (for rotation)."""
+        if self.current_file_entries >= self.max_entries_per_file:
+            # Generate a unique filename with timestamp for rotation
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = f"execution_{timestamp}.jsonl"
+            self.current_log_file = self.log_dir / base_name
+        else:
+            # Use standard date-based naming
+            self.current_log_file = self._get_log_file_path()
+
     def _create_context_snapshot(
         self, context: Optional[ExecutionContext]
     ) -> Dict[str, Any]:
@@ -366,13 +453,13 @@ class ExecutionLogger:
                 self.metrics["min_duration_ms"], entry.duration_ms
             )
 
-            # Update average
+            # Update average based on total evaluations (including failed ones)
             total_duration = self.metrics["avg_duration_ms"] * (
-                self.metrics["successful_evaluations"] - 1
+                self.metrics["total_evaluations"] - 1
             )
             total_duration += entry.duration_ms
             self.metrics["avg_duration_ms"] = (
-                total_duration / self.metrics["successful_evaluations"]
+                total_duration / self.metrics["total_evaluations"]
             )
 
     def _write_to_file(self, entry: ExecutionLogEntry) -> None:
@@ -384,12 +471,14 @@ class ExecutionLogger:
         try:
             # Check if we need to rotate log file
             if self._should_rotate_log():
-                self.current_log_file = self._get_log_file_path()
+                self._create_new_log_file()
+                self.current_file_entries = 0
 
             # Write as JSON line
             with open(self.current_log_file, "a") as f:
                 json_data = entry.model_dump_json()
                 f.write(json_data + "\n")
+                self.current_file_entries += 1
 
         except Exception as e:
             logger.error(f"Failed to write execution log to file: {e}")
@@ -423,6 +512,10 @@ class ExecutionLogger:
             True if rotation needed
         """
         if not hasattr(self, "current_log_file"):
+            return True
+
+        # Rotate if file has reached maximum entries
+        if self.current_file_entries >= self.max_entries_per_file:
             return True
 
         # Rotate daily

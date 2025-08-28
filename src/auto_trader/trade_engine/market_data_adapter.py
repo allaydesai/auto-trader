@@ -148,7 +148,8 @@ class MarketDataExecutionAdapter:
             callback: Function to call when execution signals are generated
         """
         self.signal_callbacks.append(callback)
-        logger.debug(f"Added execution signal callback: {callback.__name__}")
+        callback_name = getattr(callback, '__name__', repr(callback))
+        logger.debug(f"Added execution signal callback: {callback_name}")
     
     def get_active_monitoring(self) -> Dict[str, List[str]]:
         """Get currently monitored symbol/timeframe combinations.

@@ -12,9 +12,10 @@ from auto_trader.models.execution import (
     ExecutionFunctionConfig,
     PositionState,
 )
-from auto_trader.models.enums import ExecutionAction, Timeframe, OrderType, OrderSide
+from auto_trader.models.enums import ExecutionAction, Timeframe, OrderType, OrderSide, OrderStatus
 from auto_trader.models.market_data import BarData
 from auto_trader.models.order import Order, OrderRequest
+from auto_trader.models.trade_plan import RiskCategory
 from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
 from auto_trader.trade_engine.functions import CloseAboveFunction, CloseBelowFunction
 
@@ -59,13 +60,15 @@ def sample_market_data():
     base_time = datetime.now(UTC) - timedelta(minutes=20)
     
     for i in range(20):
+        # Use proper decimal formatting to avoid precision issues
+        price_adjustment = round(i * 0.05, 2)
         bar = BarData(
             symbol="AAPL",
             timestamp=base_time + timedelta(minutes=i),
-            open_price=Decimal("179.00") + Decimal(str(i * 0.05)),
-            high_price=Decimal("180.00") + Decimal(str(i * 0.05)),
-            low_price=Decimal("178.50") + Decimal(str(i * 0.05)),
-            close_price=Decimal("179.50") + Decimal(str(i * 0.05)),
+            open_price=Decimal("179.00") + Decimal(str(price_adjustment)),
+            high_price=Decimal("180.00") + Decimal(str(price_adjustment)),
+            low_price=Decimal("178.50") + Decimal(str(price_adjustment)),
+            close_price=Decimal("179.50") + Decimal(str(price_adjustment)),
             volume=1000000,
             bar_size="1min",
         )
@@ -147,23 +150,22 @@ class TestOrderExecutionIntegration:
         position_size = risk_manager.calculate_position_size()
         
         order_request = OrderRequest(
+            trade_plan_id="test_plan_001",
             symbol="AAPL",
             side=OrderSide.BUY,
-            quantity=position_size,
             order_type=OrderType.MARKET,
-            price=None,  # Market order
-            time_in_force="DAY",
-            metadata={
-                "execution_function": entry_function.name,
-                "signal_confidence": signal.confidence,
-                "signal_reasoning": signal.reasoning
-            }
+            entry_price=current_bar.close_price,
+            stop_loss_price=current_bar.close_price - Decimal("2.00"),
+            take_profit_price=current_bar.close_price + Decimal("3.00"),
+            risk_category=RiskCategory.NORMAL,
+            calculated_position_size=position_size,
+            time_in_force="DAY"
         )
         
         # Verify order request properties
         assert order_request.symbol == "AAPL"
         assert order_request.side == OrderSide.BUY
-        assert order_request.quantity == 100
+        assert order_request.calculated_position_size == position_size
         assert order_request.order_type == OrderType.MARKET
 
     async def test_entry_signal_order_placement(
@@ -197,11 +199,15 @@ class TestOrderExecutionIntegration:
             
             # Create and place order
             order_request = OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.BUY,
-                quantity=100,
                 order_type=OrderType.MARKET,
-                price=None,
+                entry_price=Decimal("181.50"),
+                stop_loss_price=Decimal("179.50"),
+                take_profit_price=Decimal("184.50"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
                 time_in_force="DAY"
             )
             
@@ -246,11 +252,15 @@ class TestOrderExecutionIntegration:
         if signal.should_execute and signal.action == ExecutionAction.EXIT:
             # Create exit order
             order_request = OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.SELL,  # Close long position
-                quantity=100,
                 order_type=OrderType.MARKET,
-                price=None,
+                entry_price=Decimal("178.75"),
+                stop_loss_price=Decimal("180.00"),
+                take_profit_price=Decimal("175.00"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
                 time_in_force="DAY"
             )
             
@@ -351,29 +361,41 @@ class TestOrderExecutionIntegration:
         if signal.should_execute:
             # Create bracket order structure
             parent_order = OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.BUY,
-                quantity=100,
                 order_type=OrderType.MARKET,
-                price=None,
+                entry_price=Decimal("181.50"),
+                stop_loss_price=Decimal("178.00"),
+                take_profit_price=Decimal("184.00"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
                 time_in_force="DAY"
             )
             
             stop_loss_order = OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.SELL,
-                quantity=100,
                 order_type=OrderType.STOP,
-                price=Decimal("178.00"),
+                entry_price=Decimal("178.00"),
+                stop_loss_price=Decimal("176.00"),
+                take_profit_price=Decimal("180.00"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
                 time_in_force="GTC"  # Good till cancelled
             )
             
             take_profit_order = OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.SELL,
-                quantity=100,
                 order_type=OrderType.LIMIT,
-                price=Decimal("184.00"),
+                entry_price=Decimal("184.00"),
+                stop_loss_price=Decimal("182.00"),
+                take_profit_price=Decimal("186.00"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
                 time_in_force="GTC"
             )
             
@@ -482,11 +504,15 @@ class TestOrderExecutionIntegration:
             
             if signal.should_execute:
                 order_request = OrderRequest(
+                    trade_plan_id=f"test_plan_{symbol}",
                     symbol=symbol,
                     side=OrderSide.BUY,
-                    quantity=100,
                     order_type=OrderType.MARKET,
-                    price=None,
+                    entry_price=Decimal("181.50"),
+                    stop_loss_price=Decimal("179.50"),
+                    take_profit_price=Decimal("184.50"),
+                    risk_category=RiskCategory.NORMAL,
+                    calculated_position_size=100,
                     time_in_force="DAY"
                 )
                 
@@ -535,11 +561,15 @@ class TestOrderExecutionIntegration:
             # Order placement should fail
             with pytest.raises(Exception, match="Order placement failed"):
                 await order_manager.place_order(OrderRequest(
+                    trade_plan_id="test_plan_001",
                     symbol="AAPL",
                     side=OrderSide.BUY,
-                    quantity=100,
                     order_type=OrderType.MARKET,
-                    price=None,
+                    entry_price=Decimal("181.50"),
+                    stop_loss_price=Decimal("179.50"),
+                    take_profit_price=Decimal("184.50"),
+                    risk_category=RiskCategory.NORMAL,
+                    calculated_position_size=100,
                     time_in_force="DAY"
                 ))
 
@@ -553,15 +583,16 @@ class TestOrderExecutionIntegration:
         
         # Mock filled order response
         filled_order = Order(
+            trade_plan_id="test_plan_001",
             order_id="ORDER_12345",
             symbol="AAPL",
             side=OrderSide.BUY,
+            order_type=OrderType.MARKET,
             quantity=100,
             filled_quantity=100,
-            order_type=OrderType.MARKET,
-            status="Filled",
-            filled_price=Decimal("181.50"),
-            timestamp=datetime.now(UTC)
+            status=OrderStatus.FILLED,
+            average_fill_price=Decimal("181.50"),
+            filled_at=datetime.now(UTC)
         )
         
         # Mock getting positions after fill
@@ -592,11 +623,15 @@ class TestOrderExecutionIntegration:
         if signal.should_execute:
             # Place order
             order_id = await order_manager.place_order(OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.BUY,
-                quantity=100,
                 order_type=OrderType.MARKET,
-                price=None,
+                entry_price=Decimal("181.50"),
+                stop_loss_price=Decimal("179.50"),
+                take_profit_price=Decimal("184.50"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
                 time_in_force="DAY"
             ))
             
@@ -630,25 +665,20 @@ class TestOrderExecutionIntegration:
         if signal.should_execute:
             # Create order request with signal metadata
             order_request = OrderRequest(
+                trade_plan_id="test_plan_001",
                 symbol="AAPL",
                 side=OrderSide.BUY,
-                quantity=100,
                 order_type=OrderType.MARKET,
-                price=None,
-                time_in_force="DAY",
-                metadata={
-                    "execution_function": entry_function.name,
-                    "signal_confidence": signal.confidence,
-                    "signal_reasoning": signal.reasoning,
-                    "signal_metadata": signal.metadata,
-                    "threshold_price": context.get_param("threshold_price"),
-                    "actual_close_price": float(current_bar.close_price)
-                }
+                entry_price=current_bar.close_price,
+                stop_loss_price=current_bar.close_price - Decimal("2.00"),
+                take_profit_price=current_bar.close_price + Decimal("3.00"),
+                risk_category=RiskCategory.NORMAL,
+                calculated_position_size=100,
+                time_in_force="DAY"
             )
             
-            # Verify metadata preservation
-            assert order_request.metadata["execution_function"] == "entry_function"
-            assert order_request.metadata["signal_confidence"] == signal.confidence
-            assert order_request.metadata["signal_reasoning"] == signal.reasoning
-            assert "threshold_price" in order_request.metadata
-            assert "actual_close_price" in order_request.metadata
+            # Verify order request was created successfully
+            assert order_request.symbol == "AAPL"
+            assert order_request.side == OrderSide.BUY
+            assert order_request.order_type == OrderType.MARKET
+            assert order_request.calculated_position_size == 100

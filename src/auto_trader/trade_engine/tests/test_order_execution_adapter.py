@@ -213,7 +213,7 @@ class TestExecutionOrderAdapter:
         call_args = order_adapter.order_execution_manager.place_market_order.call_args[0][0]
         assert call_args.symbol == "AAPL"
         assert call_args.side == OrderSide.SELL  # Opposite of long position
-        assert call_args.quantity == 100  # Same as position size
+        assert call_args.calculated_position_size == 100  # Same as position size
 
     @pytest.mark.asyncio
     async def test_handle_exit_signal_no_position(self, order_adapter, sample_context):
@@ -281,7 +281,7 @@ class TestExecutionOrderAdapter:
         call_args = order_adapter.order_execution_manager.place_stop_order.call_args[0][0]
         assert call_args.symbol == "AAPL"
         assert call_args.side == OrderSide.SELL  # Opposite of long position
-        assert call_args.stop_price == Decimal("179.50")
+        assert call_args.stop_loss_price == Decimal("179.50")
 
     @pytest.mark.asyncio
     async def test_handle_no_action_signal(self, order_adapter, sample_context):
@@ -328,8 +328,8 @@ class TestExecutionOrderAdapter:
         assert "test_function" in execution_id
         assert "AAPL" in execution_id
         assert "1min" in execution_id
-        # Should contain timestamp
-        assert len(execution_id.split("_")) == 4
+        # Should contain timestamp components (function_name_symbol_timeframe_date_time)
+        assert len(execution_id.split("_")) == 6
 
     @pytest.mark.asyncio
     async def test_order_tracking(self, order_adapter, sample_context):
@@ -399,4 +399,4 @@ class TestExecutionOrderAdapter:
         assert "default_risk_category" in stats
         assert "config" in stats
         assert stats["tracked_orders"] == 1
-        assert stats["default_risk_category"] == "NORMAL"
+        assert stats["default_risk_category"] == "normal"
