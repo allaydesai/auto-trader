@@ -11,6 +11,13 @@ from .client import (
     IBKRTimeoutError,
 )
 from .connection_manager import ConnectionManager
+from .order_manager import (
+    OrderExecutionManager,
+    OrderExecutionError,
+    OrderNotFoundError,
+    OrderAlreadyExistsError,
+)
+from .state_manager import OrderStateManager, OrderStateSnapshot
 
 __all__ = [
     "CircuitBreaker",
@@ -24,4 +31,10 @@ __all__ = [
     "IBKRError", 
     "IBKRAuthenticationError",
     "IBKRTimeoutError",
+    "OrderExecutionManager",
+    "OrderExecutionError",
+    "OrderNotFoundError",
+    "OrderAlreadyExistsError",
+    "OrderStateManager",
+    "OrderStateSnapshot",
 ]

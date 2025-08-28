@@ -4,6 +4,7 @@ from .backup_manager import BackupManager
 from .portfolio_tracker import PortfolioTracker
 from .position_sizer import PositionSizer
 from .risk_manager import RiskManager
+from .order_risk_validator import OrderRiskValidator
 from .risk_models import (
     PositionSizeResult,
     RiskCheck,
@@ -21,6 +22,7 @@ __all__ = [
     "RiskManager",
     "PortfolioTracker",
     "PositionSizer",
+    "OrderRiskValidator",
     "PositionSizeResult",
     "RiskCheck", 
     "PositionRiskEntry",
