@@ -50,6 +50,33 @@ class BracketOrderType(str, Enum):
 # RiskCategory is imported from trade_plan.py to avoid duplication
 
 
+class ExecutionAction(str, Enum):
+    """Actions that can be taken by execution functions."""
+    NONE = "NONE"  # No action required
+    ENTER_LONG = "ENTER_LONG"  # Open long position
+    ENTER_SHORT = "ENTER_SHORT"  # Open short position
+    EXIT = "EXIT"  # Close position
+    MODIFY_STOP = "MODIFY_STOP"  # Modify stop-loss
+
+
+class ConfidenceLevel(str, Enum):
+    """Confidence levels for execution signals."""
+    LOW = "LOW"  # 0.0 - 0.33
+    MEDIUM = "MEDIUM"  # 0.34 - 0.66
+    HIGH = "HIGH"  # 0.67 - 1.0
+
+
+class Timeframe(str, Enum):
+    """Supported timeframes for bar data and execution."""
+    ONE_MIN = "1min"
+    FIVE_MIN = "5min"
+    FIFTEEN_MIN = "15min"
+    THIRTY_MIN = "30min"
+    ONE_HOUR = "1hour"
+    FOUR_HOUR = "4hour"
+    ONE_DAY = "1day"
+
+
 class TimeInForce(str, Enum):
     """Order time in force definitions."""
     DAY = "DAY"
