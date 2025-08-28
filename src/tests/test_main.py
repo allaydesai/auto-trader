@@ -211,7 +211,15 @@ class TestMainFunction:
             mock_settings = MagicMock()
             mock_settings_class.return_value = mock_settings
 
-            mock_app = AsyncMock()
+            # Use completely regular mocks to avoid AsyncMock warnings
+            mock_app = Mock()
+            mock_app.start = AsyncMock()
+            mock_app.shutdown = AsyncMock()
+            mock_app._running = False
+            # Create shutdown event that doesn't trigger warnings
+            mock_app._shutdown_event = Mock(spec=['is_set', 'wait'])
+            mock_app._shutdown_event.is_set.return_value = False
+            mock_app._shutdown_event.wait = AsyncMock()
             mock_app_class.return_value = mock_app
 
             result = await main()
@@ -223,11 +231,15 @@ class TestMainFunction:
     async def test_main_keyboard_interrupt(self) -> None:
         """Test main with KeyboardInterrupt."""
         with patch("main.Settings"), patch("main.AutoTraderApp") as mock_app_class:
-            mock_app = AsyncMock()
-            mock_app.start.side_effect = KeyboardInterrupt()
-            mock_app._running = (
-                False  # Not running when KeyboardInterrupt occurs during start
-            )
+            # Use MagicMock instead of AsyncMock to prevent Event.wait warning
+            mock_app = MagicMock()
+            mock_app.start = AsyncMock(side_effect=KeyboardInterrupt())
+            mock_app.shutdown = AsyncMock()
+            mock_app._running = False
+            mock_shutdown_event = Mock()
+            mock_shutdown_event.is_set = Mock(return_value=False)
+            mock_shutdown_event.wait = AsyncMock()
+            mock_app._shutdown_event = mock_shutdown_event
             mock_app_class.return_value = mock_app
 
             result = await main()
@@ -249,9 +261,15 @@ class TestMainFunction:
     async def test_main_with_running_app_cleanup(self) -> None:
         """Test main ensures app shutdown in finally block."""
         with patch("main.Settings"), patch("main.AutoTraderApp") as mock_app_class:
-            mock_app = AsyncMock()
+            # Use MagicMock instead of AsyncMock to prevent Event.wait warning
+            mock_app = MagicMock()
+            mock_app.start = AsyncMock(side_effect=Exception("Start failed"))
+            mock_app.shutdown = AsyncMock()
             mock_app._running = True
-            mock_app.start.side_effect = Exception("Start failed")
+            mock_shutdown_event = Mock()
+            mock_shutdown_event.is_set = Mock(return_value=False)
+            mock_shutdown_event.wait = AsyncMock()
+            mock_app._shutdown_event = mock_shutdown_event
             mock_app_class.return_value = mock_app
 
             result = await main()

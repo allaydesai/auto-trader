@@ -139,15 +139,23 @@ def connection_manager(mock_settings, temp_state_dir, mock_config_loader):
         
         # Setup mock circuit breaker
         mock_breaker = Mock()
-        mock_breaker.call_with_circuit_breaker = AsyncMock(
-            side_effect=lambda func, *args, **kwargs: func(*args, **kwargs)
-        )
+        async def mock_circuit_call(func, *args, **kwargs):
+            """Mock circuit breaker that calls the function."""
+            if asyncio.iscoroutinefunction(func):
+                return await func(*args, **kwargs)
+            else:
+                return func(*args, **kwargs)
+        mock_breaker.call_with_circuit_breaker = AsyncMock(side_effect=mock_circuit_call)
         mock_breaker.get_state = Mock()
         mock_breaker_class.return_value = mock_breaker
         
         manager = ConnectionManager(mock_settings, temp_state_dir)
         manager._client = mock_client
         manager._circuit_breaker = mock_breaker
+        
+        # Store original graceful_shutdown for tests that need real functionality
+        original_graceful_shutdown = manager.graceful_shutdown
+        manager._original_graceful_shutdown = original_graceful_shutdown
         
         yield manager
 

@@ -24,7 +24,11 @@ class TestSettings:
 
     def test_default_settings(self) -> None:
         """Test settings with default values."""
-        settings = Settings(discord_webhook_url="https://discord.com/api/webhooks/test")
+        # Create settings without loading .env file to test true defaults
+        settings = Settings(
+            _env_file=None,  # Disable .env file loading
+            discord_webhook_url="https://discord.com/api/webhooks/test"
+        )
 
         assert settings.ibkr_host == "127.0.0.1"
         assert settings.ibkr_port == 7497
