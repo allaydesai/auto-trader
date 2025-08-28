@@ -157,6 +157,8 @@ class TestConnectionManager:
         """Test graceful shutdown with position closure."""
         # Arrange
         connection_manager._client.is_connected.return_value = True
+        # Use the original method for this test
+        connection_manager.graceful_shutdown = connection_manager._original_graceful_shutdown
         
         # Act
         await connection_manager.graceful_shutdown()
@@ -182,6 +184,8 @@ class TestConnectionManager:
         """Test graceful shutdown with error."""
         # Arrange
         connection_manager._client.disconnect.side_effect = Exception("Disconnect failed")
+        # Use the original method for this test
+        connection_manager.graceful_shutdown = connection_manager._original_graceful_shutdown
         
         # Act - should not raise exception
         await connection_manager.graceful_shutdown()
@@ -290,7 +294,8 @@ class TestConnectionManager:
         # Arrange
         connection_manager._shutdown_initiated = True
         
-        with patch('asyncio.create_task') as mock_create_task:
+        with patch('asyncio.create_task') as mock_create_task, \
+             patch.object(connection_manager, 'graceful_shutdown', new_callable=AsyncMock) as mock_graceful:
             # Act
             connection_manager._signal_handler(15, None)
             

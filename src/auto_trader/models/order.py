@@ -67,7 +67,6 @@ class Order(BaseModel):
     )
     
     @computed_field
-    @property
     def remaining_quantity(self) -> int:
         """Calculate remaining quantity from total and filled."""
         return max(0, self.quantity - self.filled_quantity)

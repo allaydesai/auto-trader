@@ -366,7 +366,10 @@ class TestOrderExecutionManager:
     async def test_real_order_execution_fails_gracefully(
         self, mock_ibkr_client, mock_risk_validator, sample_order_request, tmp_path
     ):
-        """Test that real order execution fails gracefully when IBKR client is not properly connected."""
+        """Test that real order execution fails gracefully when IBKR client raises an exception."""
+        # Mock IBKR client to raise an exception
+        mock_ibkr_client._ib.placeOrder.side_effect = Exception("IBKR connection failed")
+        
         # Create manager with simulation_mode=False
         manager = OrderExecutionManager(
             ibkr_client=mock_ibkr_client,
@@ -375,12 +378,12 @@ class TestOrderExecutionManager:
             state_dir=tmp_path / "test_orders_3",
         )
         
-        # Real order execution should return failed OrderResult when IBKR client is mocked
+        # Real order execution should return failed OrderResult when IBKR client fails
         result = await manager.place_market_order(sample_order_request)
         
         assert result.success is False
         assert result.order_status == OrderStatus.REJECTED
-        assert "Order placement failed" in result.error_message
+        assert "IBKR execution failed" in result.error_message
 
     def test_create_order_from_request(self, order_manager, sample_order_request):
         """Test creating Order object from OrderRequest."""

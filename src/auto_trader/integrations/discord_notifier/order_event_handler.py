@@ -43,14 +43,17 @@ class DiscordOrderEventHandler:
         """Handle order event asynchronously."""
         try:
             # Get order from event data if available
-            order = event.event_data.get('order')
-            if not order:
+            order_data = event.event_data.get('order')
+            if not order_data:
                 logger.warning(
                     "No order data in event", 
                     event_id=event.event_id,
                     event_type=event.event_type
                 )
                 return
+            
+            # Convert order data dict back to Order object
+            order = Order.model_validate(order_data) if isinstance(order_data, dict) else order_data
                 
             # Cache order for future reference
             if order.order_id:
