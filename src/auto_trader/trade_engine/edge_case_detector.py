@@ -170,7 +170,7 @@ class EdgeCaseDetector:
         
         if gap_percent >= self.gap_threshold_percent:
             gap_direction = "up" if current_bar.open_price > previous_bar.close_price else "down"
-            severity = "high" if gap_percent >= 5 else "medium"
+            severity = "high" if gap_percent >= Decimal("5") else "medium"
             
             return EdgeCaseResult(
                 has_edge_case=True,
@@ -222,7 +222,7 @@ class EdgeCaseDetector:
         
         if max_move >= self.limit_move_percent:
             move_direction = "up" if high_move > low_move else "down"
-            severity = "high" if max_move >= 15 else "medium"
+            severity = "high" if max_move >= Decimal("15") else "medium"
             
             return EdgeCaseResult(
                 has_edge_case=True,
@@ -264,7 +264,7 @@ class EdgeCaseDetector:
             )
         
         # Calculate average volume over last 20 bars
-        avg_volume = sum(bar.volume for bar in historical_bars[-20:]) / 20
+        avg_volume = Decimal(str(sum(bar.volume for bar in historical_bars[-20:]))) / Decimal("20")
         
         if avg_volume == 0:
             return EdgeCaseResult(
@@ -275,10 +275,10 @@ class EdgeCaseDetector:
                 recommended_action="reduce_confidence"
             )
         
-        volume_ratio = current_bar.volume / avg_volume
+        volume_ratio = Decimal(str(current_bar.volume)) / avg_volume
         
-        if volume_ratio >= self.volume_spike_threshold:
-            severity = "high" if volume_ratio >= 10 else "medium"
+        if volume_ratio >= Decimal(str(self.volume_spike_threshold)):
+            severity = "high" if volume_ratio >= Decimal("10") else "medium"
             
             return EdgeCaseResult(
                 has_edge_case=True,
@@ -288,7 +288,7 @@ class EdgeCaseDetector:
                 recommended_action="increase_confidence" if severity == "medium" else "evaluate_carefully"
             )
         
-        if volume_ratio <= 0.1:  # Very low volume
+        if volume_ratio <= Decimal("0.1"):  # Very low volume
             return EdgeCaseResult(
                 has_edge_case=True,
                 case_type="volume_dry_up",
