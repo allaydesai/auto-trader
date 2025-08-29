@@ -14,13 +14,16 @@ from auto_trader.models.execution import (
     ExecutionLogEntry,
 )
 from auto_trader.models.enums import ExecutionAction, Timeframe
+from auto_trader.trade_engine.logger_validation import LoggerValidationMixin
+from auto_trader.trade_engine.execution_metrics import ExecutionMetricsCalculator
+from auto_trader.trade_engine.log_file_manager import LogFileManager
 
 
-class ExecutionLogger:
+class ExecutionLogger(LoggerValidationMixin):
     """Structured logging system for all execution decisions.
 
     Provides comprehensive audit trail with querying capabilities
-    and performance metrics tracking.
+    and performance metrics tracking using composition pattern.
     """
 
     def __init__(
@@ -42,41 +45,111 @@ class ExecutionLogger:
             max_entries_per_file: Maximum entries per log file before rotation
             max_log_files: Maximum number of log files to keep
         """
+        # Validate parameters using mixin
+        self._validate_init_parameters(
+            log_dir, log_directory, max_memory_entries, enable_file_logging,
+            max_entries_per_file, max_log_files
+        )
+
         # Support both parameter names for backward compatibility
         self.log_dir = log_directory or log_dir or Path("logs/execution")
         self.log_directory = self.log_dir  # Alias for test compatibility
         self.max_memory_entries = max_memory_entries
         self.enable_file_logging = enable_file_logging
-        self.max_entries_per_file = max_entries_per_file
-        self.max_log_files = max_log_files
 
         # In-memory log storage for fast querying
         self.entries: deque = deque(maxlen=max_memory_entries)
         self.lock = Lock()
         self.current_entries = 0  # Track count for test compatibility
-        self.current_file_entries = 0  # Track entries in current log file
 
-        # Performance metrics
-        self.metrics = {
-            "total_evaluations": 0,
-            "successful_evaluations": 0,
-            "failed_evaluations": 0,
-            "actions_triggered": 0,
-            "avg_duration_ms": 0.0,
-            "max_duration_ms": 0.0,
-            "min_duration_ms": float("inf"),
-        }
-
-        # Create log directory if file logging enabled
+        # Initialize component classes
+        self.metrics_calculator = ExecutionMetricsCalculator()
+        
+        # Initialize file manager if file logging enabled
+        self.file_manager = None
         if self.enable_file_logging:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            self.current_log_file = self._get_log_file_path()
-            self.current_file_entries = 0
-            logger.info(f"ExecutionLogger file logging to: {self.log_dir}")
+            if self.ensure_log_directory_exists(self.log_dir):
+                self.file_manager = LogFileManager(
+                    self.log_dir, max_entries_per_file, max_log_files
+                )
+                logger.info(f"ExecutionLogger file logging to: {self.log_dir}")
+            else:
+                logger.warning("File logging disabled due to directory issues")
+                self.enable_file_logging = False
 
         logger.info(
             f"ExecutionLogger initialized (memory capacity: {max_memory_entries})"
         )
+
+    @property
+    def current_log_file(self) -> Optional[Path]:
+        """Get current log file path for backward compatibility."""
+        if self.file_manager:
+            return self.file_manager.current_log_file
+        return None
+
+    @property
+    def current_file_entries(self) -> int:
+        """Get current file entry count for backward compatibility."""
+        if self.file_manager:
+            return self.file_manager.current_file_entries
+        return 0
+
+    def _get_log_file_path(self) -> Optional[Path]:
+        """Get log file path for backward compatibility."""
+        if self.file_manager:
+            return self.file_manager.get_current_log_path()
+        return None
+
+    @property
+    def max_entries_per_file(self) -> int:
+        """Get max entries per file for backward compatibility."""
+        if self.file_manager:
+            return self.file_manager.max_entries_per_file
+        return 1000
+
+    @max_entries_per_file.setter
+    def max_entries_per_file(self, value: int) -> None:
+        """Set max entries per file for backward compatibility."""
+        if self.file_manager:
+            self.file_manager.max_entries_per_file = value
+
+    @property
+    def max_log_files(self) -> int:
+        """Get max log files for backward compatibility."""
+        if self.file_manager:
+            return self.file_manager.max_log_files
+        return 10
+
+    @max_log_files.setter
+    def max_log_files(self, value: int) -> None:
+        """Set max log files for backward compatibility."""
+        if self.file_manager:
+            self.file_manager.max_log_files = value
+
+    def _validate_init_parameters(
+        self,
+        log_dir: Optional[Path],
+        log_directory: Optional[Path],
+        max_memory_entries: int,
+        enable_file_logging: bool,
+        max_entries_per_file: int,
+        max_log_files: int,
+    ) -> None:
+        """Validate initialization parameters using mixin methods."""
+        # Use log_directory or log_dir (backward compatibility)
+        target_log_dir = log_directory or log_dir
+        
+        if not self.validate_log_directory(target_log_dir):
+            raise ValueError(f"Invalid log directory: {target_log_dir}")
+        
+        if not self.validate_memory_settings(
+            max_memory_entries, max_entries_per_file, max_log_files
+        ):
+            raise ValueError("Invalid memory or file limit settings")
+        
+        if not self.validate_file_logging_settings(enable_file_logging, target_log_dir):
+            raise ValueError("Invalid file logging configuration")
 
     def log_evaluation(
         self,
@@ -110,15 +183,15 @@ class ExecutionLogger:
             error=error,
         )
 
-        # Store in memory
+        # Store in memory and update metrics
         with self.lock:
             self.entries.append(entry)
             self.current_entries += 1
-            self._update_metrics(entry)
+            self.metrics_calculator.update(entry)
 
         # Write to file if enabled
-        if self.enable_file_logging:
-            self._write_to_file(entry)
+        if self.enable_file_logging and self.file_manager:
+            self.file_manager.write_entry(entry)
 
         # Log to standard logger based on importance
         self._log_to_standard(entry)
@@ -157,10 +230,10 @@ class ExecutionLogger:
         with self.lock:
             self.entries.append(entry)
             self.current_entries += 1
-            self.metrics["failed_evaluations"] += 1
+            self.metrics_calculator.update(entry)
 
-        if self.enable_file_logging:
-            self._write_to_file(entry)
+        if self.enable_file_logging and self.file_manager:
+            self.file_manager.write_entry(entry)
 
         logger.error(f"Execution error in {function_name}: {error_msg}")
 
@@ -262,8 +335,7 @@ class ExecutionLogger:
         Returns:
             Dictionary of performance metrics
         """
-        with self.lock:
-            return self.metrics.copy()
+        return self.metrics_calculator.get_summary()
 
     def get_function_stats(self, function_name: str) -> Dict[str, Any]:
         """Get statistics for a specific function.
@@ -275,31 +347,7 @@ class ExecutionLogger:
             Dictionary of function statistics
         """
         entries = self.query_logs({"function_name": function_name}, limit=10000)
-
-        if not entries:
-            return {
-                "function": function_name,
-                "evaluations": 0,
-                "signals": 0,
-                "errors": 0,
-                "avg_duration_ms": 0.0,
-            }
-
-        signals = sum(1 for e in entries if e.signal.action != ExecutionAction.NONE)
-        errors = sum(1 for e in entries if e.error is not None)
-        durations = [e.duration_ms for e in entries if e.duration_ms > 0]
-
-        return {
-            "function": function_name,
-            "evaluations": len(entries),
-            "signals": signals,
-            "signal_rate": signals / len(entries) if entries else 0,
-            "errors": errors,
-            "error_rate": errors / len(entries) if entries else 0,
-            "avg_duration_ms": sum(durations) / len(durations) if durations else 0,
-            "max_duration_ms": max(durations) if durations else 0,
-            "min_duration_ms": min(durations) if durations else 0,
-        }
+        return self.metrics_calculator.get_function_statistics(function_name, entries)
 
     def clear_old_entries(self, days: int = 7) -> int:
         """Clear entries older than specified days.
@@ -337,18 +385,18 @@ class ExecutionLogger:
         with self.lock:
             self.entries.append(entry)
             self.current_entries += 1
-            self._update_metrics(entry)
+            self.metrics_calculator.update(entry)
 
         # Write to file if enabled
-        if self.enable_file_logging:
-            self._write_to_file(entry)
+        if self.enable_file_logging and self.file_manager:
+            self.file_manager.write_entry(entry)
 
         # Log to standard logger based on importance
         self._log_to_standard(entry)
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics (alias for get_metrics)."""
-        return self.get_metrics()
+        return self.metrics_calculator.get_performance_summary()
 
     def get_function_statistics(self, function_name: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics for all functions or a specific function."""
@@ -359,17 +407,7 @@ class ExecutionLogger:
         with self.lock:
             entries_list = list(self.entries)
         
-        if not entries_list:
-            return {}
-        
-        # Group by function name
-        function_names = set(e.function_name for e in entries_list)
-        stats = {}
-        
-        for name in function_names:
-            stats[name] = self.get_function_stats(name)
-        
-        return stats
+        return self.metrics_calculator.get_all_function_statistics(entries_list)
 
     def get_audit_trail(self, symbol: Optional[str] = None) -> List[ExecutionLogEntry]:
         """Get audit trail for symbol or all symbols."""
@@ -378,17 +416,6 @@ class ExecutionLogger:
             filters["symbol"] = symbol
         
         return self.query_logs(filters, limit=10000)
-
-    def _create_new_log_file(self) -> None:
-        """Create a new log file (for rotation)."""
-        if self.current_file_entries >= self.max_entries_per_file:
-            # Generate a unique filename with timestamp for rotation
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base_name = f"execution_{timestamp}.jsonl"
-            self.current_log_file = self.log_dir / base_name
-        else:
-            # Use standard date-based naming
-            self.current_log_file = self._get_log_file_path()
 
     def _create_context_snapshot(
         self, context: Optional[ExecutionContext]
@@ -428,61 +455,6 @@ class ExecutionLogger:
 
         return snapshot
 
-    def _update_metrics(self, entry: ExecutionLogEntry) -> None:
-        """Update performance metrics.
-
-        Args:
-            entry: Log entry to process
-        """
-        self.metrics["total_evaluations"] += 1
-
-        if entry.error:
-            self.metrics["failed_evaluations"] += 1
-        else:
-            self.metrics["successful_evaluations"] += 1
-
-            if entry.signal.action != ExecutionAction.NONE:
-                self.metrics["actions_triggered"] += 1
-
-        if entry.duration_ms > 0:
-            # Update duration metrics
-            self.metrics["max_duration_ms"] = max(
-                self.metrics["max_duration_ms"], entry.duration_ms
-            )
-            self.metrics["min_duration_ms"] = min(
-                self.metrics["min_duration_ms"], entry.duration_ms
-            )
-
-            # Update average based on total evaluations (including failed ones)
-            total_duration = self.metrics["avg_duration_ms"] * (
-                self.metrics["total_evaluations"] - 1
-            )
-            total_duration += entry.duration_ms
-            self.metrics["avg_duration_ms"] = (
-                total_duration / self.metrics["total_evaluations"]
-            )
-
-    def _write_to_file(self, entry: ExecutionLogEntry) -> None:
-        """Write log entry to file.
-
-        Args:
-            entry: Log entry to write
-        """
-        try:
-            # Check if we need to rotate log file
-            if self._should_rotate_log():
-                self._create_new_log_file()
-                self.current_file_entries = 0
-
-            # Write as JSON line
-            with open(self.current_log_file, "a") as f:
-                json_data = entry.model_dump_json()
-                f.write(json_data + "\n")
-                self.current_file_entries += 1
-
-        except Exception as e:
-            logger.error(f"Failed to write execution log to file: {e}")
-
     def _log_to_standard(self, entry: ExecutionLogEntry) -> None:
         """Log to standard logger based on importance.
 
@@ -496,30 +468,3 @@ class ExecutionLogger:
         else:
             logger.debug(entry.summary)
 
-    def _get_log_file_path(self) -> Path:
-        """Get current log file path.
-
-        Returns:
-            Path to log file
-        """
-        date_str = datetime.now().strftime("%Y%m%d")
-        return self.log_dir / f"execution_{date_str}.jsonl"
-
-    def _should_rotate_log(self) -> bool:
-        """Check if log file should be rotated.
-
-        Returns:
-            True if rotation needed
-        """
-        if not hasattr(self, "current_log_file"):
-            return True
-
-        # Rotate if file has reached maximum entries
-        if self.current_file_entries >= self.max_entries_per_file:
-            return True
-
-        # Rotate daily
-        current_date = datetime.now().strftime("%Y%m%d")
-        file_date = self.current_log_file.stem.split("_")[1]
-
-        return current_date != file_date
