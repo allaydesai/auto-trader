@@ -228,6 +228,10 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
             bar: Current bar data
             position: Current position state
         """
+        if not bar or not position:
+            logger.warning(f"{self.name}: Invalid bar or position data for extreme tracking")
+            return
+            
         if position.is_long:
             # Track highest price for long positions
             if self._highest_price is None:

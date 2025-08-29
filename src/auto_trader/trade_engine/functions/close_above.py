@@ -20,6 +20,14 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
     This function monitors for price closes above a specified threshold level,
     commonly used for breakout entries or resistance level breaks.
     """
+    
+    # Constants for confidence calculation
+    _BASE_CONFIDENCE = 0.6
+    _MAX_DISTANCE_BOOST = 0.1
+    _MAX_VOLUME_BOOST = 0.2
+    _MAX_MOMENTUM_BOOST = 0.1
+    _VOLUME_LOOKBACK_BARS = 20
+    _MOMENTUM_LOOKBACK_BARS = 5
 
     @property
     def required_parameters(self) -> Set[str]:
@@ -178,8 +186,8 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
         )
 
         # Add volume context to reasoning if available
-        if len(context.historical_bars) >= 20:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-20:])
+        if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
+            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
             volume_ratio = current_bar.volume / avg_volume if avg_volume > 0 else 1.0
             reasoning += f" with {volume_ratio:.1f}x average volume"
 
@@ -208,26 +216,26 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
             Confidence score between 0 and 1
         """
         current_bar = context.current_bar
-        base_confidence = 0.6  # Base confidence for threshold break
+        base_confidence = self._BASE_CONFIDENCE
 
-        # Factor 1: Distance above threshold (up to 0.1 boost)
+        # Factor 1: Distance above threshold
         price_above_pct = float((current_bar.close_price - threshold) / threshold)
-        distance_boost = min(0.1, price_above_pct * 10)  # Cap at 0.1
+        distance_boost = min(self._MAX_DISTANCE_BOOST, price_above_pct * 10)
 
-        # Factor 2: Volume compared to average (up to 0.2 boost)
+        # Factor 2: Volume compared to average
         volume_boost = 0.0
-        if len(context.historical_bars) >= 20:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-20:])
+        if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
+            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
             if avg_volume > 0:
                 volume_ratio = current_bar.volume / avg_volume
-                volume_boost = min(0.2, (volume_ratio - 1) * 0.1)
+                volume_boost = min(self._MAX_VOLUME_BOOST, (volume_ratio - 1) * 0.1)
 
-        # Factor 3: Momentum leading up to break (up to 0.1 boost)
+        # Factor 3: Momentum leading up to break
         momentum_boost = 0.0
-        if len(context.historical_bars) >= 5:
-            recent_momentum = self.calculate_momentum(context.historical_bars[-5:])
+        if len(context.historical_bars) >= self._MOMENTUM_LOOKBACK_BARS:
+            recent_momentum = self.calculate_momentum(context.historical_bars[-self._MOMENTUM_LOOKBACK_BARS:])
             if recent_momentum > 0:
-                momentum_boost = min(0.1, float(recent_momentum) / 100)
+                momentum_boost = min(self._MAX_MOMENTUM_BOOST, float(recent_momentum) / 100)
 
         # Calculate final confidence
         confidence = base_confidence + distance_boost + volume_boost + momentum_boost

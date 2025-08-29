@@ -200,15 +200,6 @@ class ExecutionFunctionBase(ABC):
         """
         # Basic validation that bar timeframe matches function timeframe
         if hasattr(context.current_bar, 'bar_size'):
-            # Convert bar_size string to timeframe for comparison
-            bar_timeframe_map = {
-                "1min": "1min",
-                "5min": "5min", 
-                "15min": "15min",
-                "1hour": "1hour",
-                "1day": "1day"
-            }
-            
             expected_bar_size = {
                 "ONE_MIN": "1min",
                 "FIVE_MIN": "5min",
@@ -235,19 +226,25 @@ class ExecutionFunctionBase(ABC):
         Returns:
             Tuple of (should_skip_evaluation, confidence_adjustment)
         """
-        edge_cases = self.edge_detector.detect_all_edge_cases(
-            context.current_bar, 
-            context.historical_bars
-        )
-        
-        # Log edge cases if any
-        if edge_cases:
-            self.edge_detector.log_edge_cases(edge_cases, context.symbol)
-        
-        should_skip = self.edge_detector.should_skip_evaluation(edge_cases)
-        confidence_adj = self.edge_detector.get_confidence_adjustment(edge_cases)
-        
-        return should_skip, confidence_adj
+        try:
+            edge_cases = self.edge_detector.detect_all_edge_cases(
+                context.current_bar, 
+                context.historical_bars
+            )
+            
+            # Log edge cases if any
+            if edge_cases:
+                self.edge_detector.log_edge_cases(edge_cases, context.symbol)
+            
+            should_skip = self.edge_detector.should_skip_evaluation(edge_cases)
+            confidence_adj = self.edge_detector.get_confidence_adjustment(edge_cases)
+            
+            return should_skip, confidence_adj
+            
+        except Exception as e:
+            logger.error(f"Edge case detection failed for {self.name}: {e}")
+            # Fail safe: skip evaluation on edge case detection errors
+            return True, 0.0
 
     def __str__(self) -> str:
         """String representation of function."""

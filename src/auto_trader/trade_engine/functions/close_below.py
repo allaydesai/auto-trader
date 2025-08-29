@@ -20,6 +20,15 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
     This function monitors for price closes below a specified threshold level,
     commonly used for breakdown entries, stop-loss triggers, or support breaks.
     """
+    
+    # Constants for confidence calculation
+    _EXIT_BASE_CONFIDENCE = 0.9
+    _ENTRY_BASE_CONFIDENCE = 0.6
+    _MAX_DISTANCE_BOOST = 0.1
+    _MAX_VOLUME_BOOST = 0.15
+    _MAX_MOMENTUM_PENALTY = 0.1
+    _VOLUME_LOOKBACK_BARS = 20
+    _MOMENTUM_LOOKBACK_BARS = 5
 
     @property
     def required_parameters(self) -> Set[str]:
@@ -199,8 +208,8 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
             )
 
         # Add volume context to reasoning if available
-        if len(context.historical_bars) >= 20:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-20:])
+        if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
+            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
             volume_ratio = current_bar.volume / avg_volume if avg_volume > 0 else 1.0
             reasoning += f" with {volume_ratio:.1f}x average volume"
 
@@ -240,31 +249,30 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
         current_bar = context.current_bar
 
         # Higher base confidence for stop-loss exits (protect capital)
-        base_confidence = 0.9 if action_type == "EXIT" else 0.6
+        base_confidence = self._EXIT_BASE_CONFIDENCE if action_type == "EXIT" else self._ENTRY_BASE_CONFIDENCE
 
-        # Factor 1: Distance below threshold
-        # (up to 0.1 boost for entries, no boost for exits)
+        # Factor 1: Distance below threshold (boost for entries only)
         distance_boost = 0.0
         if action_type == "ENTER_SHORT":
             price_below_pct = float((threshold - current_bar.close_price) / threshold)
-            distance_boost = min(0.1, price_below_pct * 10)
+            distance_boost = min(self._MAX_DISTANCE_BOOST, price_below_pct * 10)
 
-        # Factor 2: Volume compared to average (up to 0.15 boost)
+        # Factor 2: Volume compared to average
         volume_boost = 0.0
-        if len(context.historical_bars) >= 20:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-20:])
+        if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
+            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
             if avg_volume > 0:
                 volume_ratio = current_bar.volume / avg_volume
                 # High volume on breakdown is significant
-                volume_boost = min(0.15, (volume_ratio - 1) * 0.1)
+                volume_boost = min(self._MAX_VOLUME_BOOST, (volume_ratio - 1) * 0.1)
 
-        # Factor 3: Negative momentum (up to 0.1 penalty for false breaks)
+        # Factor 3: Negative momentum penalty for false breaks
         momentum_penalty = 0.0
-        if action_type == "ENTER_SHORT" and len(context.historical_bars) >= 5:
-            recent_momentum = self.calculate_momentum(context.historical_bars[-5:])
+        if action_type == "ENTER_SHORT" and len(context.historical_bars) >= self._MOMENTUM_LOOKBACK_BARS:
+            recent_momentum = self.calculate_momentum(context.historical_bars[-self._MOMENTUM_LOOKBACK_BARS:])
             # If momentum is positive despite break below, reduce confidence
             if recent_momentum > 0:
-                momentum_penalty = min(0.1, float(recent_momentum) / 100)
+                momentum_penalty = min(self._MAX_MOMENTUM_PENALTY, float(recent_momentum) / 100)
 
         # Calculate final confidence
         confidence = base_confidence + distance_boost + volume_boost - momentum_penalty
