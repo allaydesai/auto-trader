@@ -656,14 +656,14 @@ class TestEnhancedIntegration:
             "order_placed": 0,
         }
         
-        # Patch methods to track data flow
-        original_update_historical = setup["market_adapter"]._update_historical_data
+        # Patch methods to track data flow with new composition architecture
+        original_update_data = setup["market_adapter"].historical_data_manager.update_data
         original_on_bar_close = setup["market_adapter"]._on_bar_close
         original_evaluate = function.evaluate if function else None
         
         async def track_historical_update(*args, **kwargs):
             flow_tracking["historical_data_updated"] += 1
-            return await original_update_historical(*args, **kwargs)
+            return await original_update_data(*args, **kwargs)
         
         async def track_bar_close(event):
             flow_tracking["bar_close_detected"] += 1
@@ -676,8 +676,8 @@ class TestEnhancedIntegration:
                 flow_tracking["signal_generated"] += 1
             return result
         
-        # Apply patches
-        setup["market_adapter"]._update_historical_data = track_historical_update
+        # Apply patches using composition pattern components
+        setup["market_adapter"].historical_data_manager.update_data = track_historical_update
         setup["market_adapter"]._on_bar_close = track_bar_close
         if function:
             function.evaluate = track_evaluate
@@ -726,8 +726,8 @@ class TestEnhancedIntegration:
                 flow_tracking["order_placed"] = setup["order_manager"].place_market_order.call_count
         
         finally:
-            # Restore original methods
-            setup["market_adapter"]._update_historical_data = original_update_historical
+            # Restore original methods using composition pattern components
+            setup["market_adapter"].historical_data_manager.update_data = original_update_data
             setup["market_adapter"]._on_bar_close = original_on_bar_close
             if function and original_evaluate:
                 function.evaluate = original_evaluate

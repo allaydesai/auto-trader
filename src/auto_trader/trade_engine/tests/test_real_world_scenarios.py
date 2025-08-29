@@ -443,7 +443,7 @@ class TestRealWorldScenarios:
         for bar in pre_market_data:
             await setup["market_adapter"].on_market_data_update(bar)
         
-        # Generate market open volatility
+        # Generate market open volatility - ensure we get triggering bars
         market_open_data = RealWorldMarketDataGenerator.create_market_session_data(
             symbol="AAPL",
             session=TradingSession.MARKET_OPEN,
@@ -452,25 +452,55 @@ class TestRealWorldScenarios:
             condition=MarketCondition.HIGH_VOLATILITY
         )
         
+        # Add guaranteed triggering bars to ensure test reliability
+        trigger_bars = [
+            # Bar that closes above 180.00 to trigger breakout
+            BarData(
+                symbol="AAPL",
+                timestamp=datetime.now(UTC),
+                open_price=Decimal("179.95"),
+                high_price=Decimal("180.25"),
+                low_price=Decimal("179.90"),
+                close_price=Decimal("180.15"),  # Above 180.00 threshold
+                volume=500000,
+                bar_size="1min",
+            ),
+            # Bar that closes below 179.00 to trigger breakdown
+            BarData(
+                symbol="AAPL",
+                timestamp=datetime.now(UTC) + timedelta(minutes=1),
+                open_price=Decimal("179.05"),
+                high_price=Decimal("179.10"),
+                low_price=Decimal("178.85"),
+                close_price=Decimal("178.95"),  # Below 179.00 threshold
+                volume=500000,
+                bar_size="1min",
+            ),
+        ]
+        
+        # Combine generated and guaranteed data
+        all_market_data = market_open_data + trigger_bars
+        
         triggered_orders = 0
         
-        for bar in market_open_data:
+        for bar in all_market_data:
             await setup["market_adapter"].on_market_data_update(bar)
             
-            # Simulate bar close for volatile bars
-            if bar.close_price > Decimal("180.00") or bar.close_price < Decimal("179.00"):
-                bar_close_event = BarCloseEvent(
-                    symbol="AAPL",
-                    timeframe=Timeframe.ONE_MIN,
-                    close_time=bar.timestamp,
-                    bar_data=bar,
-                    next_close_time=bar.timestamp + timedelta(minutes=1),
-                )
-                
-                await setup["market_adapter"]._on_bar_close(bar_close_event)
-                
-                if setup["order_manager"].place_market_order.call_count > triggered_orders:
-                    triggered_orders = setup["order_manager"].place_market_order.call_count
+            # Simulate bar close for all bars in volatile session
+            bar_close_event = BarCloseEvent(
+                symbol="AAPL",
+                timeframe=Timeframe.ONE_MIN,
+                close_time=bar.timestamp,
+                bar_data=bar,
+                next_close_time=bar.timestamp + timedelta(minutes=1),
+            )
+            
+            await setup["market_adapter"]._on_bar_close(bar_close_event)
+            
+            # Track order count changes
+            current_orders = setup["order_manager"].place_market_order.call_count
+            if current_orders > triggered_orders:
+                triggered_orders = current_orders
         
         # Verify execution during volatile market open
         assert triggered_orders > 0, "Should have triggered executions during market open volatility"

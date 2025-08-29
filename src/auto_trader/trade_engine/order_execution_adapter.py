@@ -69,6 +69,11 @@ class ExecutionOrderAdapter:
         """Access order execution manager for backward compatibility."""
         return self.signal_handler.order_execution_manager
     
+    @order_execution_manager.setter
+    def order_execution_manager(self, value):
+        """Set order execution manager for backward compatibility."""
+        self.signal_handler.order_execution_manager = value
+    
     @property
     def default_risk_category(self):
         """Access default risk category for backward compatibility."""
