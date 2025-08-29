@@ -11,6 +11,7 @@ from auto_trader.models.execution import (
     ExecutionSignal,
     ExecutionFunctionConfig,
 )
+from auto_trader.trade_engine.edge_case_detector import EdgeCaseDetector
 
 if TYPE_CHECKING:
     from auto_trader.models.market_data import BarData
@@ -35,6 +36,9 @@ class ExecutionFunctionBase(ABC):
         self.parameters = config.parameters
         self.enabled = config.enabled
         self.lookback_bars = config.lookback_bars
+
+        # Initialize edge case detector
+        self.edge_detector = EdgeCaseDetector()
 
         # Validate parameters on initialization
         if not self.validate_parameters(self.parameters):
@@ -181,6 +185,69 @@ class ExecutionFunctionBase(ABC):
             Formatted price string
         """
         return f"${price:.4f}"
+
+    def is_candle_close_for_timeframe(self, context: ExecutionContext) -> bool:
+        """Check if current bar represents a completed candle for the function's timeframe.
+        
+        For now, this assumes all bars passed to functions are already aggregated 
+        to the correct timeframe. Future enhancement could add multi-timeframe logic.
+        
+        Args:
+            context: Execution context with current bar
+            
+        Returns:
+            True if this is a valid candle close evaluation
+        """
+        # Basic validation that bar timeframe matches function timeframe
+        if hasattr(context.current_bar, 'bar_size'):
+            # Convert bar_size string to timeframe for comparison
+            bar_timeframe_map = {
+                "1min": "1min",
+                "5min": "5min", 
+                "15min": "15min",
+                "1hour": "1hour",
+                "1day": "1day"
+            }
+            
+            expected_bar_size = {
+                "ONE_MIN": "1min",
+                "FIVE_MIN": "5min",
+                "FIFTEEN_MIN": "15min", 
+                "ONE_HOUR": "1hour",
+                "ONE_DAY": "1day"
+            }.get(self.timeframe.name)
+            
+            if expected_bar_size and context.current_bar.bar_size != expected_bar_size:
+                logger.warning(
+                    f"{self.name}: Bar size mismatch. Expected {expected_bar_size}, "
+                    f"got {context.current_bar.bar_size}"
+                )
+                return False
+        
+        return True
+
+    def check_edge_cases(self, context: ExecutionContext) -> tuple[bool, float]:
+        """Check for edge cases and calculate confidence adjustment.
+        
+        Args:
+            context: Execution context
+            
+        Returns:
+            Tuple of (should_skip_evaluation, confidence_adjustment)
+        """
+        edge_cases = self.edge_detector.detect_all_edge_cases(
+            context.current_bar, 
+            context.historical_bars
+        )
+        
+        # Log edge cases if any
+        if edge_cases:
+            self.edge_detector.log_edge_cases(edge_cases, context.symbol)
+        
+        should_skip = self.edge_detector.should_skip_evaluation(edge_cases)
+        confidence_adj = self.edge_detector.get_confidence_adjustment(edge_cases)
+        
+        return should_skip, confidence_adj
 
     def __str__(self) -> str:
         """String representation of function."""

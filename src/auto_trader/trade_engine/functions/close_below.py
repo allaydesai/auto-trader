@@ -68,6 +68,26 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
                 )
                 return False
 
+        # Optional max_distance_percent - prevent triggering on prices too far from threshold
+        if "max_distance_percent" in params:
+            if not self.validate_percentage_parameter(params, "max_distance_percent"):
+                logger.error("Invalid max_distance_percent parameter")
+                return False
+
+        # Optional min_distance_percent - prevent triggering on marginal breaks
+        if "min_distance_percent" in params:
+            if not self.validate_percentage_parameter(params, "min_distance_percent"):
+                logger.error("Invalid min_distance_percent parameter")
+                return False
+            
+            # Ensure min_distance is less than max_distance if both are set
+            if "max_distance_percent" in params:
+                min_dist = float(params["min_distance_percent"])
+                max_dist = float(params["max_distance_percent"])
+                if min_dist >= max_dist:
+                    logger.error("min_distance_percent must be less than max_distance_percent")
+                    return False
+
         return True
 
     async def evaluate(self, context: ExecutionContext) -> ExecutionSignal:
@@ -83,13 +103,22 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
         if not self.check_sufficient_data(context):
             return ExecutionSignal.no_action("Insufficient historical data")
 
+        # Check if this is a valid candle close for our timeframe
+        if not self.is_candle_close_for_timeframe(context):
+            return ExecutionSignal.no_action("Not a valid candle close for timeframe")
+
+        # Check for edge cases first
+        should_skip, confidence_adjustment = self.check_edge_cases(context)
+        if should_skip:
+            return ExecutionSignal.no_action("Skipping evaluation due to edge case")
+
         # Get parameters
         threshold = Decimal(str(self.get_parameter("threshold_price")))
         min_volume = self.get_parameter("min_volume", 0)
         confirmation_bars = self.get_parameter("confirmation_bars", 1)
-        action_type = self.get_parameter(
-            "action", "EXIT"
-        )  # Default to stop-loss behavior
+        action_type = self.get_parameter("action", "EXIT")  # Default to stop-loss behavior
+        min_distance_pct = self.get_parameter("min_distance_percent", 0)
+        max_distance_pct = self.get_parameter("max_distance_percent", 100)
 
         # Determine action based on position state
         if action_type == "EXIT" and not context.has_position:
@@ -130,8 +159,26 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
                 f"not below threshold {self.format_price(threshold)}"
             )
 
+        # Check distance constraints
+        price_below_pct = float((threshold - current_bar.close_price) / threshold * Decimal("100"))
+        
+        if price_below_pct < min_distance_pct:
+            return ExecutionSignal.no_action(
+                f"Price only {price_below_pct:.2f}% below threshold, "
+                f"minimum required: {min_distance_pct}%"
+            )
+        
+        if price_below_pct > max_distance_pct:
+            return ExecutionSignal.no_action(
+                f"Price {price_below_pct:.2f}% below threshold exceeds "
+                f"maximum allowed: {max_distance_pct}%"
+            )
+
         # Calculate confidence based on various factors
-        confidence = self._calculate_confidence(context, threshold, action_type)
+        base_confidence = self._calculate_confidence(context, threshold, action_type)
+        
+        # Apply edge case adjustments
+        confidence = base_confidence * confidence_adjustment
 
         # Generate reasoning
         price_below_pct = (

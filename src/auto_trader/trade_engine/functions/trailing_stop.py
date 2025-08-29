@@ -54,6 +54,12 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
         if not self.validate_percentage_parameter(params, "trail_percentage"):
             logger.error("Invalid or missing trail_percentage parameter")
             return False
+        
+        # Validate trail percentage is within reasonable bounds
+        trail_pct = float(params["trail_percentage"])
+        if trail_pct < 0.1 or trail_pct > 50.0:
+            logger.error("trail_percentage must be between 0.1% and 50%")
+            return False
 
         # Optional activation_price (price must reach this before trailing starts)
         if "activation_price" in params:
@@ -73,6 +79,21 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
                 logger.error("trail_on_profit_only must be boolean")
                 return False
 
+        # Optional trail_amount (fixed amount instead of percentage)
+        if "trail_amount" in params:
+            if not self.validate_price_parameter(params, "trail_amount"):
+                logger.error("Invalid trail_amount parameter")
+                return False
+            
+            # Don't allow both percentage and amount
+            logger.warning("Both trail_percentage and trail_amount specified, using trail_percentage")
+
+        # Optional volatility_adjusted (adjust trail based on volatility)
+        if "volatility_adjusted" in params:
+            if not isinstance(params["volatility_adjusted"], bool):
+                logger.error("volatility_adjusted must be boolean")
+                return False
+
         return True
 
     async def evaluate(self, context: ExecutionContext) -> ExecutionSignal:
@@ -88,6 +109,15 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
         if not self.check_sufficient_data(context):
             return ExecutionSignal.no_action("Insufficient historical data")
 
+        # Check if this is a valid candle close for our timeframe
+        if not self.is_candle_close_for_timeframe(context):
+            return ExecutionSignal.no_action("Not a valid candle close for timeframe")
+
+        # Check for edge cases first
+        should_skip, confidence_adjustment = self.check_edge_cases(context)
+        if should_skip:
+            return ExecutionSignal.no_action("Skipping evaluation due to edge case")
+
         # Must have an open position for trailing stop
         if not context.has_position:
             # Reset tracking variables
@@ -98,12 +128,12 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
         current_bar = context.current_bar
 
         # Get parameters
-        trail_pct = Decimal(str(self.get_parameter("trail_percentage"))) / Decimal(
-            "100"
-        )
+        trail_pct = Decimal(str(self.get_parameter("trail_percentage"))) / Decimal("100")
         activation_price = self.get_parameter("activation_price")
         initial_stop = self.get_parameter("initial_stop")
         trail_on_profit_only = self.get_parameter("trail_on_profit_only", False)
+        trail_amount = self.get_parameter("trail_amount")
+        volatility_adjusted = self.get_parameter("volatility_adjusted", False)
 
         # Check if trailing is activated (if activation price is set)
         if activation_price:
@@ -126,8 +156,15 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
         # Update highest/lowest prices
         self._update_extremes(current_bar, position)
 
+        # Adjust trail distance for volatility if requested
+        if volatility_adjusted:
+            trail_pct = self._adjust_trail_for_volatility(trail_pct, context)
+
         # Calculate trailing stop level
-        new_stop_level = self._calculate_stop_level(position, trail_pct, initial_stop)
+        if trail_amount:
+            new_stop_level = self._calculate_stop_level_fixed_amount(position, Decimal(str(trail_amount)), initial_stop)
+        else:
+            new_stop_level = self._calculate_stop_level(position, trail_pct, initial_stop)
 
         # Check if stop has been hit
         stop_hit = False
@@ -301,3 +338,93 @@ class TrailingStopFunction(ExecutionFunctionBase, ValidationMixin):
         self._highest_price = None
         self._lowest_price = None
         self._current_stop_level = None
+
+    def _adjust_trail_for_volatility(self, base_trail_pct: Decimal, context: ExecutionContext) -> Decimal:
+        """Adjust trail percentage based on recent volatility.
+        
+        Args:
+            base_trail_pct: Base trail percentage
+            context: Execution context
+            
+        Returns:
+            Volatility-adjusted trail percentage
+        """
+        if len(context.historical_bars) < 14:
+            return base_trail_pct
+        
+        # Calculate 14-bar ATR (Average True Range) for volatility
+        true_ranges = []
+        for i in range(1, min(15, len(context.historical_bars))):
+            current_bar = context.historical_bars[i]
+            previous_bar = context.historical_bars[i-1]
+            
+            # True range = max(high-low, |high-prev_close|, |low-prev_close|)
+            tr1 = current_bar.high_price - current_bar.low_price
+            tr2 = abs(current_bar.high_price - previous_bar.close_price)
+            tr3 = abs(current_bar.low_price - previous_bar.close_price)
+            
+            true_ranges.append(max(tr1, tr2, tr3))
+        
+        if not true_ranges:
+            return base_trail_pct
+            
+        atr = sum(true_ranges) / len(true_ranges)
+        current_price = context.current_bar.close_price
+        
+        # ATR as percentage of price
+        atr_pct = (atr / current_price) * Decimal("100")
+        
+        # Adjust trail percentage based on volatility
+        # Higher volatility = wider trail (multiply by 1.2-2.0)
+        # Lower volatility = tighter trail (multiply by 0.8-1.0)
+        if atr_pct > Decimal("3"):  # High volatility
+            adjustment = min(Decimal("2.0"), Decimal("1.2") + (atr_pct / Decimal("10")))
+        elif atr_pct < Decimal("1"):  # Low volatility
+            adjustment = max(Decimal("0.8"), Decimal("1.0") - (Decimal("1") - atr_pct) / Decimal("5"))
+        else:  # Normal volatility
+            adjustment = Decimal("1.0")
+        
+        adjusted_trail = base_trail_pct * adjustment
+        
+        # Keep within reasonable bounds
+        return max(Decimal("0.001"), min(Decimal("0.10"), adjusted_trail))  # 0.1% to 10%
+
+    def _calculate_stop_level_fixed_amount(
+        self, position: "PositionState", trail_amount: Decimal, initial_stop: Optional[Any]
+    ) -> Decimal:
+        """Calculate stop level using fixed dollar amount trail.
+        
+        Args:
+            position: Current position
+            trail_amount: Fixed dollar amount to trail
+            initial_stop: Optional initial stop level
+            
+        Returns:
+            Current stop level
+        """
+        if position.is_long:
+            if self._highest_price is None:
+                if initial_stop:
+                    return Decimal(str(initial_stop))
+                return position.entry_price - trail_amount
+            
+            new_stop = self._highest_price - trail_amount
+            
+            # Never lower the stop (ratchet effect)
+            if self._current_stop_level:
+                new_stop = max(new_stop, self._current_stop_level)
+                
+            return new_stop
+        else:  # Short position
+            if self._lowest_price is None:
+                if initial_stop:
+                    return Decimal(str(initial_stop))
+                return position.entry_price + trail_amount
+            
+            new_stop = self._lowest_price + trail_amount
+            
+            # Never raise the stop for shorts (ratchet effect)
+            if self._current_stop_level:
+                new_stop = min(new_stop, self._current_stop_level)
+                
+            return new_stop
