@@ -1,21 +1,20 @@
 """Order execution integration adapter for execution function framework."""
 
-import asyncio
-from decimal import Decimal
 from typing import Dict, Any, Optional
 from datetime import datetime, UTC
 
 from loguru import logger
 
-from auto_trader.models.execution import ExecutionContext, ExecutionSignal, PositionState
-from auto_trader.models.enums import ExecutionAction, Timeframe
-from auto_trader.models.order import OrderRequest, OrderResult, OrderModification
-from auto_trader.models.enums import OrderSide
+from auto_trader.models.execution import ExecutionSignal
+from auto_trader.models.enums import ExecutionAction
+from auto_trader.models.order import OrderResult
 from auto_trader.models.trade_plan import RiskCategory
 from auto_trader.integrations.ibkr_client.order_execution_manager import (
     OrderExecutionManager,
-    OrderExecutionError,
 )
+from auto_trader.trade_engine.circuit_breaker import CircuitBreakerManager
+from auto_trader.trade_engine.order_request_builder import OrderRequestBuilder
+from auto_trader.trade_engine.signal_handler import SignalHandler
 
 
 class ExecutionOrderAdapter:
@@ -23,6 +22,7 @@ class ExecutionOrderAdapter:
     
     Converts execution function signals into order requests and manages
     the integration between the execution framework and order system.
+    Uses composition pattern for maintainability and separation of concerns.
     """
     
     def __init__(
@@ -36,20 +36,24 @@ class ExecutionOrderAdapter:
             order_execution_manager: Order execution manager from Story 2.3
             default_risk_category: Default risk category for position sizing
         """
-        self.order_execution_manager = order_execution_manager
-        self.default_risk_category = default_risk_category
+        # Initialize components using composition pattern
+        self.circuit_breaker = CircuitBreakerManager(
+            max_consecutive_failures=5,
+            reset_timeout=0.05,  # Fast reset for testing
+            enabled=True,
+        )
         
-        # Track execution function generated orders
-        self.execution_orders: Dict[str, str] = {}  # execution_id -> order_id
+        self.order_request_builder = OrderRequestBuilder(
+            default_risk_category=default_risk_category,
+        )
         
-        # Circuit breaker state
-        self.consecutive_failures = 0
-        self.max_consecutive_failures = 5
-        self.circuit_breaker_open = False
-        self.last_failure_time = None
-        self.circuit_breaker_reset_timeout = 0.05  # seconds (fast reset for testing)
+        self.signal_handler = SignalHandler(
+            order_execution_manager=order_execution_manager,
+            order_request_builder=self.order_request_builder,
+            circuit_breaker=self.circuit_breaker,
+        )
         
-        # Configuration for order generation
+        # Configuration for adapter
         self.config = {
             "default_risk_category": default_risk_category,
             "order_timeout_seconds": 300,  # 5 minutes
@@ -57,7 +61,38 @@ class ExecutionOrderAdapter:
             "circuit_breaker_enabled": True,
         }
         
-        logger.info("ExecutionOrderAdapter initialized")
+        logger.info("ExecutionOrderAdapter initialized with composition pattern")
+    
+    # Backward compatibility properties for tests
+    @property
+    def order_execution_manager(self):
+        """Access order execution manager for backward compatibility."""
+        return self.signal_handler.order_execution_manager
+    
+    @property
+    def default_risk_category(self):
+        """Access default risk category for backward compatibility."""
+        return self.config["default_risk_category"]
+    
+    @property
+    def execution_orders(self):
+        """Access execution orders for backward compatibility."""
+        return self.signal_handler.execution_orders
+    
+    @property
+    def consecutive_failures(self):
+        """Access circuit breaker failures for backward compatibility."""
+        return self.circuit_breaker.consecutive_failures
+    
+    @property
+    def max_consecutive_failures(self):
+        """Access max consecutive failures for backward compatibility."""
+        return self.circuit_breaker.max_consecutive_failures
+    
+    @property
+    def circuit_breaker_open(self):
+        """Access circuit breaker state for backward compatibility."""
+        return self.circuit_breaker.circuit_breaker_open
     
     async def handle_execution_signal(self, signal_data: Dict[str, Any]) -> Optional[OrderResult]:
         """Handle execution signal and convert to order if appropriate.
@@ -77,7 +112,7 @@ class ExecutionOrderAdapter:
         try:
             # Check circuit breaker state
             if self.config.get("circuit_breaker_enabled", True):
-                self._check_circuit_breaker()
+                self.circuit_breaker.check_state()
                 
             signal = signal_data["signal"]
             context = signal_data["context"]
@@ -90,30 +125,30 @@ class ExecutionOrderAdapter:
                 symbol=context.symbol,
             )
             
-            # Route based on signal action
+            # Route based on signal action using signal handler
             result = None
             if signal.action == ExecutionAction.ENTER_LONG:
-                result = await self._handle_entry_long(signal, context, function_name)
+                result = await self.signal_handler.handle_entry_long(signal, context, function_name)
             elif signal.action == ExecutionAction.ENTER_SHORT:
-                result = await self._handle_entry_short(signal, context, function_name)
+                result = await self.signal_handler.handle_entry_short(signal, context, function_name)
             elif signal.action == ExecutionAction.EXIT:
-                result = await self._handle_exit(signal, context, function_name)
+                result = await self.signal_handler.handle_exit(signal, context, function_name)
             elif signal.action == ExecutionAction.MODIFY_STOP:
-                result = await self._handle_modify_stop(signal, context, function_name)
+                result = await self.signal_handler.handle_modify_stop(signal, context, function_name)
             else:
                 # No action needed
                 return None
             
             # Track success/failure for circuit breaker
             if result and result.success:
-                self._record_success()
+                self.circuit_breaker.record_success()
             elif result and not result.success:
-                self._record_failure()
+                self.circuit_breaker.record_failure()
                 
             return result
                 
         except Exception as e:
-            self._record_failure()
+            self.circuit_breaker.record_failure()
             logger.error(
                 f"Error handling execution signal: {e}",
                 signal_data=signal_data,
@@ -121,343 +156,12 @@ class ExecutionOrderAdapter:
             )
             raise  # Re-raise for circuit breaker to detect
     
-    async def _handle_entry_long(
-        self,
-        signal: ExecutionSignal,
-        context: ExecutionContext,
-        function_name: str,
-    ) -> Optional[OrderResult]:
-        """Handle long entry signal.
-        
-        Args:
-            signal: Execution signal
-            context: Execution context
-            function_name: Name of generating function
-            
-        Returns:
-            OrderResult if successful
-        """
-        try:
-            # Create order request
-            order_request = await self._create_entry_order_request(
-                symbol=context.symbol,
-                side=OrderSide.BUY,
-                signal=signal,
-                context=context,
-                function_name=function_name,
-            )
-            
-            if not order_request:
-                return None
-            
-            # Place the order
-            result = await self.order_execution_manager.place_market_order(order_request)
-            
-            if result.success:
-                # Track the order
-                execution_id = self._generate_execution_id(function_name, context)
-                self.execution_orders[execution_id] = result.order_id
-                
-                logger.info(
-                    f"Long entry order placed successfully",
-                    order_id=result.order_id,
-                    symbol=context.symbol,
-                    function=function_name,
-                )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error placing long entry order: {e}")
-            return OrderResult(
-                success=False,
-                error_message=str(e),
-                trade_plan_id="unknown",
-                order_status="Rejected",
-                symbol=context.symbol,
-                side=OrderSide.BUY,
-                quantity=0,
-                order_type="MKT",
-            )
     
-    async def _handle_entry_short(
-        self,
-        signal: ExecutionSignal,
-        context: ExecutionContext,
-        function_name: str,
-    ) -> Optional[OrderResult]:
-        """Handle short entry signal.
-        
-        Args:
-            signal: Execution signal
-            context: Execution context
-            function_name: Name of generating function
-            
-        Returns:
-            OrderResult if successful
-        """
-        try:
-            # Create order request
-            order_request = await self._create_entry_order_request(
-                symbol=context.symbol,
-                side=OrderSide.SELL,
-                signal=signal,
-                context=context,
-                function_name=function_name,
-            )
-            
-            if not order_request:
-                return None
-            
-            # Place the order
-            result = await self.order_execution_manager.place_market_order(order_request)
-            
-            if result.success:
-                # Track the order
-                execution_id = self._generate_execution_id(function_name, context)
-                self.execution_orders[execution_id] = result.order_id
-                
-                logger.info(
-                    f"Short entry order placed successfully",
-                    order_id=result.order_id,
-                    symbol=context.symbol,
-                    function=function_name,
-                )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error placing short entry order: {e}")
-            return OrderResult(
-                success=False,
-                error_message=str(e),
-                trade_plan_id="unknown",
-                order_status="Rejected",
-                symbol=context.symbol,
-                side=OrderSide.SELL,
-                quantity=0,
-                order_type="MKT",
-            )
     
-    async def _handle_exit(
-        self,
-        signal: ExecutionSignal,
-        context: ExecutionContext,
-        function_name: str,
-    ) -> Optional[OrderResult]:
-        """Handle exit signal.
-        
-        Args:
-            signal: Execution signal
-            context: Execution context
-            function_name: Name of generating function
-            
-        Returns:
-            OrderResult if successful
-        """
-        if not context.has_position:
-            logger.warning("Exit signal received but no position exists")
-            return None
-        
-        try:
-            position = context.position_state
-            
-            # Determine order side (opposite of position)
-            side = OrderSide.SELL if position.is_long else OrderSide.BUY
-            
-            # Create exit order request
-            plan_id = f"EXIT_{function_name}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
-            order_request = OrderRequest(
-                trade_plan_id=plan_id,
-                symbol=context.symbol,
-                side=side,
-                order_type="MKT",  # Market order for immediate exit
-                entry_price=position.current_price,
-                stop_loss_price=(position.current_price * Decimal("0.95")).quantize(Decimal('0.0001')),
-                take_profit_price=(position.current_price * Decimal("1.05")).quantize(Decimal('0.0001')),
-                risk_category=self.default_risk_category,
-                calculated_position_size=abs(position.quantity),  # Exit the entire position
-                notes=f"Exit triggered by {function_name}: {signal.reasoning}",
-            )
-            
-            # Place the order
-            result = await self.order_execution_manager.place_market_order(order_request)
-            
-            if result.success:
-                logger.info(
-                    f"Exit order placed successfully",
-                    order_id=result.order_id,
-                    symbol=context.symbol,
-                    quantity=abs(position.quantity),
-                    reason=signal.reasoning,
-                )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error placing exit order: {e}")
-            return OrderResult(
-                success=False,
-                error_message=str(e),
-                trade_plan_id="unknown",
-                order_status="Rejected",
-                symbol=context.symbol,
-                side=OrderSide.SELL if context.position_state and context.position_state.is_long else OrderSide.BUY,
-                quantity=0,
-                order_type="MKT",
-            )
     
-    async def _handle_modify_stop(
-        self,
-        signal: ExecutionSignal,
-        context: ExecutionContext,
-        function_name: str,
-    ) -> Optional[OrderResult]:
-        """Handle modify stop signal.
-        
-        Args:
-            signal: Execution signal
-            context: Execution context
-            function_name: Name of generating function
-            
-        Returns:
-            OrderResult if successful
-        """
-        if not context.has_position:
-            logger.warning("Modify stop signal received but no position exists")
-            return None
-        
-        try:
-            # Extract new stop level from signal metadata
-            new_stop_level = signal.metadata.get("new_stop_level")
-            if not new_stop_level:
-                logger.error("Modify stop signal missing new_stop_level in metadata")
-                return None
-            
-            position = context.position_state
-            
-            # Find existing stop order (this would need integration with order tracking)
-            # For now, we'll create a new stop order
-            plan_id = f"STOP_{function_name}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
-            stop_level = Decimal(str(new_stop_level))
-            order_request = OrderRequest(
-                trade_plan_id=plan_id,
-                symbol=context.symbol,
-                side=OrderSide.SELL if position.is_long else OrderSide.BUY,
-                order_type="STP",  # Stop order
-                entry_price=position.current_price,
-                stop_loss_price=stop_level,
-                take_profit_price=position.take_profit or (position.current_price * Decimal("1.10")).quantize(Decimal('0.0001')),
-                risk_category=self.default_risk_category,
-                notes=f"Stop modified by {function_name}: {signal.reasoning}",
-            )
-            
-            # Place the modified stop order
-            result = await self.order_execution_manager.place_stop_order(order_request)
-            
-            if result.success:
-                logger.info(
-                    f"Stop order modified successfully",
-                    order_id=result.order_id,
-                    symbol=context.symbol,
-                    new_stop=new_stop_level,
-                    function=function_name,
-                )
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error modifying stop order: {e}")
-            return OrderResult(
-                success=False,
-                error_message=str(e),
-                trade_plan_id="unknown",
-                order_status="Rejected",
-                symbol=context.symbol,
-                side=OrderSide.SELL if context.position_state and context.position_state.is_long else OrderSide.BUY,
-                quantity=0,
-                order_type="STP",
-            )
     
-    async def _create_entry_order_request(
-        self,
-        symbol: str,
-        side: OrderSide,
-        signal: ExecutionSignal,
-        context: ExecutionContext,
-        function_name: str,
-    ) -> Optional[OrderRequest]:
-        """Create order request for entry signals.
-        
-        Args:
-            symbol: Trading symbol
-            side: Order side (BUY/SELL)
-            signal: Execution signal
-            context: Execution context
-            function_name: Name of generating function
-            
-        Returns:
-            OrderRequest or None if cannot create
-        """
-        try:
-            # Extract parameters from signal metadata
-            entry_price = signal.metadata.get("close_price")
-            if not entry_price:
-                # Use current bar close price
-                entry_price = float(context.current_bar.close_price)
-            
-            # Determine risk category based on signal confidence
-            risk_category = self._map_confidence_to_risk_category(signal.confidence)
-            
-            # Create the order request
-            plan_id = f"{function_name}_{symbol}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
-            entry_decimal = Decimal(str(entry_price))
-            order_request = OrderRequest(
-                trade_plan_id=plan_id,
-                symbol=symbol,
-                side=side,
-                order_type="MKT",  # Market order for immediate execution
-                entry_price=entry_decimal,
-                stop_loss_price=(entry_decimal * Decimal("0.95")).quantize(Decimal('0.0001')),  # Default 5% stop
-                take_profit_price=(entry_decimal * Decimal("1.10")).quantize(Decimal('0.0001')),  # Default 10% target
-                risk_category=risk_category,
-                notes=f"Entry triggered by {function_name}: {signal.reasoning}",
-            )
-            
-            return order_request
-            
-        except Exception as e:
-            logger.error(f"Error creating entry order request: {e}")
-            return None
     
-    def _map_confidence_to_risk_category(self, confidence: float) -> RiskCategory:
-        """Map signal confidence to risk category.
-        
-        Args:
-            confidence: Signal confidence (0.0 to 1.0)
-            
-        Returns:
-            Appropriate risk category
-        """
-        if confidence >= 0.8:
-            return RiskCategory.LARGE  # High confidence = larger position
-        elif confidence >= 0.6:
-            return RiskCategory.NORMAL
-        else:
-            return RiskCategory.SMALL  # Low confidence = smaller position
     
-    def _generate_execution_id(self, function_name: str, context: ExecutionContext) -> str:
-        """Generate unique execution ID.
-        
-        Args:
-            function_name: Name of execution function
-            context: Execution context
-            
-        Returns:
-            Unique execution ID
-        """
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        return f"{function_name}_{context.symbol}_{context.timeframe.value}_{timestamp}"
     
     def get_execution_orders(self) -> Dict[str, str]:
         """Get mapping of execution IDs to order IDs.
@@ -465,7 +169,7 @@ class ExecutionOrderAdapter:
         Returns:
             Dictionary mapping execution IDs to order IDs
         """
-        return self.execution_orders.copy()
+        return self.signal_handler.get_execution_orders()
     
     def get_stats(self) -> Dict[str, Any]:
         """Get adapter statistics.
@@ -473,15 +177,12 @@ class ExecutionOrderAdapter:
         Returns:
             Dictionary with adapter statistics
         """
+        execution_orders = self.signal_handler.get_execution_orders()
         return {
-            "tracked_orders": len(self.execution_orders),
-            "default_risk_category": self.default_risk_category.value,
+            "tracked_orders": len(execution_orders),
+            "default_risk_category": self.config["default_risk_category"].value,
             "config": self.config,
-            "circuit_breaker_state": {
-                "consecutive_failures": self.consecutive_failures,
-                "circuit_breaker_open": self.circuit_breaker_open,
-                "max_consecutive_failures": self.max_consecutive_failures,
-            }
+            "circuit_breaker_state": self.circuit_breaker.get_stats(),
         }
     
     def reset_circuit_breaker(self) -> None:
@@ -490,58 +191,16 @@ class ExecutionOrderAdapter:
         This method allows manual reset of the circuit breaker state,
         useful for testing scenarios or administrative reset.
         """
-        logger.info("Circuit breaker manually reset")
-        self.circuit_breaker_open = False
-        self.consecutive_failures = 0
-        self.last_failure_time = None
+        self.circuit_breaker.reset()
     
-    def _check_circuit_breaker(self) -> None:
-        """Check and enforce circuit breaker state."""
-        if not self.circuit_breaker_open:
-            return
-            
-        # Check if we should attempt to reset (half-open state)
-        if self.last_failure_time:
-            # Ensure both timestamps are UTC timezone-aware
-            current_time = datetime.now(UTC)
-            last_failure_utc = self.last_failure_time
-            if last_failure_utc.tzinfo is None:
-                last_failure_utc = last_failure_utc.replace(tzinfo=UTC)
-            elif last_failure_utc.tzinfo != UTC:
-                last_failure_utc = last_failure_utc.astimezone(UTC)
-                
-            time_since_failure = (current_time - last_failure_utc).total_seconds()
-            if time_since_failure >= self.circuit_breaker_reset_timeout:
-                logger.warning("Circuit breaker entering half-open state - allowing test request")
-                # Reset to half-open state (will be fully reset on success)
-                self.circuit_breaker_open = False
-                return
-        
-        # Circuit breaker is open - reject the request
-        logger.error("Circuit breaker is OPEN - rejecting order request")
-        raise RuntimeError("Circuit breaker is open due to consecutive failures")
+    # Backward compatibility helper methods for tests
+    def _map_confidence_to_risk_category(self, confidence: float):
+        """Map confidence to risk category for test compatibility."""
+        return self.order_request_builder._map_confidence_to_risk_category(confidence)
     
-    def _record_success(self) -> None:
-        """Record successful operation for circuit breaker."""
-        if self.circuit_breaker_open:
-            logger.info("Circuit breaker reset after successful operation")
-            self.circuit_breaker_open = False
+    def _generate_execution_id(self, function_name: str, context):
+        """Generate execution ID for test compatibility."""
+        return self.signal_handler._generate_execution_id(function_name, context)
+    
+    
         
-        self.consecutive_failures = 0
-        self.last_failure_time = None
-        
-    def _record_failure(self) -> None:
-        """Record failed operation for circuit breaker."""
-        self.consecutive_failures += 1
-        self.last_failure_time = datetime.now(UTC)
-        
-        logger.warning(
-            f"Order execution failure recorded ({self.consecutive_failures}/{self.max_consecutive_failures})"
-        )
-        
-        # Trip circuit breaker if threshold reached
-        if self.consecutive_failures >= self.max_consecutive_failures:
-            self.circuit_breaker_open = True
-            logger.error(
-                f"Circuit breaker OPENED after {self.consecutive_failures} consecutive failures"
-            )
