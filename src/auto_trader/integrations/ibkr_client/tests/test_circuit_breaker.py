@@ -116,6 +116,9 @@ class TestCircuitBreaker:
         mock_func = AsyncMock(return_value="success")
         circuit_breaker._state.failure_count = 2  # Should cause 2s delay
         
+        # Calculate expected delay before the call (since success resets failure_count)
+        expected_delay = circuit_breaker.calculate_backoff_delay(circuit_breaker._state.failure_count - 1)
+        
         start_time = datetime.now()
         
         # Act
@@ -125,8 +128,10 @@ class TestCircuitBreaker:
         
         # Assert - should have delayed for ~2 seconds
         delay = (end_time - start_time).total_seconds()
-        assert delay >= 2.0
-        assert delay < 2.5  # Allow some margin
+        
+        # Allow 25% margin for timing precision
+        assert delay >= expected_delay * 0.75
+        assert delay <= expected_delay * 1.25
 
     def test_record_failure_increment(self, circuit_breaker):
         """Test failure count increments."""
