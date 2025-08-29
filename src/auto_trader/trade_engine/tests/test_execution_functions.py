@@ -55,24 +55,26 @@ class TestExecutionFunctionRegistry:
     """Test the function registry system."""
 
     def test_singleton_pattern(self):
-        """Test that registry is a singleton."""
+        """Test that registry instances are separate (no singleton pattern)."""
         registry1 = ExecutionFunctionRegistry()
         registry2 = ExecutionFunctionRegistry()
-        assert registry1 is registry2
+        assert registry1 is not registry2
 
-    def test_register_function(self):
+    @pytest.mark.asyncio
+    async def test_register_function(self):
         """Test registering a function type."""
         registry = ExecutionFunctionRegistry()
-        registry.clear_all()  # Start fresh
+        await registry.clear_all()  # Start fresh
 
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         assert "close_above" in registry.list_registered_types()
 
-    def test_create_function_instance(self):
+    @pytest.mark.asyncio
+    async def test_create_function_instance(self):
         """Test creating a function instance."""
         registry = ExecutionFunctionRegistry()
-        registry.clear_all()
-        registry.register("close_above", CloseAboveFunction)
+        await registry.clear_all()
+        await registry.register("close_above", CloseAboveFunction)
 
         config = ExecutionFunctionConfig(
             name="test_function",
@@ -81,7 +83,7 @@ class TestExecutionFunctionRegistry:
             parameters={"threshold_price": 180.0},
         )
 
-        instance = registry.create_function(config)
+        instance = await registry.create_function(config)
         assert instance is not None
         assert instance.name == "test_function"
         assert instance.timeframe == Timeframe.ONE_MIN

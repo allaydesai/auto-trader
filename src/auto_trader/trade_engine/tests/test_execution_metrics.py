@@ -54,9 +54,9 @@ def error_entry():
 class TestExecutionMetricsCalculator:
     """Test cases for metrics calculator."""
 
-    def test_initial_state(self, calculator):
+    async def test_initial_state(self, calculator):
         """Test initial metrics state."""
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         
         assert metrics["total_evaluations"] == 0
         assert metrics["successful_evaluations"] == 0
@@ -66,11 +66,11 @@ class TestExecutionMetricsCalculator:
         assert metrics["max_duration_ms"] == 0.0
         assert metrics["min_duration_ms"] == float("inf")
 
-    def test_update_successful_entry(self, calculator, sample_entry):
+    async def test_update_successful_entry(self, calculator, sample_entry):
         """Test updating metrics with successful entry."""
-        calculator.update(sample_entry)
+        await calculator.update(sample_entry)
         
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 1
         assert metrics["successful_evaluations"] == 1
         assert metrics["failed_evaluations"] == 0
@@ -79,33 +79,33 @@ class TestExecutionMetricsCalculator:
         assert metrics["max_duration_ms"] == 15.5
         assert metrics["min_duration_ms"] == 15.5
 
-    def test_update_error_entry(self, calculator, error_entry):
+    async def test_update_error_entry(self, calculator, error_entry):
         """Test updating metrics with error entry."""
-        calculator.update(error_entry)
+        await calculator.update(error_entry)
         
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 1
         assert metrics["successful_evaluations"] == 0
         assert metrics["failed_evaluations"] == 1
         assert metrics["actions_triggered"] == 0
         assert metrics["avg_duration_ms"] == 0.1
 
-    def test_update_multiple_entries(self, calculator, sample_entry, error_entry):
+    async def test_update_multiple_entries(self, calculator, sample_entry, error_entry):
         """Test updating with multiple entries."""
         # Add successful entry
-        calculator.update(sample_entry)
+        await calculator.update(sample_entry)
         
         # Add error entry
-        calculator.update(error_entry)
+        await calculator.update(error_entry)
         
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 2
         assert metrics["successful_evaluations"] == 1
         assert metrics["failed_evaluations"] == 1
         assert metrics["actions_triggered"] == 1
         assert metrics["avg_duration_ms"] == (15.5 + 0.1) / 2
 
-    def test_update_duration_metrics(self, calculator):
+    async def test_update_duration_metrics(self, calculator):
         """Test duration metrics calculations."""
         entries = [
             ExecutionLogEntry(
@@ -138,9 +138,9 @@ class TestExecutionMetricsCalculator:
         ]
         
         for entry in entries:
-            calculator.update(entry)
+            await calculator.update(entry)
         
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["max_duration_ms"] == 20.0
         assert metrics["min_duration_ms"] == 5.0
         assert metrics["avg_duration_ms"] == (10.0 + 20.0 + 5.0) / 3
@@ -246,13 +246,13 @@ class TestExecutionMetricsCalculator:
         assert stats["func1"]["evaluations"] == 2
         assert stats["func2"]["evaluations"] == 1
 
-    def test_calculate_success_rate(self, calculator):
+    async def test_calculate_success_rate(self, calculator):
         """Test success rate calculation."""
         # Initially 0%
-        assert calculator.calculate_success_rate() == 0.0
+        assert await calculator.calculate_success_rate() == 0.0
         
         # Add successful entry
-        calculator.update(ExecutionLogEntry(
+        await calculator.update(ExecutionLogEntry(
             timestamp=datetime.now(UTC),
             function_name="test",
             symbol="AAPL",
@@ -262,10 +262,10 @@ class TestExecutionMetricsCalculator:
             context_snapshot={}
         ))
         
-        assert calculator.calculate_success_rate() == 100.0
+        assert await calculator.calculate_success_rate() == 100.0
         
         # Add error entry
-        calculator.update(ExecutionLogEntry(
+        await calculator.update(ExecutionLogEntry(
             timestamp=datetime.now(UTC),
             function_name="test",
             symbol="AAPL",
@@ -276,15 +276,15 @@ class TestExecutionMetricsCalculator:
             error="Error"
         ))
         
-        assert calculator.calculate_success_rate() == 50.0
+        assert await calculator.calculate_success_rate() == 50.0
 
-    def test_calculate_signal_rate(self, calculator):
+    async def test_calculate_signal_rate(self, calculator):
         """Test signal rate calculation."""
         # Initially 0%
-        assert calculator.calculate_signal_rate() == 0.0
+        assert await calculator.calculate_signal_rate() == 0.0
         
         # Add entry with signal
-        calculator.update(ExecutionLogEntry(
+        await calculator.update(ExecutionLogEntry(
             timestamp=datetime.now(UTC),
             function_name="test",
             symbol="AAPL",
@@ -298,10 +298,10 @@ class TestExecutionMetricsCalculator:
             context_snapshot={}
         ))
         
-        assert calculator.calculate_signal_rate() == 100.0
+        assert await calculator.calculate_signal_rate() == 100.0
         
         # Add entry without signal
-        calculator.update(ExecutionLogEntry(
+        await calculator.update(ExecutionLogEntry(
             timestamp=datetime.now(UTC),
             function_name="test",
             symbol="AAPL",
@@ -311,21 +311,21 @@ class TestExecutionMetricsCalculator:
             context_snapshot={}
         ))
         
-        assert calculator.calculate_signal_rate() == 50.0
+        assert await calculator.calculate_signal_rate() == 50.0
 
-    def test_reset(self, calculator, sample_entry):
+    async def test_reset(self, calculator, sample_entry):
         """Test resetting metrics."""
-        calculator.update(sample_entry)
+        await calculator.update(sample_entry)
         
         # Verify metrics are populated
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] > 0
         
         # Reset
-        calculator.reset()
+        await calculator.reset()
         
         # Verify back to initial state
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 0
         assert metrics["successful_evaluations"] == 0
         assert metrics["failed_evaluations"] == 0
@@ -334,12 +334,11 @@ class TestExecutionMetricsCalculator:
         assert metrics["max_duration_ms"] == 0.0
         assert metrics["min_duration_ms"] == float("inf")
 
-    def test_thread_safety(self, calculator):
-        """Test that calculator is thread-safe."""
-        import threading
-        import time
+    async def test_concurrency_safety(self, calculator):
+        """Test that calculator is concurrency-safe with asyncio."""
+        import asyncio
         
-        def add_entries():
+        async def add_entries():
             for i in range(100):
                 entry = ExecutionLogEntry(
                     timestamp=datetime.now(UTC),
@@ -350,20 +349,18 @@ class TestExecutionMetricsCalculator:
                     duration_ms=10.0,
                     context_snapshot={}
                 )
-                calculator.update(entry)
+                await calculator.update(entry)
         
-        # Start multiple threads
-        threads = []
+        # Start multiple concurrent tasks
+        tasks = []
         for _ in range(5):
-            thread = threading.Thread(target=add_entries)
-            threads.append(thread)
-            thread.start()
+            task = asyncio.create_task(add_entries())
+            tasks.append(task)
         
         # Wait for completion
-        for thread in threads:
-            thread.join()
+        await asyncio.gather(*tasks)
         
         # Should have 500 total evaluations
-        metrics = calculator.get_summary()
+        metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 500
         assert metrics["successful_evaluations"] == 500

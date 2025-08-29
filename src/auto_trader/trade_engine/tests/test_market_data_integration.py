@@ -73,10 +73,10 @@ def historical_bars():
 async def execution_system():
     """Create integrated execution system components."""
     registry = ExecutionFunctionRegistry()
-    registry.clear_all()  # Clean state
+    await registry.clear_all()  # Clean state
     
     # Register close above function
-    registry.register("close_above", CloseAboveFunction)
+    await registry.register("close_above", CloseAboveFunction)
     
     # Create function instance
     config = ExecutionFunctionConfig(
@@ -86,7 +86,7 @@ async def execution_system():
         parameters={"threshold_price": 181.00},
         enabled=True
     )
-    function = registry.create_function(config)
+    function = await registry.create_function(config)
     
     # Create bar close detector
     detector = BarCloseDetector(accuracy_ms=100)
@@ -100,7 +100,7 @@ async def execution_system():
     }
     
     await detector.stop()
-    registry.clear_all()
+    await registry.clear_all()
 
 
 @pytest.mark.asyncio
@@ -207,8 +207,8 @@ class TestMarketDataIntegration:
         detector = execution_system["detector"]
         
         # Clear any existing functions from fixture
-        registry.clear_all()
-        registry.register("close_above", CloseAboveFunction)
+        await registry.clear_all()
+        await registry.register("close_above", CloseAboveFunction)
         
         # Create functions for multiple timeframes
         timeframes = [Timeframe.ONE_MIN, Timeframe.FIVE_MIN, Timeframe.FIFTEEN_MIN]
@@ -222,7 +222,7 @@ class TestMarketDataIntegration:
                 parameters={"threshold_price": 180.00},
                 enabled=True
             )
-            functions[tf] = registry.create_function(config)
+            functions[tf] = await registry.create_function(config)
             
             # Setup monitoring for each timeframe
             await detector.monitor_timeframe("AAPL", tf)
@@ -462,7 +462,7 @@ class TestMarketDataIntegration:
                 parameters={"threshold_price": 180.00},
                 enabled=True
             )
-            functions[symbol] = registry.create_function(config)
+            functions[symbol] = await registry.create_function(config)
         
         # Process bars concurrently
         async def process_symbol(symbol):

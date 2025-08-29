@@ -19,10 +19,10 @@ from auto_trader.trade_engine.functions import CloseAboveFunction
 
 
 @pytest.fixture
-def registry():
+async def registry():
     """Create function registry."""
     registry = ExecutionFunctionRegistry()
-    registry.clear_all()
+    await registry.clear_all()
     return registry
 
 
@@ -91,7 +91,7 @@ class TestPerformanceTiming:
         """Test that function evaluation completes within latency requirements."""
         
         # Register function
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         config = ExecutionFunctionConfig(
             name="perf_test",
@@ -100,7 +100,7 @@ class TestPerformanceTiming:
             parameters={"threshold_price": 181.00},
         )
         
-        function = registry.create_function(config)
+        function = await registry.create_function(config)
         
         # Setup historical data
         await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
@@ -110,7 +110,7 @@ class TestPerformanceTiming:
         for i in range(25):
             bar_time = base_time + timedelta(minutes=i)
             bar = create_sample_bar(close_price=180.50, timestamp=bar_time)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Measure evaluation latency multiple times
         latencies = []
@@ -147,7 +147,7 @@ class TestPerformanceTiming:
         """Test performance with multiple functions running concurrently."""
         
         # Register multiple functions
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         # Create 5 functions with different thresholds
         functions = []
@@ -158,7 +158,7 @@ class TestPerformanceTiming:
                 timeframe=Timeframe.ONE_MIN,
                 parameters={"threshold_price": 180.0 + (i * 0.2)},
             )
-            functions.append(registry.create_function(config))
+            functions.append(await registry.create_function(config))
         
         # Setup historical data
         await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
@@ -168,7 +168,7 @@ class TestPerformanceTiming:
         for i in range(25):
             bar_time = base_time + timedelta(minutes=i)
             bar = create_sample_bar(close_price=180.50, timestamp=bar_time)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Test concurrent evaluation
         trigger_bar = create_sample_bar(close_price=182.00)  # Triggers all functions
@@ -192,7 +192,8 @@ class TestPerformanceTiming:
         
         print(f"Concurrent evaluation of 5 functions: {total_latency:.2f}ms")
 
-    def test_memory_usage_historical_data(self, market_data_adapter):
+    @pytest.mark.asyncio
+    async def test_memory_usage_historical_data(self, market_data_adapter):
         """Test memory usage with large amounts of historical data."""
         
         # Set reasonable limits for testing
@@ -201,14 +202,14 @@ class TestPerformanceTiming:
         # Add large amount of data
         for i in range(500):  # More than limit
             bar = create_sample_bar(close_price=180.0 + (i * 0.01))
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Verify memory is managed properly
         stored_bars = len(market_data_adapter.historical_data["AAPL"][Timeframe.ONE_MIN])
         assert stored_bars == 100, f"Expected 100 bars, got {stored_bars}"
         
         # Verify memory usage stats
-        stats = market_data_adapter.get_stats()
+        stats = await market_data_adapter.get_stats()
         assert stats["total_historical_bars"] == 100
 
     @pytest.mark.asyncio
@@ -229,7 +230,8 @@ class TestPerformanceTiming:
         
         print(f"Bar close timing: avg_error={avg_error}ms, max_error={max_error}ms, threshold={threshold}ms")
 
-    def test_execution_logger_performance(self, execution_logger):
+    @pytest.mark.asyncio
+    async def test_execution_logger_performance(self, execution_logger):
         """Test execution logger performance with high throughput."""
         
         # Mock context and signal for performance testing
@@ -253,7 +255,7 @@ class TestPerformanceTiming:
         
         # Log 1000 evaluations
         for i in range(1000):
-            execution_logger.log_evaluation(
+            await execution_logger.log_evaluation(
                 function_name=f"perf_test_{i % 10}",
                 context=mock_context,
                 signal=mock_signal,
@@ -269,7 +271,7 @@ class TestPerformanceTiming:
         assert avg_time_per_log < 1.0, f"Logging too slow: {avg_time_per_log:.3f}ms per entry"
         
         # Verify logs were stored
-        logs = execution_logger.query_logs(limit=1100)
+        logs = await execution_logger.query_logs(limit=1100)
         assert len(logs) == 1000
         
         print(f"Logging performance: {avg_time_per_log:.3f}ms per entry, total={total_time:.2f}ms")
@@ -279,7 +281,7 @@ class TestPerformanceTiming:
         """Test function registry lookup performance."""
         
         # Register multiple functions
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         # Create many function instances
         functions = []
@@ -290,7 +292,7 @@ class TestPerformanceTiming:
                 timeframe=Timeframe.ONE_MIN,
                 parameters={"threshold_price": 180.0 + i},
             )
-            functions.append(registry.create_function(config))
+            functions.append(await registry.create_function(config))
         
         # Measure lookup performance
         start_time = time.perf_counter()
@@ -310,7 +312,8 @@ class TestPerformanceTiming:
         
         print(f"Registry lookup performance: {avg_lookup_time:.3f}ms per lookup")
 
-    def test_market_data_processing_throughput(self, market_data_adapter):
+    @pytest.mark.asyncio
+    async def test_market_data_processing_throughput(self, market_data_adapter):
         """Test market data processing throughput."""
         
         # Process large number of bars quickly
@@ -323,7 +326,7 @@ class TestPerformanceTiming:
                 close_price=180.0 + (i % 100) * 0.01,
                 timestamp=datetime.now(UTC) + timedelta(seconds=i)
             )
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         end_time = time.perf_counter()
         
@@ -347,7 +350,7 @@ class TestPerformanceTiming:
         
         for i in range(1000):
             bar = create_sample_bar(close_price=180.0 + (i * 0.001))
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         end_time = time.perf_counter()
         
@@ -362,7 +365,7 @@ class TestPerformanceTiming:
         assert total_time < 300, f"Memory cleanup causing performance issues: {total_time:.2f}ms"
         
         # Verify memory is properly managed
-        stats = market_data_adapter.get_stats()
+        stats = await market_data_adapter.get_stats()
         assert stats["total_historical_bars"] <= 50
         
         print(f"Memory cleanup performance: {total_time:.2f}ms for 1000 bars with cleanup")
@@ -393,14 +396,14 @@ class TestPerformanceTiming:
         """Stress test with high frequency data."""
         
         # Register function
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         config = ExecutionFunctionConfig(
             name="stress_test",
             function_type="close_above",
             timeframe=Timeframe.ONE_MIN,
             parameters={"threshold_price": 181.00},
         )
-        registry.create_function(config)
+        await registry.create_function(config)
         
         # Setup monitoring
         await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
@@ -408,7 +411,7 @@ class TestPerformanceTiming:
         # Feed initial historical data
         for i in range(25):
             bar = create_sample_bar(close_price=180.50)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Simulate high frequency bar closes
         start_time = time.perf_counter()
@@ -434,7 +437,7 @@ class TestPerformanceTiming:
         assert avg_time_per_event < 50, f"High frequency processing too slow: {avg_time_per_event:.2f}ms per event"
         
         # Verify all events were processed
-        logs = execution_logger.query_logs({"function_name": "stress_test"}, limit=200)
+        logs = await execution_logger.query_logs({"function_name": "stress_test"}, limit=200)
         assert len(logs) == 100
         
         print(f"High frequency stress test: {avg_time_per_event:.2f}ms per event, total={total_time:.2f}ms")

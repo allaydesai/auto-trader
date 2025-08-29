@@ -1,7 +1,7 @@
 """Metrics calculation for execution function performance tracking."""
 
+import asyncio
 from typing import Dict, List, Any
-from threading import Lock
 
 from auto_trader.models.execution import ExecutionLogEntry
 from auto_trader.models.enums import ExecutionAction
@@ -25,15 +25,15 @@ class ExecutionMetricsCalculator:
             "max_duration_ms": 0.0,
             "min_duration_ms": float("inf"),
         }
-        self.lock = Lock()
+        self.lock = asyncio.Lock()  # Use asyncio.Lock for async-safe synchronization
 
-    def update(self, entry: ExecutionLogEntry) -> None:
+    async def update(self, entry: ExecutionLogEntry) -> None:
         """Update metrics with new log entry.
 
         Args:
             entry: Log entry to process
         """
-        with self.lock:
+        async with self.lock:
             self.metrics["total_evaluations"] += 1
 
             if entry.error:
@@ -47,13 +47,13 @@ class ExecutionMetricsCalculator:
             if entry.duration_ms > 0:
                 self._update_duration_metrics(entry.duration_ms)
 
-    def get_summary(self) -> Dict[str, Any]:
+    async def get_summary(self) -> Dict[str, Any]:
         """Get summary of all metrics.
 
         Returns:
             Dictionary of performance metrics
         """
-        with self.lock:
+        async with self.lock:
             return self.metrics.copy()
 
     def get_function_statistics(
@@ -99,9 +99,9 @@ class ExecutionMetricsCalculator:
             "min_duration_ms": min(durations) if durations else 0,
         }
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    async def get_performance_summary(self) -> Dict[str, Any]:
         """Get performance metrics summary (alias for get_summary)."""
-        return self.get_summary()
+        return await self.get_summary()
 
     def get_all_function_statistics(
         self, 
@@ -134,13 +134,13 @@ class ExecutionMetricsCalculator:
 
         return stats
 
-    def calculate_success_rate(self) -> float:
+    async def calculate_success_rate(self) -> float:
         """Calculate overall success rate.
 
         Returns:
             Success rate as percentage (0-100)
         """
-        with self.lock:
+        async with self.lock:
             total = self.metrics["total_evaluations"]
             if total == 0:
                 return 0.0
@@ -148,13 +148,13 @@ class ExecutionMetricsCalculator:
             successful = self.metrics["successful_evaluations"]
             return (successful / total) * 100.0
 
-    def calculate_signal_rate(self) -> float:
+    async def calculate_signal_rate(self) -> float:
         """Calculate rate of actions triggered.
 
         Returns:
             Signal rate as percentage (0-100)
         """
-        with self.lock:
+        async with self.lock:
             total = self.metrics["total_evaluations"]
             if total == 0:
                 return 0.0
@@ -162,9 +162,9 @@ class ExecutionMetricsCalculator:
             actions = self.metrics["actions_triggered"]
             return (actions / total) * 100.0
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """Reset all metrics to initial state."""
-        with self.lock:
+        async with self.lock:
             self.metrics = {
                 "total_evaluations": 0,
                 "successful_evaluations": 0,
@@ -196,3 +196,4 @@ class ExecutionMetricsCalculator:
         self.metrics["avg_duration_ms"] = (
             total_duration / self.metrics["total_evaluations"]
         )
+

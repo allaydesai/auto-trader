@@ -1,7 +1,7 @@
 """Execution function registry for plugin-based function management."""
 
+import asyncio
 from typing import Dict, List, Type, Optional, Any
-from threading import Lock
 
 from loguru import logger
 
@@ -13,33 +13,19 @@ class ExecutionFunctionRegistry:
     """Registry for execution function plugins.
 
     Manages registration, instantiation, and discovery of execution functions.
-    Implements singleton pattern to ensure single registry instance.
+    Uses asyncio-safe synchronization patterns for concurrent access protection.
     """
 
-    _instance = None
-    _lock = Lock()
-
-    def __new__(cls):
-        """Ensure singleton instance."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self):
-        """Initialize registry if not already initialized."""
-        if self._initialized:
-            return
-
+        """Initialize registry."""
         self._functions: Dict[str, Type[ExecutionFunctionBase]] = {}
         self._instances: Dict[str, ExecutionFunctionBase] = {}
+        self._lock = asyncio.Lock()  # asyncio.Lock for async-safe synchronization
         self._initialized = True
 
         logger.info("ExecutionFunctionRegistry initialized")
 
-    def register(
+    async def register(
         self,
         function_type: str,
         function_class: Type[ExecutionFunctionBase],
@@ -61,19 +47,21 @@ class ExecutionFunctionRegistry:
                 f"{function_class.__name__} must inherit from ExecutionFunctionBase"
             )
 
-        if function_type in self._functions and not override:
-            raise ValueError(
-                f"Function type '{function_type}' already registered. "
-                f"Use override=True to replace."
-            )
+        async with self._lock:
+            if function_type in self._functions and not override:
+                raise ValueError(
+                    f"Function type '{function_type}' already registered. "
+                    f"Use override=True to replace."
+                )
 
-        self._functions[function_type] = function_class
+            self._functions[function_type] = function_class
+            
         logger.info(
             f"Registered execution function: {function_type} -> "
             f"{function_class.__name__}"
         )
 
-    def unregister(self, function_type: str) -> bool:
+    async def unregister(self, function_type: str) -> bool:
         """Unregister an execution function type.
 
         Args:
@@ -82,24 +70,25 @@ class ExecutionFunctionRegistry:
         Returns:
             True if unregistered, False if not found
         """
-        if function_type in self._functions:
-            del self._functions[function_type]
+        async with self._lock:
+            if function_type in self._functions:
+                del self._functions[function_type]
 
-            # Remove any instances of this type
-            instances_to_remove = [
-                name
-                for name, instance in self._instances.items()
-                if instance.config.function_type == function_type
-            ]
-            for name in instances_to_remove:
-                del self._instances[name]
+                # Remove any instances of this type
+                instances_to_remove = [
+                    name
+                    for name, instance in self._instances.items()
+                    if instance.config.function_type == function_type
+                ]
+                for name in instances_to_remove:
+                    del self._instances[name]
 
-            logger.info(f"Unregistered execution function: {function_type}")
-            return True
+                logger.info(f"Unregistered execution function: {function_type}")
+                return True
 
-        return False
+            return False
 
-    def create_function(self, config: ExecutionFunctionConfig) -> ExecutionFunctionBase:
+    async def create_function(self, config: ExecutionFunctionConfig) -> ExecutionFunctionBase:
         """Create and configure an execution function instance.
 
         Args:
@@ -111,20 +100,22 @@ class ExecutionFunctionRegistry:
         Raises:
             ValueError: If function_type not registered
         """
-        if config.function_type not in self._functions:
-            available = ", ".join(self._functions.keys())
-            raise ValueError(
-                f"Unknown function type '{config.function_type}'. "
-                f"Available types: {available}"
-            )
+        async with self._lock:
+            if config.function_type not in self._functions:
+                available = ", ".join(self._functions.keys())
+                raise ValueError(
+                    f"Unknown function type '{config.function_type}'. "
+                    f"Available types: {available}"
+                )
 
-        function_class = self._functions[config.function_type]
+            function_class = self._functions[config.function_type]
 
         try:
             instance = function_class(config)
 
-            # Store instance for management
-            self._instances[config.name] = instance
+            # Store instance for management with lock protection
+            async with self._lock:
+                self._instances[config.name] = instance
 
             logger.info(
                 f"Created function instance '{config.name}' "
@@ -151,7 +142,7 @@ class ExecutionFunctionRegistry:
         """
         return self._instances.get(name)
 
-    def get_or_create_function(
+    async def get_or_create_function(
         self, config: ExecutionFunctionConfig
     ) -> ExecutionFunctionBase:
         """Get existing function or create new one.
@@ -166,7 +157,7 @@ class ExecutionFunctionRegistry:
         if existing:
             return existing
 
-        return self.create_function(config)
+        return await self.create_function(config)
 
     def list_registered_types(self) -> List[str]:
         """List all registered function types.
@@ -237,15 +228,17 @@ class ExecutionFunctionRegistry:
             if instance.config.function_type == function_type
         ]
 
-    def clear_instances(self) -> None:
+    async def clear_instances(self) -> None:
         """Clear all function instances (keeps registrations)."""
-        self._instances.clear()
+        async with self._lock:
+            self._instances.clear()
         logger.info("Cleared all function instances")
 
-    def clear_all(self) -> None:
+    async def clear_all(self) -> None:
         """Clear all registrations and instances."""
-        self._functions.clear()
-        self._instances.clear()
+        async with self._lock:
+            self._functions.clear()
+            self._instances.clear()
         logger.info("Cleared all function registrations and instances")
 
     def __str__(self) -> str:
@@ -265,5 +258,7 @@ class ExecutionFunctionRegistry:
         )
 
 
-# Global registry instance
+
+
+# Global registry instance (module-level singleton - naturally thread-safe)
 registry = ExecutionFunctionRegistry()

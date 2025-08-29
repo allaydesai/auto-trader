@@ -24,18 +24,18 @@ from auto_trader.trade_engine.functions import CloseAboveFunction, CloseBelowFun
 
 
 @pytest.fixture
-def performance_registry():
+async def performance_registry():
     """Create registry with performance-optimized functions."""
     registry = ExecutionFunctionRegistry()
-    registry.clear_all()
+    await registry.clear_all()
     
     # Register functions
-    registry.register("close_above", CloseAboveFunction)
-    registry.register("close_below", CloseBelowFunction)
+    await registry.register("close_above", CloseAboveFunction)
+    await registry.register("close_below", CloseBelowFunction)
     
     yield registry
     
-    registry.clear_all()
+    await registry.clear_all()
 
 
 @pytest.fixture
@@ -95,7 +95,7 @@ class TestHighFrequencyPerformance:
             parameters={"threshold_price": 180.00},
             enabled=True
         )
-        function = performance_registry.create_function(config)
+        function = await performance_registry.create_function(config)
         
         # Performance metrics
         execution_times = []
@@ -156,7 +156,7 @@ class TestHighFrequencyPerformance:
                 parameters={"threshold_price": 179.50 + (i * 0.1)},
                 enabled=True
             )
-            functions.append(performance_registry.create_function(config))
+            functions.append(await performance_registry.create_function(config))
         
         async def execute_function_batch(function, data_batch):
             """Execute function on batch of data."""
@@ -225,7 +225,7 @@ class TestHighFrequencyPerformance:
             parameters={"threshold_price": 180.00},
             enabled=True
         )
-        function = performance_registry.create_function(config)
+        function = await performance_registry.create_function(config)
         
         # Process large dataset
         memory_samples = []
@@ -382,7 +382,7 @@ class TestHighFrequencyPerformance:
                 parameters={"threshold_price": 180.0 + i},
                 enabled=True
             )
-            performance_registry.create_function(config)
+            await performance_registry.create_function(config)
         
         # Measure lookup performance
         lookup_times = []
@@ -434,7 +434,7 @@ class TestHighFrequencyPerformance:
                 parameters={"threshold_price": 179.8 + (i * 0.1)},
                 enabled=True
             )
-            functions.append(performance_registry.create_function(config))
+            functions.append(await performance_registry.create_function(config))
         
         with tempfile.TemporaryDirectory() as temp_dir:
             logger = ExecutionLogger(
@@ -525,7 +525,7 @@ class TestHighFrequencyPerformance:
             parameters={"threshold_price": 180.00},
             enabled=True
         )
-        function = performance_registry.create_function(config)
+        function = await performance_registry.create_function(config)
         
         latencies = []
         

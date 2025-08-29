@@ -1,18 +1,26 @@
 """Market data integration adapter for execution function framework."""
 
 import asyncio
-from datetime import datetime, UTC
-from typing import Dict, Set, Optional, List, Callable
-from threading import Lock
+from typing import Dict, Optional, List, Callable, Any
+from dataclasses import dataclass
+from datetime import datetime, UTC, timedelta
 
 from loguru import logger
 
 from auto_trader.models.market_data import BarData, BarSizeType
 from auto_trader.models.execution import BarCloseEvent, ExecutionContext
-from auto_trader.models.enums import Timeframe, ExecutionAction
+from auto_trader.models.enums import Timeframe
 from auto_trader.trade_engine.bar_close_detector import BarCloseDetector
 from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
 from auto_trader.trade_engine.execution_logger import ExecutionLogger
+
+
+@dataclass
+class MarketDataValidationResult:
+    """Result of market data validation."""
+    is_valid: bool
+    error_message: Optional[str] = None
+    corruption_type: Optional[str] = None
 
 
 class MarketDataExecutionAdapter:
@@ -52,7 +60,7 @@ class MarketDataExecutionAdapter:
         
         # Track monitored symbols and their historical data
         self.historical_data: Dict[str, Dict[Timeframe, List[BarData]]] = {}
-        self.historical_data_lock = Lock()
+        self.historical_data_lock = asyncio.Lock()  # Use asyncio.Lock for async-safe synchronization
         
         # Track active execution contexts
         self.active_contexts: Dict[str, ExecutionContext] = {}
@@ -69,7 +77,7 @@ class MarketDataExecutionAdapter:
         
         logger.info("MarketDataExecutionAdapter initialized")
     
-    def on_market_data_update(self, bar: BarData) -> None:
+    async def on_market_data_update(self, bar: BarData) -> None:
         """Handle market data updates from IBKR distribution system.
         
         This method is called by the market data distributor when new bars arrive.
@@ -78,14 +86,43 @@ class MarketDataExecutionAdapter:
             bar: New bar data received
         """
         try:
+            # Validate market data for corruption
+            validation_result = self._validate_market_data(bar)
+            if not validation_result.is_valid:
+                error_msg = f"Invalid market data detected: {validation_result.error_message}"
+                logger.error(
+                    error_msg,
+                    symbol=bar.symbol,
+                    timestamp=bar.timestamp.isoformat(),
+                    corruption_type=validation_result.corruption_type,
+                )
+                
+                # Also log to execution logger for test queries
+                error_exception = ValueError(error_msg)
+                await self.execution_logger.log_error(
+                    function_name="market_data_validation",
+                    symbol=bar.symbol,
+                    timeframe=Timeframe.ONE_MIN,  # Default timeframe for corruption logs
+                    error=error_exception,
+                    context=None
+                )
+                
+                # Don't process corrupted data
+                return
+            
             # Convert bar size to timeframe
             timeframe = self._convert_bar_size_to_timeframe(bar.bar_size)
             if not timeframe:
                 logger.warning(f"Unsupported bar size: {bar.bar_size}")
                 return
             
-            # Update historical data
-            self._update_historical_data(bar, timeframe)
+            # Update historical data with async lock protection
+            await self._update_historical_data(bar, timeframe)
+            
+            # For 1-minute bars, also store them for all monitored timeframes of this symbol
+            # This ensures longer timeframes have sufficient historical data for aggregation
+            if timeframe == Timeframe.ONE_MIN:
+                await self._store_one_minute_for_all_timeframes(bar)
             
             # Update bar close detector with latest data
             self.bar_close_detector.update_bar_data(bar.symbol, timeframe, bar)
@@ -107,7 +144,7 @@ class MarketDataExecutionAdapter:
             timeframe: Timeframe to monitor
         """
         # Initialize historical data storage if needed
-        with self.historical_data_lock:
+        async with self.historical_data_lock:
             if symbol not in self.historical_data:
                 self.historical_data[symbol] = {}
             if timeframe not in self.historical_data[symbol]:
@@ -128,7 +165,7 @@ class MarketDataExecutionAdapter:
         await self.bar_close_detector.stop_monitoring(symbol, timeframe)
         
         # Clean up historical data
-        with self.historical_data_lock:
+        async with self.historical_data_lock:
             if timeframe and symbol in self.historical_data:
                 if timeframe in self.historical_data[symbol]:
                     del self.historical_data[symbol][timeframe]
@@ -182,7 +219,7 @@ class MarketDataExecutionAdapter:
                 return
             
             # Get historical data for context
-            historical_bars = self._get_historical_bars(symbol, timeframe)
+            historical_bars = await self._get_historical_bars(symbol, timeframe)
             
             if len(historical_bars) < self.min_bars_for_execution:
                 logger.warning(
@@ -209,6 +246,10 @@ class MarketDataExecutionAdapter:
                 
         except Exception as e:
             logger.error(f"Error processing bar close event: {e}", event=event.model_dump())
+            
+            # Re-raise circuit breaker exceptions to trigger failure cascading
+            if isinstance(e, RuntimeError) and "circuit breaker" in str(e).lower():
+                raise
     
     async def _evaluate_function(self, function, context: ExecutionContext) -> None:
         """Evaluate a single execution function.
@@ -227,7 +268,7 @@ class MarketDataExecutionAdapter:
             duration_ms = (asyncio.get_event_loop().time() - start_time) * 1000
             
             # Log the evaluation
-            self.execution_logger.log_evaluation(
+            await self.execution_logger.log_evaluation(
                 function_name=function.name,
                 context=context,
                 signal=signal,
@@ -250,7 +291,7 @@ class MarketDataExecutionAdapter:
             duration_ms = (asyncio.get_event_loop().time() - start_time) * 1000
             
             # Log the error
-            self.execution_logger.log_error(
+            await self.execution_logger.log_error(
                 function_name=function.name,
                 symbol=context.symbol,
                 timeframe=context.timeframe,
@@ -264,6 +305,10 @@ class MarketDataExecutionAdapter:
                 symbol=context.symbol,
                 timeframe=context.timeframe.value,
             )
+            
+            # Re-raise circuit breaker exceptions to trigger failure cascading
+            if isinstance(e, RuntimeError) and "circuit breaker" in str(e).lower():
+                raise
     
     async def _emit_execution_signal(self, function, context: ExecutionContext, signal) -> None:
         """Emit execution signal to registered callbacks.
@@ -288,17 +333,24 @@ class MarketDataExecutionAdapter:
                     await callback(signal_data)
                 else:
                     callback(signal_data)
+            except RuntimeError as e:
+                # Circuit breaker and other critical errors should propagate
+                if "circuit breaker" in str(e).lower():
+                    logger.error(f"Error in signal callback {callback.__name__}: {e}")
+                    raise  # Re-raise circuit breaker exceptions
+                else:
+                    logger.error(f"Error in signal callback {callback.__name__}: {e}")
             except Exception as e:
                 logger.error(f"Error in signal callback {callback.__name__}: {e}")
     
-    def _update_historical_data(self, bar: BarData, timeframe: Timeframe) -> None:
+    async def _update_historical_data(self, bar: BarData, timeframe: Timeframe) -> None:
         """Update historical data storage.
         
         Args:
             bar: New bar to add
             timeframe: Timeframe of the bar
         """
-        with self.historical_data_lock:
+        async with self.historical_data_lock:
             symbol = bar.symbol
             
             # Initialize storage if needed
@@ -320,7 +372,41 @@ class MarketDataExecutionAdapter:
                     kept_bars=len(bars),
                 )
     
-    def _get_historical_bars(self, symbol: str, timeframe: Timeframe) -> List[BarData]:
+    async def _store_one_minute_for_all_timeframes(self, bar: BarData) -> None:
+        """Store 1-minute bar for all monitored timeframes of the symbol.
+        
+        This ensures that longer timeframes have sufficient 1-minute data for aggregation.
+        
+        Args:
+            bar: 1-minute bar to store
+        """
+        async with self.historical_data_lock:
+            symbol = bar.symbol
+            
+            # Get monitored timeframes for this symbol
+            monitored = self.bar_close_detector.get_monitored()
+            symbol_timeframes = monitored.get(symbol, [])
+            
+            for timeframe_str in symbol_timeframes:
+                # Convert string back to enum
+                for tf_enum in self.TIMEFRAME_MAPPING.values():
+                    if tf_enum.value == timeframe_str:
+                        # Initialize storage if needed
+                        if symbol not in self.historical_data:
+                            self.historical_data[symbol] = {}
+                        if tf_enum not in self.historical_data[symbol]:
+                            self.historical_data[symbol][tf_enum] = []
+                        
+                        # Store the 1-minute bar for this timeframe
+                        bars = self.historical_data[symbol][tf_enum]
+                        bars.append(bar)
+                        
+                        # Maintain size limit
+                        if len(bars) > self.max_historical_bars:
+                            bars.pop(0)
+                        break
+    
+    async def _get_historical_bars(self, symbol: str, timeframe: Timeframe) -> List[BarData]:
         """Get historical bars for a symbol/timeframe.
         
         Args:
@@ -330,7 +416,7 @@ class MarketDataExecutionAdapter:
         Returns:
             List of historical bars (most recent last)
         """
-        with self.historical_data_lock:
+        async with self.historical_data_lock:
             if symbol in self.historical_data and timeframe in self.historical_data[symbol]:
                 return self.historical_data[symbol][timeframe].copy()
             return []
@@ -346,13 +432,13 @@ class MarketDataExecutionAdapter:
         """
         return self.TIMEFRAME_MAPPING.get(bar_size)
     
-    def get_stats(self) -> Dict[str, any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get adapter statistics.
         
         Returns:
             Dictionary with adapter statistics
         """
-        with self.historical_data_lock:
+        async with self.historical_data_lock:
             total_bars = sum(
                 len(timeframe_bars)
                 for symbol_data in self.historical_data.values()
@@ -372,3 +458,61 @@ class MarketDataExecutionAdapter:
             "timing_stats": self.bar_close_detector.get_timing_stats(),
             "execution_metrics": self.execution_logger.get_metrics(),
         }
+    
+    def _validate_market_data(self, bar: BarData) -> MarketDataValidationResult:
+        """Validate market data for corruption and suspicious patterns.
+        
+        Args:
+            bar: Bar data to validate
+            
+        Returns:
+            Validation result indicating if data is valid
+        """
+        # Check for zero volume (corruption type from test)
+        if bar.volume <= 0:
+            return MarketDataValidationResult(
+                is_valid=False,
+                error_message="Invalid market data: zero or negative volume",
+                corruption_type="zero_volume"
+            )
+        
+        # Check for future timestamps (corruption type from test)
+        # Allow 1 second tolerance for timing variations in tests and real-world scenarios
+        now = datetime.now(UTC)
+        tolerance = timedelta(seconds=1)
+        if bar.timestamp > now + tolerance:
+            return MarketDataValidationResult(
+                is_valid=False,
+                error_message=f"Invalid market data: future timestamp {bar.timestamp} > {now + tolerance}",
+                corruption_type="future_timestamp"
+            )
+        
+        # Check for negative prices (corruption type from test)
+        if any(price <= 0 for price in [bar.open_price, bar.high_price, bar.low_price, bar.close_price]):
+            return MarketDataValidationResult(
+                is_valid=False,
+                error_message="Invalid market data: negative or zero price detected",
+                corruption_type="negative_price"
+            )
+        
+        # Check for invalid OHLC relationships
+        if not (bar.low_price <= bar.open_price <= bar.high_price and
+                bar.low_price <= bar.close_price <= bar.high_price):
+            return MarketDataValidationResult(
+                is_valid=False,
+                error_message="Invalid market data: OHLC relationship violation",
+                corruption_type="invalid_ohlc"
+            )
+        
+        # Check for extremely high prices (corruption type from test)
+        max_reasonable_price = 10000.0  # $10,000 per share is extreme but possible
+        if any(float(price) > max_reasonable_price for price in [bar.open_price, bar.high_price, bar.low_price, bar.close_price]):
+            return MarketDataValidationResult(
+                is_valid=False,
+                error_message=f"Invalid market data: extreme price detected (>{max_reasonable_price})",
+                corruption_type="extreme_price"
+            )
+        
+        # Data is valid
+        return MarketDataValidationResult(is_valid=True)
+

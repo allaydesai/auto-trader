@@ -1,10 +1,10 @@
 """Execution decision logging system for comprehensive audit trail."""
 
+import asyncio
 from datetime import datetime, timedelta, UTC
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from collections import deque
-from threading import Lock
 
 from loguru import logger
 
@@ -52,14 +52,14 @@ class ExecutionLogger(LoggerValidationMixin):
         )
 
         # Support both parameter names for backward compatibility
-        self.log_dir = log_directory or log_dir or Path("logs/execution")
+        self.log_dir = Path(log_directory or log_dir or "logs/execution")
         self.log_directory = self.log_dir  # Alias for test compatibility
         self.max_memory_entries = max_memory_entries
         self.enable_file_logging = enable_file_logging
 
         # In-memory log storage for fast querying
         self.entries: deque = deque(maxlen=max_memory_entries)
-        self.lock = Lock()
+        self.lock = asyncio.Lock()  # Use asyncio.Lock for async-safe synchronization
         self.current_entries = 0  # Track count for test compatibility
 
         # Initialize component classes
@@ -151,7 +151,7 @@ class ExecutionLogger(LoggerValidationMixin):
         if not self.validate_file_logging_settings(enable_file_logging, target_log_dir):
             raise ValueError("Invalid file logging configuration")
 
-    def log_evaluation(
+    async def log_evaluation(
         self,
         function_name: str,
         context: ExecutionContext,
@@ -183,11 +183,12 @@ class ExecutionLogger(LoggerValidationMixin):
             error=error,
         )
 
-        # Store in memory and update metrics
-        with self.lock:
+        # Store in memory and update metrics with async lock protection
+        async with self.lock:
             self.entries.append(entry)
             self.current_entries += 1
-            self.metrics_calculator.update(entry)
+            # Note: metrics_calculator update will need to be async too
+            await self.metrics_calculator.update(entry)
 
         # Write to file if enabled
         if self.enable_file_logging and self.file_manager:
@@ -196,7 +197,7 @@ class ExecutionLogger(LoggerValidationMixin):
         # Log to standard logger based on importance
         self._log_to_standard(entry)
 
-    def log_error(
+    async def log_error(
         self,
         function_name: str,
         symbol: str,
@@ -227,17 +228,17 @@ class ExecutionLogger(LoggerValidationMixin):
             error=error_msg,
         )
 
-        with self.lock:
+        async with self.lock:
             self.entries.append(entry)
             self.current_entries += 1
-            self.metrics_calculator.update(entry)
+            await self.metrics_calculator.update(entry)
 
         if self.enable_file_logging and self.file_manager:
             self.file_manager.write_entry(entry)
 
         logger.error(f"Execution error in {function_name}: {error_msg}")
 
-    def query_logs(
+    async def query_logs(
         self, 
         filters: Optional[Dict[str, Any]] = None, 
         limit: int = 100,
@@ -253,7 +254,7 @@ class ExecutionLogger(LoggerValidationMixin):
         Returns:
             List of matching log entries
         """
-        with self.lock:
+        async with self.lock:
             entries_list = list(self.entries)
 
         # Apply filters
@@ -329,15 +330,15 @@ class ExecutionLogger(LoggerValidationMixin):
         # Filter for actual actions (not NONE)
         return [e for e in entries if e.signal.action != ExecutionAction.NONE]
 
-    def get_metrics(self) -> Dict[str, Any]:
+    async def get_metrics(self) -> Dict[str, Any]:
         """Get performance metrics.
 
         Returns:
             Dictionary of performance metrics
         """
-        return self.metrics_calculator.get_summary()
+        return await self.metrics_calculator.get_summary()
 
-    def get_function_stats(self, function_name: str) -> Dict[str, Any]:
+    async def get_function_stats(self, function_name: str) -> Dict[str, Any]:
         """Get statistics for a specific function.
 
         Args:
@@ -346,10 +347,10 @@ class ExecutionLogger(LoggerValidationMixin):
         Returns:
             Dictionary of function statistics
         """
-        entries = self.query_logs({"function_name": function_name}, limit=10000)
+        entries = await self.query_logs({"function_name": function_name}, limit=10000)
         return self.metrics_calculator.get_function_statistics(function_name, entries)
 
-    def clear_old_entries(self, days: int = 7) -> int:
+    async def clear_old_entries(self, days: int = 7) -> int:
         """Clear entries older than specified days.
 
         Args:
@@ -360,7 +361,7 @@ class ExecutionLogger(LoggerValidationMixin):
         """
         cutoff = datetime.now(UTC) - timedelta(days=days)
 
-        with self.lock:
+        async with self.lock:
             original_count = len(self.entries)
             self.entries = deque(
                 (e for e in self.entries if e.timestamp >= cutoff),
@@ -381,11 +382,11 @@ class ExecutionLogger(LoggerValidationMixin):
         Args:
             entry: Pre-built execution log entry
         """
-        # Store in memory
-        with self.lock:
+        # Store in memory with async lock protection
+        async with self.lock:
             self.entries.append(entry)
             self.current_entries += 1
-            self.metrics_calculator.update(entry)
+            await self.metrics_calculator.update(entry)
 
         # Write to file if enabled
         if self.enable_file_logging and self.file_manager:
@@ -394,28 +395,28 @@ class ExecutionLogger(LoggerValidationMixin):
         # Log to standard logger based on importance
         self._log_to_standard(entry)
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    async def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics (alias for get_metrics)."""
-        return self.metrics_calculator.get_performance_summary()
+        return await self.metrics_calculator.get_performance_summary()
 
-    def get_function_statistics(self, function_name: Optional[str] = None) -> Dict[str, Any]:
+    async def get_function_statistics(self, function_name: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics for all functions or a specific function."""
         if function_name:
-            return self.get_function_stats(function_name)
+            return await self.get_function_stats(function_name)
         
         # Get stats for all functions
-        with self.lock:
+        async with self.lock:
             entries_list = list(self.entries)
         
         return self.metrics_calculator.get_all_function_statistics(entries_list)
 
-    def get_audit_trail(self, symbol: Optional[str] = None) -> List[ExecutionLogEntry]:
+    async def get_audit_trail(self, symbol: Optional[str] = None) -> List[ExecutionLogEntry]:
         """Get audit trail for symbol or all symbols."""
         filters = {}
         if symbol:
             filters["symbol"] = symbol
         
-        return self.query_logs(filters, limit=10000)
+        return await self.query_logs(filters, limit=10000)
 
     def _create_context_snapshot(
         self, context: Optional[ExecutionContext]
@@ -467,4 +468,5 @@ class ExecutionLogger(LoggerValidationMixin):
             logger.warning(entry.summary)
         else:
             logger.debug(entry.summary)
+
 

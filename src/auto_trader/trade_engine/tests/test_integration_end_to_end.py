@@ -20,10 +20,10 @@ from auto_trader.trade_engine.functions import CloseAboveFunction
 
 
 @pytest.fixture
-def registry():
+async def registry():
     """Create function registry."""
     registry = ExecutionFunctionRegistry()
-    registry.clear_all()  # Start fresh
+    await registry.clear_all()  # Start fresh
     return registry
 
 
@@ -124,7 +124,7 @@ class TestEndToEndIntegration:
         """Test complete workflow from market data to order execution."""
         
         # Step 1: Register execution function
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         config = ExecutionFunctionConfig(
             name="aapl_breakout",
@@ -134,7 +134,7 @@ class TestEndToEndIntegration:
             enabled=True,
         )
         
-        function = registry.create_function(config)
+        function = await registry.create_function(config)
         assert function is not None
         
         # Step 2: Connect order adapter to market data adapter
@@ -148,11 +148,11 @@ class TestEndToEndIntegration:
         for i in range(25):
             bar_time = base_time + timedelta(minutes=i)
             bar = create_sample_bar(close_price=180.50, timestamp=bar_time)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Step 5: Feed triggering bar (above threshold)
         trigger_bar = create_sample_bar(close_price=181.25, timestamp=datetime.now(UTC))
-        market_data_adapter.on_market_data_update(trigger_bar)
+        await market_data_adapter.on_market_data_update(trigger_bar)
         
         # Step 6: Simulate bar close event
         bar_close_event = BarCloseEvent(
@@ -169,7 +169,7 @@ class TestEndToEndIntegration:
         order_adapter.order_execution_manager.place_market_order.assert_called_once()
         
         # Verify execution was logged
-        logs = execution_logger.query_logs(limit=10)
+        logs = await execution_logger.query_logs(limit=10)
         assert len(logs) > 0
         
         # Verify order tracking
@@ -186,7 +186,7 @@ class TestEndToEndIntegration:
         """Test multiple functions monitoring same symbol."""
         
         # Register multiple functions
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         # Create two functions with different thresholds
         config1 = ExecutionFunctionConfig(
@@ -203,8 +203,8 @@ class TestEndToEndIntegration:
             parameters={"threshold_price": 182.00},
         )
         
-        function1 = registry.create_function(config1)
-        function2 = registry.create_function(config2)
+        function1 = await registry.create_function(config1)
+        function2 = await registry.create_function(config2)
         
         assert function1 is not None
         assert function2 is not None
@@ -220,11 +220,11 @@ class TestEndToEndIntegration:
         for i in range(25):
             bar_time = base_time + timedelta(minutes=i)
             bar = create_sample_bar(close_price=180.50, timestamp=bar_time)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Feed bar that triggers first function but not second
         trigger_bar = create_sample_bar(close_price=181.25, timestamp=datetime.now(UTC))
-        market_data_adapter.on_market_data_update(trigger_bar)
+        await market_data_adapter.on_market_data_update(trigger_bar)
         
         # Simulate bar close
         bar_close_event = BarCloseEvent(
@@ -250,7 +250,7 @@ class TestEndToEndIntegration:
         """Test handling of insufficient historical data."""
         
         # Register function
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         config = ExecutionFunctionConfig(
             name="aapl_breakout",
@@ -259,7 +259,7 @@ class TestEndToEndIntegration:
             parameters={"threshold_price": 181.00},
         )
         
-        registry.create_function(config)
+        await registry.create_function(config)
         market_data_adapter.add_signal_callback(order_adapter.handle_execution_signal)
         
         # Start monitoring
@@ -268,11 +268,11 @@ class TestEndToEndIntegration:
         # Feed insufficient historical data (less than minimum required)
         for i in range(5):  # Only 5 bars, need 20
             bar = create_sample_bar(close_price=180.50)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Feed triggering bar
         trigger_bar = create_sample_bar(close_price=181.25)
-        market_data_adapter.on_market_data_update(trigger_bar)
+        await market_data_adapter.on_market_data_update(trigger_bar)
         
         # Simulate bar close
         bar_close_event = BarCloseEvent(
@@ -318,7 +318,7 @@ class TestEndToEndIntegration:
             # Feed sufficient historical data
             for i in range(25):
                 bar = create_sample_bar(close_price=180.50)
-                market_data_adapter.on_market_data_update(bar)
+                await market_data_adapter.on_market_data_update(bar)
             
             # Simulate bar close
             trigger_bar = create_sample_bar(close_price=181.25)
@@ -334,7 +334,7 @@ class TestEndToEndIntegration:
             await market_data_adapter._on_bar_close(bar_close_event)
             
             # Error should be logged
-            logs = execution_logger.query_logs({"has_error": True})
+            logs = await execution_logger.query_logs({"has_error": True})
             assert len(logs) > 0
             
             # No order should be placed
@@ -354,7 +354,7 @@ class TestEndToEndIntegration:
         """Test error handling in signal callbacks."""
         
         # Register function
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         
         config = ExecutionFunctionConfig(
             name="aapl_breakout",
@@ -363,7 +363,7 @@ class TestEndToEndIntegration:
             parameters={"threshold_price": 181.00},
         )
         
-        registry.create_function(config)
+        await registry.create_function(config)
         
         # Add callback that raises exception
         error_callback = AsyncMock(side_effect=Exception("Callback error"))
@@ -375,11 +375,11 @@ class TestEndToEndIntegration:
         # Feed sufficient data (below threshold)
         for i in range(25):
             bar = create_sample_bar(close_price=180.50)
-            market_data_adapter.on_market_data_update(bar)
+            await market_data_adapter.on_market_data_update(bar)
         
         # Trigger signal (above threshold of 181.00)
         trigger_bar = create_sample_bar(close_price=181.25)
-        market_data_adapter.on_market_data_update(trigger_bar)
+        await market_data_adapter.on_market_data_update(trigger_bar)
         
         bar_close_event = BarCloseEvent(
             symbol="AAPL",
@@ -393,10 +393,11 @@ class TestEndToEndIntegration:
         await market_data_adapter._on_bar_close(bar_close_event)
         
         # Function evaluation should still be logged
-        logs = execution_logger.query_logs({"function_name": "aapl_breakout"})
+        logs = await execution_logger.query_logs({"function_name": "aapl_breakout"})
         assert len(logs) > 0
 
-    def test_adapter_statistics_integration(
+    @pytest.mark.asyncio
+    async def test_adapter_statistics_integration(
         self,
         market_data_adapter,
         order_adapter,
@@ -406,14 +407,14 @@ class TestEndToEndIntegration:
         
         # Add some data to each component
         bar = create_sample_bar()
-        market_data_adapter.on_market_data_update(bar)
+        await market_data_adapter.on_market_data_update(bar)
         
         order_adapter.execution_orders["test_id"] = "order_123"
         
         # Get statistics from each component
-        market_stats = market_data_adapter.get_stats()
+        market_stats = await market_data_adapter.get_stats()
         order_stats = order_adapter.get_stats()
-        logger_stats = execution_logger.get_metrics()
+        logger_stats = await execution_logger.get_metrics()
         
         # Verify statistics are collected
         assert market_stats["monitored_symbols"] > 0
@@ -429,14 +430,14 @@ class TestEndToEndIntegration:
         """Test complete monitoring lifecycle."""
         
         # Register function
-        registry.register("close_above", CloseAboveFunction)
+        await registry.register("close_above", CloseAboveFunction)
         config = ExecutionFunctionConfig(
             name="test_function",
             function_type="close_above",
             timeframe=Timeframe.ONE_MIN,
             parameters={"threshold_price": 181.00},
         )
-        registry.create_function(config)
+        await registry.create_function(config)
         
         # Start monitoring
         await market_data_adapter.start_monitoring("AAPL", Timeframe.ONE_MIN)
@@ -447,7 +448,7 @@ class TestEndToEndIntegration:
         
         # Add market data
         bar = create_sample_bar()
-        market_data_adapter.on_market_data_update(bar)
+        await market_data_adapter.on_market_data_update(bar)
         
         # Verify data is stored
         assert "AAPL" in market_data_adapter.historical_data

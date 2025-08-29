@@ -64,10 +64,10 @@ def sample_context():
 async def error_recovery_system():
     """Create system for error recovery testing."""
     registry = ExecutionFunctionRegistry()
-    registry.clear_all()
+    await registry.clear_all()
     
     # Register function
-    registry.register("close_above", CloseAboveFunction)
+    await registry.register("close_above", CloseAboveFunction)
     
     config = ExecutionFunctionConfig(
         name="error_test_function",
@@ -77,7 +77,7 @@ async def error_recovery_system():
         enabled=True
     )
     
-    function = registry.create_function(config)
+    function = await registry.create_function(config)
     
     # Create detector
     detector = BarCloseDetector(accuracy_ms=100)
@@ -90,7 +90,7 @@ async def error_recovery_system():
     }
     
     await detector.stop()
-    registry.clear_all()
+    await registry.clear_all()
 
 
 @pytest.mark.asyncio
@@ -248,13 +248,13 @@ class TestErrorRecovery:
         registry._instances.clear()
         
         # Implement recovery mechanism
-        def recover_registry():
+        async def recover_registry():
             """Recover registry from backup/configuration."""
             # Simulate restoring from backup
             registry._functions.update(original_functions)
             
             # Re-register functions
-            registry.register("close_above", CloseAboveFunction, override=True)
+            await registry.register("close_above", CloseAboveFunction, override=True)
             
             # Recreate instances
             config = ExecutionFunctionConfig(
@@ -264,11 +264,11 @@ class TestErrorRecovery:
                 parameters={"threshold_price": 180.00},
                 enabled=True
             )
-            return registry.create_function(config)
+            return await registry.create_function(config)
         
         # Detect corruption and recover
         if not registry._functions:  # Registry is corrupted
-            recovered_function = recover_registry()
+            recovered_function = await recover_registry()
         
         # Verify recovery
         assert len(registry._functions) > 0
@@ -592,7 +592,7 @@ class TestErrorRecovery:
             enabled=True
         )
         
-        function = registry.create_function(original_config)
+        function = await registry.create_function(original_config)
         
         # Simulate configuration corruption
         function.parameters["threshold_price"] = "invalid_value"

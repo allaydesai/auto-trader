@@ -81,11 +81,11 @@ def sample_market_data():
 async def execution_system(mock_order_manager, mock_risk_manager):
     """Create integrated execution and order system."""
     registry = ExecutionFunctionRegistry()
-    registry.clear_all()
+    await registry.clear_all()
     
     # Register functions
-    registry.register("close_above", CloseAboveFunction)
-    registry.register("close_below", CloseBelowFunction)
+    await registry.register("close_above", CloseAboveFunction)
+    await registry.register("close_below", CloseBelowFunction)
     
     # Create function instances
     entry_config = ExecutionFunctionConfig(
@@ -104,8 +104,8 @@ async def execution_system(mock_order_manager, mock_risk_manager):
         enabled=True
     )
     
-    entry_function = registry.create_function(entry_config)
-    exit_function = registry.create_function(exit_config)
+    entry_function = await registry.create_function(entry_config)
+    exit_function = await registry.create_function(exit_config)
     
     yield {
         "registry": registry,
@@ -115,7 +115,7 @@ async def execution_system(mock_order_manager, mock_risk_manager):
         "risk_manager": mock_risk_manager
     }
     
-    registry.clear_all()
+    await registry.clear_all()
 
 
 @pytest.mark.asyncio
@@ -414,7 +414,7 @@ class TestOrderExecutionIntegration:
         
         # Register and create trailing stop function
         from auto_trader.trade_engine.functions import TrailingStopFunction
-        registry.register("trailing_stop", TrailingStopFunction)
+        await registry.register("trailing_stop", TrailingStopFunction)
         
         config = ExecutionFunctionConfig(
             name="trailing_stop_test",
@@ -423,7 +423,7 @@ class TestOrderExecutionIntegration:
             parameters={"trail_percentage": 2.0},
             enabled=True
         )
-        trailing_function = registry.create_function(config)
+        trailing_function = await registry.create_function(config)
         
         # Create position with existing stop order
         position = PositionState(

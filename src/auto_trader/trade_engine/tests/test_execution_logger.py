@@ -156,7 +156,7 @@ class TestExecutionLogger:
         assert data["signal"]["confidence"] == 0.75
         assert data["duration_ms"] == 15.5
 
-    def test_query_logs_by_symbol(self, logger_instance, temp_log_dir):
+    async def test_query_logs_by_symbol(self, logger_instance, temp_log_dir):
         """Test querying logs by symbol."""
         # Add entries directly to memory (the actual behavior)
         from auto_trader.models.execution import ExecutionLogEntry, ExecutionSignal
@@ -190,12 +190,12 @@ class TestExecutionLogger:
         logger_instance.current_entries += 2
         
         # Query for AAPL
-        results = logger_instance.query_logs({"symbol": "AAPL"})
+        results = await logger_instance.query_logs({"symbol": "AAPL"})
         
         assert len(results) == 1
         assert results[0].symbol == "AAPL"
 
-    def test_query_logs_by_function_name(self, logger_instance, temp_log_dir):
+    async def test_query_logs_by_function_name(self, logger_instance, temp_log_dir):
         """Test querying logs by function name."""
         # Add entries directly to memory
         from auto_trader.models.execution import ExecutionLogEntry, ExecutionSignal
@@ -215,12 +215,12 @@ class TestExecutionLogger:
         logger_instance.current_entries += 1
         
         # Query by function name
-        results = logger_instance.query_logs({"function_name": "close_above"})
+        results = await logger_instance.query_logs({"function_name": "close_above"})
         
         assert len(results) == 1
         assert results[0].function_name == "close_above"
 
-    def test_query_logs_with_limit(self, logger_instance, temp_log_dir):
+    async def test_query_logs_with_limit(self, logger_instance, temp_log_dir):
         """Test query limit functionality."""
         # Add multiple entries directly to memory
         from auto_trader.models.execution import ExecutionLogEntry, ExecutionSignal
@@ -241,11 +241,11 @@ class TestExecutionLogger:
         logger_instance.current_entries += 10
         
         # Query with limit
-        results = logger_instance.query_logs({}, limit=3)
+        results = await logger_instance.query_logs({}, limit=3)
         
         assert len(results) == 3
 
-    def test_query_logs_time_range(self, logger_instance, temp_log_dir):
+    async def test_query_logs_time_range(self, logger_instance, temp_log_dir):
         """Test querying logs within time range."""
         # Add entries directly to memory
         from auto_trader.models.execution import ExecutionLogEntry, ExecutionSignal
@@ -281,11 +281,11 @@ class TestExecutionLogger:
         start_time = datetime(2025, 8, 28, 9, 0, 0, tzinfo=UTC)
         end_time = datetime(2025, 8, 28, 11, 0, 0, tzinfo=UTC)
         
-        results = logger_instance.query_logs({}, start_time=start_time, end_time=end_time)
+        results = await logger_instance.query_logs({}, start_time=start_time, end_time=end_time)
         
         assert len(results) == 1
 
-    def test_get_performance_metrics(self, logger_instance, temp_log_dir):
+    async def test_get_performance_metrics(self, logger_instance, temp_log_dir):
         """Test performance metrics calculation."""
         # Add entries directly to memory using the log_evaluation method
         from auto_trader.models.execution import ExecutionContext, ExecutionSignal
@@ -306,17 +306,17 @@ class TestExecutionLogger:
         durations = [10.0, 20.0, 15.0, 25.0, 5.0]
         for duration in durations:
             signal = ExecutionSignal(action=ExecutionAction.ENTER_LONG, confidence=0.8, reasoning="test")
-            logger_instance.log_evaluation("test_func", mock_context, signal, duration)
+            await logger_instance.log_evaluation("test_func", mock_context, signal, duration)
         
         # Get metrics
-        metrics = logger_instance.get_performance_metrics()
+        metrics = await logger_instance.get_performance_metrics()
         
         assert metrics["total_evaluations"] == 5
         assert metrics["avg_duration_ms"] == 15.0
         assert metrics["max_duration_ms"] == 25.0
         assert metrics["min_duration_ms"] == 5.0
 
-    def test_get_function_statistics(self, logger_instance, temp_log_dir):
+    async def test_get_function_statistics(self, logger_instance, temp_log_dir):
         """Test function usage statistics."""
         # Add entries directly to memory using log_evaluation
         from auto_trader.models.execution import ExecutionSignal
@@ -337,10 +337,10 @@ class TestExecutionLogger:
         functions = ["close_above", "close_above", "close_below", "trailing_stop"]
         for func in functions:
             signal = ExecutionSignal(action=ExecutionAction.ENTER_LONG, confidence=0.8, reasoning="test")
-            logger_instance.log_evaluation(func, mock_context, signal, 10.0)
+            await logger_instance.log_evaluation(func, mock_context, signal, 10.0)
         
         # Get statistics for close_above function
-        stats = logger_instance.get_function_statistics("close_above")
+        stats = await logger_instance.get_function_statistics("close_above")
         
         assert stats["evaluations"] == 2
         assert stats["function"] == "close_above"
@@ -361,7 +361,7 @@ class TestExecutionLogger:
         await logger_instance.log_execution_decision(entry)
         
         # Verify error was logged
-        results = logger_instance.query_logs({"function_name": "error_func"})
+        results = await logger_instance.query_logs({"function_name": "error_func"})
         assert len(results) == 1
         assert results[0].error == "Test error message"
 
@@ -385,10 +385,10 @@ class TestExecutionLogger:
         await asyncio.gather(*tasks)
         
         # Verify all entries were logged
-        results = logger_instance.query_logs({})
+        results = await logger_instance.query_logs({})
         assert len(results) == 10
 
-    def test_malformed_log_file_handling(self, logger_instance, temp_log_dir):
+    async def test_malformed_log_file_handling(self, logger_instance, temp_log_dir):
         """Test handling of invalid entries during queries."""
         # Add valid entries directly to memory
         from auto_trader.models.execution import ExecutionLogEntry, ExecutionSignal
@@ -420,7 +420,7 @@ class TestExecutionLogger:
         logger_instance.current_entries += 2
         
         # Query should return all valid entries
-        results = logger_instance.query_logs({})
+        results = await logger_instance.query_logs({})
         
         # Should return valid entries
         assert len(results) == 2
@@ -449,7 +449,7 @@ class TestExecutionLogger:
         date_part = filename.split("_")[1].split(".")[0]
         assert len(date_part) == 8  # YYYYMMDD format
 
-    def test_get_audit_trail(self, logger_instance, temp_log_dir):
+    async def test_get_audit_trail(self, logger_instance, temp_log_dir):
         """Test complete audit trail retrieval."""
         # Add entries directly to memory
         from auto_trader.models.execution import ExecutionLogEntry, ExecutionSignal
@@ -471,7 +471,7 @@ class TestExecutionLogger:
         logger_instance.current_entries += 3
         
         # Get complete audit trail (query all AAPL entries)
-        trail = logger_instance.query_logs({"symbol": "AAPL"})
+        trail = await logger_instance.query_logs({"symbol": "AAPL"})
         
         assert len(trail) == 3
         # Should be sorted by timestamp (entries are in chronological order)

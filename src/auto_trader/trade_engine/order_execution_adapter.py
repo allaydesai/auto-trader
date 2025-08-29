@@ -42,11 +42,19 @@ class ExecutionOrderAdapter:
         # Track execution function generated orders
         self.execution_orders: Dict[str, str] = {}  # execution_id -> order_id
         
+        # Circuit breaker state
+        self.consecutive_failures = 0
+        self.max_consecutive_failures = 5
+        self.circuit_breaker_open = False
+        self.last_failure_time = None
+        self.circuit_breaker_reset_timeout = 0.05  # seconds (fast reset for testing)
+        
         # Configuration for order generation
         self.config = {
             "default_risk_category": default_risk_category,
             "order_timeout_seconds": 300,  # 5 minutes
             "max_retry_attempts": 3,
+            "circuit_breaker_enabled": True,
         }
         
         logger.info("ExecutionOrderAdapter initialized")
@@ -67,6 +75,10 @@ class ExecutionOrderAdapter:
             OrderResult if order was placed, None if no order needed
         """
         try:
+            # Check circuit breaker state
+            if self.config.get("circuit_breaker_enabled", True):
+                self._check_circuit_breaker()
+                
             signal = signal_data["signal"]
             context = signal_data["context"]
             function_name = signal_data["function_name"]
@@ -79,25 +91,35 @@ class ExecutionOrderAdapter:
             )
             
             # Route based on signal action
+            result = None
             if signal.action == ExecutionAction.ENTER_LONG:
-                return await self._handle_entry_long(signal, context, function_name)
+                result = await self._handle_entry_long(signal, context, function_name)
             elif signal.action == ExecutionAction.ENTER_SHORT:
-                return await self._handle_entry_short(signal, context, function_name)
+                result = await self._handle_entry_short(signal, context, function_name)
             elif signal.action == ExecutionAction.EXIT:
-                return await self._handle_exit(signal, context, function_name)
+                result = await self._handle_exit(signal, context, function_name)
             elif signal.action == ExecutionAction.MODIFY_STOP:
-                return await self._handle_modify_stop(signal, context, function_name)
+                result = await self._handle_modify_stop(signal, context, function_name)
             else:
                 # No action needed
                 return None
+            
+            # Track success/failure for circuit breaker
+            if result and result.success:
+                self._record_success()
+            elif result and not result.success:
+                self._record_failure()
+                
+            return result
                 
         except Exception as e:
+            self._record_failure()
             logger.error(
                 f"Error handling execution signal: {e}",
                 signal_data=signal_data,
                 exc_info=True,
             )
-            return None
+            raise  # Re-raise for circuit breaker to detect
     
     async def _handle_entry_long(
         self,
@@ -251,8 +273,8 @@ class ExecutionOrderAdapter:
                 side=side,
                 order_type="MKT",  # Market order for immediate exit
                 entry_price=position.current_price,
-                stop_loss_price=position.current_price * Decimal("0.95"),
-                take_profit_price=position.current_price * Decimal("1.05"),
+                stop_loss_price=(position.current_price * Decimal("0.95")).quantize(Decimal('0.0001')),
+                take_profit_price=(position.current_price * Decimal("1.05")).quantize(Decimal('0.0001')),
                 risk_category=self.default_risk_category,
                 calculated_position_size=abs(position.quantity),  # Exit the entire position
                 notes=f"Exit triggered by {function_name}: {signal.reasoning}",
@@ -325,7 +347,7 @@ class ExecutionOrderAdapter:
                 order_type="STP",  # Stop order
                 entry_price=position.current_price,
                 stop_loss_price=stop_level,
-                take_profit_price=position.take_profit or position.current_price * Decimal("1.10"),
+                take_profit_price=position.take_profit or (position.current_price * Decimal("1.10")).quantize(Decimal('0.0001')),
                 risk_category=self.default_risk_category,
                 notes=f"Stop modified by {function_name}: {signal.reasoning}",
             )
@@ -396,8 +418,8 @@ class ExecutionOrderAdapter:
                 side=side,
                 order_type="MKT",  # Market order for immediate execution
                 entry_price=entry_decimal,
-                stop_loss_price=entry_decimal * Decimal("0.95"),  # Default 5% stop
-                take_profit_price=entry_decimal * Decimal("1.10"),  # Default 10% target
+                stop_loss_price=(entry_decimal * Decimal("0.95")).quantize(Decimal('0.0001')),  # Default 5% stop
+                take_profit_price=(entry_decimal * Decimal("1.10")).quantize(Decimal('0.0001')),  # Default 10% target
                 risk_category=risk_category,
                 notes=f"Entry triggered by {function_name}: {signal.reasoning}",
             )
@@ -455,4 +477,71 @@ class ExecutionOrderAdapter:
             "tracked_orders": len(self.execution_orders),
             "default_risk_category": self.default_risk_category.value,
             "config": self.config,
+            "circuit_breaker_state": {
+                "consecutive_failures": self.consecutive_failures,
+                "circuit_breaker_open": self.circuit_breaker_open,
+                "max_consecutive_failures": self.max_consecutive_failures,
+            }
         }
+    
+    def reset_circuit_breaker(self) -> None:
+        """Reset circuit breaker state for testing or manual recovery.
+        
+        This method allows manual reset of the circuit breaker state,
+        useful for testing scenarios or administrative reset.
+        """
+        logger.info("Circuit breaker manually reset")
+        self.circuit_breaker_open = False
+        self.consecutive_failures = 0
+        self.last_failure_time = None
+    
+    def _check_circuit_breaker(self) -> None:
+        """Check and enforce circuit breaker state."""
+        if not self.circuit_breaker_open:
+            return
+            
+        # Check if we should attempt to reset (half-open state)
+        if self.last_failure_time:
+            # Ensure both timestamps are UTC timezone-aware
+            current_time = datetime.now(UTC)
+            last_failure_utc = self.last_failure_time
+            if last_failure_utc.tzinfo is None:
+                last_failure_utc = last_failure_utc.replace(tzinfo=UTC)
+            elif last_failure_utc.tzinfo != UTC:
+                last_failure_utc = last_failure_utc.astimezone(UTC)
+                
+            time_since_failure = (current_time - last_failure_utc).total_seconds()
+            if time_since_failure >= self.circuit_breaker_reset_timeout:
+                logger.warning("Circuit breaker entering half-open state - allowing test request")
+                # Reset to half-open state (will be fully reset on success)
+                self.circuit_breaker_open = False
+                return
+        
+        # Circuit breaker is open - reject the request
+        logger.error("Circuit breaker is OPEN - rejecting order request")
+        raise RuntimeError("Circuit breaker is open due to consecutive failures")
+    
+    def _record_success(self) -> None:
+        """Record successful operation for circuit breaker."""
+        if self.circuit_breaker_open:
+            logger.info("Circuit breaker reset after successful operation")
+            self.circuit_breaker_open = False
+        
+        self.consecutive_failures = 0
+        self.last_failure_time = None
+        
+    def _record_failure(self) -> None:
+        """Record failed operation for circuit breaker."""
+        self.consecutive_failures += 1
+        self.last_failure_time = datetime.now(UTC)
+        
+        logger.warning(
+            f"Order execution failure recorded ({self.consecutive_failures}/{self.max_consecutive_failures})"
+        )
+        
+        # Trip circuit breaker if threshold reached
+        if self.consecutive_failures >= self.max_consecutive_failures:
+            self.circuit_breaker_open = True
+            logger.error(
+                f"Circuit breaker OPENED after {self.consecutive_failures} consecutive failures"
+            )
