@@ -1,14 +1,13 @@
 """Signal processing for trade lifecycle management."""
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime, UTC
-from decimal import Decimal
 
 from loguru import logger
 
 from auto_trader.models.execution import ExecutionSignal, ExecutionContext
 from auto_trader.models.enums import ExecutionAction, OrderSide
-from auto_trader.models.order import OrderResult, OrderRequest
+from auto_trader.models.order import OrderResult
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
 from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
 from auto_trader.risk_management.risk_manager import RiskManager

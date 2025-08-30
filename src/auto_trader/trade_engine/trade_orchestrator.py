@@ -1,17 +1,16 @@
 """Trade lifecycle orchestration and management."""
 
-from typing import Dict, List, Optional, Set, Callable, Any
+from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime, UTC
 from decimal import Decimal
-from pathlib import Path
 
 from loguru import logger
 
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
 from auto_trader.models.plan_loader import TradePlanLoader
 from auto_trader.models.execution import ExecutionSignal, ExecutionContext
-from auto_trader.models.enums import ExecutionAction, OrderSide
-from auto_trader.models.order import OrderResult, Order
+from auto_trader.models.enums import ExecutionAction
+from auto_trader.models.order import OrderResult
 from auto_trader.models.market_data import BarData
 from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
 from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
@@ -266,32 +265,27 @@ class TradeOrchestrator:
             bar_data: Market data for evaluation
         """
         # Get position information
-        order_id = self.plan_positions.get(plan.plan_id)
-        if not order_id:
+        position_plan = self.position_plans.get(plan.plan_id)
+        if not position_plan:
             logger.warning(f"No position found for plan {plan.plan_id}")
             return
         
-        # Create execution context with position state
-        # TODO: Get actual position state from position manager
+        # Create execution context with position state from position manager
+        position_entry = self.position_manager.get_position_by_plan_id(plan.plan_id)
+        
         execution_context = ExecutionContext(
             symbol=plan.symbol,
             timeframe=bar_data.timeframe,
             bar_data=bar_data,
-            position_state=None,  # Will be filled by position manager
-            has_position=True,
+            position_state=position_entry,  # Actual position state from manager
+            has_position=position_entry is not None,
             metadata={"plan_id": plan.plan_id, "function_type": "exit"},
         )
         
-        # Evaluate stop loss function
-        if hasattr(plan, 'stop_loss_function') and plan.stop_loss_function:
+        # Evaluate exit function (handles both stop loss and take profit logic)
+        if plan.exit_function:
             await self._evaluate_exit_function(
-                plan, plan.stop_loss_function.type, execution_context
-            )
-        
-        # Evaluate take profit function
-        if hasattr(plan, 'take_profit_function') and plan.take_profit_function:
-            await self._evaluate_exit_function(
-                plan, plan.take_profit_function.type, execution_context
+                plan, plan.exit_function.function_type, execution_context
             )
     
     async def _evaluate_exit_function(

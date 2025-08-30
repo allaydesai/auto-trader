@@ -1,15 +1,13 @@
 """Trade lifecycle state management and validation."""
 
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 from datetime import datetime, UTC
 from decimal import Decimal
 
 from loguru import logger
 
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
-from auto_trader.models.order import Order, OrderResult
-from auto_trader.models.execution import ExecutionSignal
-from auto_trader.models.enums import ExecutionAction, OrderSide
+from auto_trader.models.order import OrderResult
 
 
 class TradeLifecycleState:
