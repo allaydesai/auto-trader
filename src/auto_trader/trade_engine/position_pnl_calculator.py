@@ -18,12 +18,36 @@ class PositionPnLCalculator:
     ) -> Decimal:
         """Calculate total unrealized P&L for a portfolio of positions.
         
+        Sums up the unrealized profit/loss for all open positions based on current
+        market prices. Only calculates P&L for positions that have current price data.
+        
         Args:
-            positions: List of open positions
-            current_prices: Dictionary of symbol -> current price
+            positions: List of open positions to calculate P&L for
+            current_prices: Dictionary mapping symbol -> current market price
             
         Returns:
-            Total unrealized P&L
+            Total unrealized P&L across all open positions
+            
+        Example:
+            >>> positions = [
+            ...     PositionEntry(symbol="AAPL", entry_price=Decimal("150.00"), 
+            ...                  quantity=100, is_closed=False),
+            ...     PositionEntry(symbol="GOOGL", entry_price=Decimal("2800.00"), 
+            ...                  quantity=10, is_closed=False)
+            ... ]
+            >>> current_prices = {
+            ...     "AAPL": Decimal("155.00"),   # $5.00 profit per share
+            ...     "GOOGL": Decimal("2750.00")  # $50.00 loss per share  
+            ... }
+            >>> pnl = PositionPnLCalculator.calculate_portfolio_unrealized_pnl(
+            ...     positions, current_prices
+            ... )
+            >>> print(f"Portfolio unrealized P&L: ${pnl}")
+            Portfolio unrealized P&L: $0.00  # (100 * $5.00) + (10 * -$50.00) = $0
+            
+        Note:
+            Positions without current price data are skipped with a warning log.
+            Only open positions (is_closed=False) are included in the calculation.
         """
         total_pnl = Decimal("0")
         
@@ -45,11 +69,36 @@ class PositionPnLCalculator:
     def calculate_portfolio_realized_pnl(positions: List[PositionEntry]) -> Decimal:
         """Calculate total realized P&L for a portfolio of positions.
         
+        Sums up the realized profit/loss for all positions that have been fully
+        or partially closed. Includes partial fills and complete position closures.
+        
         Args:
-            positions: List of positions
+            positions: List of positions (both open and closed) to calculate P&L for
             
         Returns:
-            Total realized P&L
+            Total realized P&L from all position closures and partial fills
+            
+        Example:
+            >>> positions = [
+            ...     # Closed position: bought 100 @ $150, sold 100 @ $160
+            ...     PositionEntry(symbol="AAPL", entry_price=Decimal("150.00"),
+            ...                  quantity=100, exit_price=Decimal("160.00"), is_closed=True),
+            ...     # Partially closed: bought 200 @ $2800, sold 50 @ $2850
+            ...     PositionEntry(symbol="GOOGL", entry_price=Decimal("2800.00"),
+            ...                  quantity=200, partial_exit_fills=[
+            ...                      {"quantity": 50, "price": Decimal("2850.00")}]),
+            ...     # Open position - no realized P&L yet
+            ...     PositionEntry(symbol="MSFT", entry_price=Decimal("300.00"),
+            ...                  quantity=50, is_closed=False)
+            ... ]
+            >>> realized_pnl = PositionPnLCalculator.calculate_portfolio_realized_pnl(positions)
+            >>> print(f"Total realized P&L: ${realized_pnl}")
+            Total realized P&L: $3500.00  # AAPL: $1000 + GOOGL: $2500 + MSFT: $0
+            
+        Note:
+            - Only calculates P&L from actual position closures and fills
+            - Open positions contribute $0 to realized P&L  
+            - Partial fills are included in the calculation
         """
         total_pnl = Decimal("0")
         

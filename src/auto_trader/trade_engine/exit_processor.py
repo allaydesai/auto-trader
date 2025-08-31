@@ -62,16 +62,62 @@ class ExitProcessor:
         trade_plan: TradePlan,
         function_name: str,
     ) -> ExitProcessingResult:
-        """Process an exit execution signal.
+        """Process an exit execution signal with comprehensive position management.
+        
+        Main entry point for exit signal processing. Validates signal, retrieves position,
+        and orchestrates the complete exit workflow including order management and cleanup.
         
         Args:
-            signal: Exit execution signal
-            context: Execution context
-            trade_plan: Associated trade plan
-            function_name: Name of generating function
+            signal: Exit execution signal (CLOSE_LONG/CLOSE_SHORT) with confidence and reasoning
+            context: Execution context containing current market data and position information
+            trade_plan: Trade plan containing exit parameters and risk management settings
+            function_name: Name of the execution function that generated the signal (for audit trail)
             
         Returns:
-            Exit processing result
+            ExitProcessingResult with success status, order details, and error information
+            
+        Example Usage:
+            >>> # Stop-loss trigger for a long position
+            >>> signal = ExecutionSignal(
+            ...     action=ExecutionAction.CLOSE_LONG,
+            ...     confidence=0.95,
+            ...     reasoning="Price broke below stop-loss level $148.50"
+            ... )
+            >>> context = ExecutionContext(
+            ...     symbol="AAPL",
+            ...     current_bar=BarData(close_price=Decimal("148.00")),
+            ...     has_position=True
+            ... )
+            >>> trade_plan = TradePlan(
+            ...     plan_id="AAPL_001",
+            ...     symbol="AAPL",
+            ...     stop_loss=Decimal("148.50"),
+            ...     # ... other plan parameters
+            ... )
+            >>> result = await exit_processor.process_exit_signal(
+            ...     signal, context, trade_plan, "stop_loss_function"
+            ... )
+            >>> if result.success:
+            ...     print(f"Position closed: {result.position_closed}")
+            ...     print(f"Realized P&L: ${result.realized_pnl}")
+            ...
+            
+        Signal Processing Flow:
+            1. **Validation**: Verify signal action is valid exit action (CLOSE_LONG/CLOSE_SHORT)
+            2. **Position Lookup**: Find open position for the trade plan symbol
+            3. **Exit Processing**: Delegate to position exit workflow
+            4. **Registry Cleanup**: Remove position from risk management tracking
+            5. **Statistics**: Update processing metrics and performance counters
+            
+        Error Scenarios:
+            - **No Position Found**: Returns failure result when no open position exists
+            - **Invalid Signal**: Returns failure for non-exit actions (ENTER_LONG, etc.)
+            - **Order Failures**: Handles order placement failures gracefully
+            - **System Errors**: Catches and logs unexpected exceptions
+            
+        Note:
+            This method is thread-safe and handles concurrent exit signals appropriately.
+            Multiple exit signals for the same position are handled safely.
         """
         try:
             logger.info(
@@ -152,17 +198,56 @@ class ExitProcessor:
         position: PositionEntry,
         function_name: str,
     ) -> ExitProcessingResult:
-        """Process complete position exit.
+        """Process complete position exit with comprehensive order management.
+        
+        Handles the complete exit workflow: cancelling existing orders, placing exit orders,
+        processing fills, updating position state, and managing risk registry. This method
+        ensures clean position closure with proper order cancellation and state cleanup.
         
         Args:
-            signal: Exit signal
-            context: Execution context
-            trade_plan: Trade plan
-            position: Position to exit
-            function_name: Function name
+            signal: Exit execution signal (CLOSE_LONG/CLOSE_SHORT) with confidence and reasoning
+            context: Execution context containing current bar data and market information
+            trade_plan: Trade plan associated with the position being exited
+            position: Position entry to be closed (contains quantity, entry price, etc.)
+            function_name: Name of the execution function triggering the exit (for logging)
             
         Returns:
-            Exit processing result
+            ExitProcessingResult containing success status, order details, and processing metrics
+            
+        Example Workflow:
+            >>> # Position: Long 100 AAPL @ $150.00, current price $160.00
+            >>> signal = ExecutionSignal(
+            ...     action=ExecutionAction.CLOSE_LONG,
+            ...     confidence=0.85,
+            ...     reasoning="Price hit take-profit target"
+            ... )
+            >>> context = ExecutionContext(
+            ...     symbol="AAPL", 
+            ...     current_bar=BarData(close_price=Decimal("160.00")),
+            ...     has_position=True
+            ... )
+            >>> result = await exit_processor._process_position_exit(
+            ...     signal, context, trade_plan, position, "take_profit_function"
+            ... )
+            >>> print(f"Exit result: {result.success}, Orders cancelled: {len(result.cancelled_orders)}")
+            Exit result: True, Orders cancelled: 2
+            
+        Processing Steps:
+            1. **Order Cancellation**: Cancel all existing orders for the symbol to prevent conflicts
+            2. **Exit Order Creation**: Build market order request for the full position quantity
+            3. **Order Placement**: Submit exit order through order execution manager
+            4. **Fill Processing**: Handle immediate fills or track pending orders
+            5. **State Updates**: Update position status and remove from risk registry if fully closed
+            6. **Cleanup**: Clean up order tracking and update processing statistics
+            
+        Error Handling:
+            - Failed order placement returns failure result with error details
+            - Order cancellation failures are logged but don't prevent exit processing
+            - Risk registry cleanup failures are logged for monitoring
+            
+        Note:
+            This method assumes the position exists and is valid. Caller should verify
+            position existence before invoking this method.
         """
         try:
             # Cancel any existing orders for this symbol first
