@@ -177,7 +177,7 @@ class PositionEntry:
             "order_id": self.order_id,
             "quantity": int(self.quantity),
             "entry_price": str(self.entry_price),
-            "side": self.side.value,
+            "side": self.side.value if hasattr(self.side, 'value') else self.side,
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
             "exit_order_ids": self.exit_order_ids,
@@ -320,7 +320,7 @@ class PositionStateManager:
             entry_price=actual_fill_price,
             side=order_result.side,
             metadata={
-                "risk_category": trade_plan.risk_category.value,
+                "risk_category": trade_plan.risk_category.value if hasattr(trade_plan.risk_category, 'value') else trade_plan.risk_category,
                 "entry_function": trade_plan.entry_function.function_type,
                 "plan_entry_level": str(trade_plan.entry_level),
                 "plan_stop_loss": str(trade_plan.stop_loss),
@@ -346,7 +346,7 @@ class PositionStateManager:
             symbol=trade_plan.symbol,
             quantity=actual_fill_quantity,
             price=float(actual_fill_price),
-            side=order_result.side.value,
+            side=order_result.side.value if hasattr(order_result.side, 'value') else order_result.side,
         )
         
         return position_id

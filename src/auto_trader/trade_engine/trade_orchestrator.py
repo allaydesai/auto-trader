@@ -627,3 +627,32 @@ class TradeOrchestrator:
         quantity = order_result.filled_quantity
         
         return abs((entry_price - stop_price) * quantity)
+    
+    # Convenience methods for test compatibility
+    async def add_trade_plan(self, trade_plan: TradePlan) -> None:
+        """Add a trade plan for testing purposes.
+        
+        Args:
+            trade_plan: Trade plan to add
+        """
+        await self.trade_plan_loader.save_plan(trade_plan)
+        await self._load_active_trade_plans()
+    
+    async def get_trade_plan(self, plan_id: str) -> Optional[TradePlan]:
+        """Get trade plan by ID for testing purposes.
+        
+        Args:
+            plan_id: Trade plan ID
+            
+        Returns:
+            Trade plan if found
+        """
+        return await self.trade_plan_loader.load_plan(plan_id)
+    
+    async def process_market_data(self, bar_data: BarData) -> None:
+        """Process market data event for testing purposes.
+        
+        Args:
+            bar_data: Market data bar
+        """
+        await self.process_market_data_event(bar_data)

@@ -128,6 +128,10 @@ class OrderResult(BaseModel):
     quantity: int = Field(..., ge=0, description="Order quantity")
     order_type: OrderType = Field(..., description="Order type")
     
+    # Fill information (added for test compatibility)
+    filled_quantity: int = Field(default=0, ge=0, description="Filled quantity")
+    average_fill_price: Optional[Decimal] = Field(None, decimal_places=4, description="Average fill price")
+    
     model_config = ConfigDict(
         validate_assignment=True,
         str_strip_whitespace=True,

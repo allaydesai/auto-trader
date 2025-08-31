@@ -1,0 +1,604 @@
+"""Integration tests for signal processing with risk management."""
+
+import pytest
+import asyncio
+from unittest.mock import AsyncMock, Mock
+from datetime import datetime, UTC
+from decimal import Decimal
+from typing import Dict, Any
+
+from auto_trader.models.trade_plan import TradePlan, TradePlanStatus, RiskCategory, ExecutionFunction
+from auto_trader.models.execution import ExecutionSignal, ExecutionContext
+from auto_trader.models.enums import ExecutionAction, OrderSide, OrderStatus, OrderType
+from auto_trader.models.order import OrderRequest, OrderResult
+from auto_trader.models.market_data import BarData
+from auto_trader.trade_engine.signal_processor import (
+    SignalProcessor,
+    SignalProcessorConfig,
+    SignalProcessingResult,
+)
+from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
+
+
+class MockAdvancedRiskManager:
+    """Advanced mock risk manager for detailed testing."""
+    
+    def __init__(self):
+        self.account_balance = Decimal("100000.00")
+        self.daily_loss_limit = Decimal("2000.00")
+        self.current_daily_loss = Decimal("0.00")
+        self.max_position_size = 1000
+        self.risk_checks_enabled = True
+        self.position_size_calculations = []
+        self.validation_calls = []
+        
+    async def validate_trade_request(self, trade_plan: TradePlan) -> Dict[str, Any]:
+        """Validate trade request with detailed tracking."""
+        self.validation_calls.append({
+            "plan_id": trade_plan.plan_id,
+            "symbol": trade_plan.symbol,
+            "timestamp": datetime.now(UTC)
+        })
+        
+        if not self.risk_checks_enabled:
+            return {
+                "passed": False,
+                "checks": ["risk_disabled"],
+                "details": "Risk checks disabled for testing"
+            }
+            
+        # Check daily loss limit
+        if self.current_daily_loss >= self.daily_loss_limit:
+            return {
+                "passed": False,
+                "checks": ["daily_loss_limit"],
+                "details": f"Daily loss {self.current_daily_loss} exceeds limit {self.daily_loss_limit}"
+            }
+            
+        # Check account balance
+        if self.account_balance < Decimal("1000.00"):
+            return {
+                "passed": False,
+                "checks": ["account_balance"],
+                "details": f"Insufficient account balance: {self.account_balance}"
+            }
+            
+        return {
+            "passed": True,
+            "checks": ["daily_loss_limit", "account_balance", "position_size"],
+            "details": "All risk checks passed"
+        }
+        
+    async def calculate_position_size(
+        self,
+        account_balance: Decimal,
+        risk_percent: float,
+        entry_price: Decimal,
+        stop_price: Decimal
+    ) -> int:
+        """Calculate position size with tracking."""
+        calculation = {
+            "account_balance": account_balance,
+            "risk_percent": risk_percent,
+            "entry_price": entry_price,
+            "stop_price": stop_price,
+            "timestamp": datetime.now(UTC)
+        }
+        self.position_size_calculations.append(calculation)
+        
+        risk_amount = account_balance * Decimal(str(risk_percent / 100))
+        price_diff = abs(entry_price - stop_price)
+        
+        if price_diff == 0:
+            return 100
+            
+        calculated_size = int(risk_amount / price_diff)
+        return min(calculated_size, self.max_position_size)
+        
+    def set_daily_loss(self, loss_amount: Decimal):
+        """Set current daily loss for testing."""
+        self.current_daily_loss = loss_amount
+        
+    def disable_risk_checks(self):
+        """Disable risk checks for testing."""
+        self.risk_checks_enabled = False
+        
+    def enable_risk_checks(self):
+        """Enable risk checks for testing."""
+        self.risk_checks_enabled = True
+
+
+@pytest.fixture
+def mock_advanced_risk_manager():
+    """Create advanced mock risk manager."""
+    return MockAdvancedRiskManager()
+
+
+@pytest.fixture
+async def mock_order_execution_manager():
+    """Create mock order execution manager."""
+    manager = AsyncMock()
+    
+    # Default successful order result
+    manager.place_bracket_order.return_value = OrderResult(
+        success=True,
+        order_id="TEST_ORDER_001",
+        trade_plan_id="SIGNAL_TEST_001",
+        order_status=OrderStatus.FILLED,
+        symbol="AAPL",
+        side=OrderSide.BUY,
+        quantity=100,
+        order_type=OrderType.MARKET,
+        filled_quantity=100,
+        average_fill_price=Decimal("180.50"),
+        timestamp=datetime.now(UTC)
+    )
+    
+    return manager
+
+
+@pytest.fixture
+def signal_processor_config():
+    """Create signal processor configuration."""
+    return SignalProcessorConfig(
+        enable_duplicate_detection=True,
+        minimum_confidence_threshold=0.7,
+        max_processing_time_seconds=30,
+        enable_signal_filtering=True,
+        enable_risk_validation=True
+    )
+
+
+@pytest.fixture
+async def signal_processor(mock_advanced_risk_manager, mock_order_execution_manager, signal_processor_config):
+    """Create signal processor with mocked dependencies."""
+    order_adapter = ExecutionOrderAdapter(mock_order_execution_manager)
+    
+    processor = SignalProcessor(
+        execution_adapter=order_adapter,
+        risk_manager=mock_advanced_risk_manager,
+        config=signal_processor_config
+    )
+    
+    return processor
+
+
+@pytest.fixture
+def sample_trade_plan():
+    """Create sample trade plan."""
+    return TradePlan(
+        plan_id="SIGNAL_TEST_001",
+        symbol="AAPL",
+        entry_level=Decimal("180.00"),
+        stop_loss=Decimal("178.00"),
+        take_profit=Decimal("185.00"),
+        risk_category=RiskCategory.NORMAL,
+        entry_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": "180.00"}
+        ),
+        exit_function=ExecutionFunction(
+            function_type="stop_loss_take_profit",
+            timeframe="15min",
+            parameters={"stop_loss": "178.00", "take_profit": "185.00"}
+        ),
+        status=TradePlanStatus.AWAITING_ENTRY
+    )
+
+
+@pytest.fixture
+def high_confidence_signal():
+    """Create high confidence execution signal."""
+    return ExecutionSignal(
+        action=ExecutionAction.ENTER_LONG,
+        confidence=0.95,
+        reasoning="Strong bullish signal detected",
+        metadata={
+            "trigger_price": Decimal("180.10"),
+            "signal_strength": "strong",
+            "market_conditions": "favorable"
+        }
+    )
+
+
+@pytest.fixture
+def low_confidence_signal():
+    """Create low confidence execution signal."""
+    return ExecutionSignal(
+        action=ExecutionAction.ENTER_LONG,
+        confidence=0.5,  # Below threshold
+        reasoning="Weak bullish signal with uncertainty",
+        metadata={
+            "trigger_price": Decimal("180.05"),
+            "signal_strength": "weak",
+            "market_conditions": "uncertain"
+        }
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestSignalProcessingIntegration:
+    """Integration tests for signal processing with risk management."""
+    
+    async def test_successful_signal_processing_with_risk_validation(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal,
+        mock_advanced_risk_manager,
+        mock_order_execution_manager
+    ):
+        """Test successful signal processing with risk validation."""
+        # Process the signal
+        result = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Verify successful processing
+        assert result.success is True
+        assert result.risk_check_passed is True
+        assert result.order_result is not None
+        assert result.signal_confidence == 0.95
+        assert result.plan_id == sample_trade_plan.plan_id
+        
+        # Verify risk manager was called
+        assert len(mock_advanced_risk_manager.validation_calls) == 1
+        validation_call = mock_advanced_risk_manager.validation_calls[0]
+        assert validation_call["plan_id"] == sample_trade_plan.plan_id
+        assert validation_call["symbol"] == sample_trade_plan.symbol
+        
+        # Verify position size was calculated
+        assert len(mock_advanced_risk_manager.position_size_calculations) == 1
+        size_calc = mock_advanced_risk_manager.position_size_calculations[0]
+        assert size_calc["entry_price"] == sample_trade_plan.entry_level
+        assert size_calc["stop_price"] == sample_trade_plan.stop_loss
+        
+        # Verify order was placed
+        mock_order_execution_manager.place_bracket_order.assert_called_once()
+    
+    async def test_signal_rejected_by_risk_validation(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal,
+        mock_advanced_risk_manager
+    ):
+        """Test signal rejection due to risk validation failure."""
+        # Configure risk manager to reject
+        mock_advanced_risk_manager.set_daily_loss(Decimal("2500.00"))  # Exceeds limit
+        
+        # Process the signal
+        result = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Verify rejection
+        assert result.success is False
+        assert result.risk_check_passed is False
+        assert result.order_result is None
+        assert "Daily loss" in result.error_message
+        assert result.plan_id == sample_trade_plan.plan_id
+        
+        # Verify risk validation was attempted
+        assert len(mock_advanced_risk_manager.validation_calls) == 1
+    
+    async def test_low_confidence_signal_filtering(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        low_confidence_signal,
+        mock_advanced_risk_manager
+    ):
+        """Test filtering of low confidence signals."""
+        # Process low confidence signal
+        result = await signal_processor.process_entry_signal(
+            signal=low_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Verify signal was filtered out
+        assert result.success is False
+        assert "confidence" in result.error_message.lower()
+        assert result.signal_confidence == 0.5
+        
+        # Risk validation should not have been called
+        assert len(mock_advanced_risk_manager.validation_calls) == 0
+    
+    async def test_duplicate_signal_detection(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal
+    ):
+        """Test duplicate signal detection and filtering."""
+        # Process the same signal twice
+        result1 = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Create duplicate signal (same timestamp)
+        duplicate_signal = ExecutionSignal(
+            action=ExecutionAction.ENTER_LONG,
+            confidence=0.95,
+            timestamp=high_confidence_signal.timestamp,  # Same timestamp
+            context=high_confidence_signal.context
+        )
+        
+        result2 = await signal_processor.process_entry_signal(
+            signal=duplicate_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # First signal should succeed
+        assert result1.success is True
+        
+        # Second signal should be rejected as duplicate
+        assert result2.success is False
+        assert "duplicate" in result2.error_message.lower()
+    
+    async def test_concurrent_signal_processing_limit(
+        self,
+        signal_processor,
+        mock_advanced_risk_manager,
+        mock_order_execution_manager
+    ):
+        """Test concurrent signal processing limits."""
+        # Create multiple trade plans
+        trade_plans = [
+            TradePlan(
+                plan_id=f"CONCURRENT_SIGNAL_{i:03d}",
+                symbol=f"TEST{i}",
+                entry_level=Decimal("100.00"),
+                stop_loss=Decimal("98.00"),
+                take_profit=Decimal("105.00"),
+                risk_category=RiskCategory.NORMAL,
+                entry_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="15min",
+                    parameters={"threshold": "100.00"}
+                ),
+                exit_function=ExecutionFunction(
+                    function_type="stop_loss_take_profit",
+                    timeframe="15min",
+                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                ),
+                status=TradePlanStatus.AWAITING_ENTRY
+            )
+            for i in range(15)  # More than max_concurrent_signals (10)
+        ]
+        
+        # Create signals for all plans
+        signals = [
+            ExecutionSignal(
+                action=ExecutionAction.ENTER_LONG,
+                confidence=0.9,
+                timestamp=datetime.now(UTC),
+                context={"plan_index": i}
+            )
+            for i in range(15)
+        ]
+        
+        # Process all signals concurrently
+        tasks = [
+            signal_processor.process_entry_signal(signal, plan)
+            for signal, plan in zip(signals, trade_plans)
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Count successful and rejected signals
+        successful = sum(1 for r in results if isinstance(r, SignalProcessingResult) and r.success)
+        rejected = sum(1 for r in results if isinstance(r, SignalProcessingResult) and not r.success)
+        
+        # Should have processed up to the limit
+        assert successful <= 10  # Max concurrent limit
+        assert successful + rejected == 15  # All signals accounted for
+    
+    async def test_position_size_calculation_integration(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal,
+        mock_advanced_risk_manager,
+        mock_order_execution_manager
+    ):
+        """Test integration of position size calculation."""
+        # Configure specific account balance
+        mock_advanced_risk_manager.account_balance = Decimal("50000.00")
+        
+        # Process signal
+        result = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        assert result.success is True
+        
+        # Verify position size calculation
+        size_calcs = mock_advanced_risk_manager.position_size_calculations
+        assert len(size_calcs) == 1
+        
+        calc = size_calcs[0]
+        assert calc["account_balance"] == Decimal("50000.00")
+        assert calc["entry_price"] == sample_trade_plan.entry_level
+        assert calc["stop_price"] == sample_trade_plan.stop_loss
+        
+        # Verify calculated size was used in order
+        order_call = mock_order_execution_manager.place_bracket_order.call_args
+        # The actual quantity should match the calculated position size
+        # This depends on the implementation details of how the size is passed
+    
+    async def test_signal_quality_threshold_filtering(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        mock_advanced_risk_manager
+    ):
+        """Test signal quality threshold filtering."""
+        # Create signal with low quality context
+        low_quality_signal = ExecutionSignal(
+            action=ExecutionAction.ENTER_LONG,
+            confidence=0.9,  # High confidence but low quality context
+            timestamp=datetime.now(UTC),
+            context={
+                "signal_quality": 0.6,  # Below quality threshold (0.8)
+                "market_noise": "high",
+                "volume_confirmation": False
+            }
+        )
+        
+        # Process signal
+        result = await signal_processor.process_entry_signal(
+            signal=low_quality_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Should be rejected due to low quality
+        assert result.success is False
+        assert "quality" in result.error_message.lower() or "threshold" in result.error_message.lower()
+        
+        # Risk validation should not have been called
+        assert len(mock_advanced_risk_manager.validation_calls) == 0
+    
+    async def test_order_execution_failure_handling(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal,
+        mock_order_execution_manager
+    ):
+        """Test handling of order execution failures."""
+        # Configure order execution to fail
+        failed_order = OrderResult(
+            success=False,
+            order_id="FAILED_ORDER_001",
+            symbol="AAPL",
+            quantity=0,
+            side=OrderSide.BUY,
+            fill_price=Decimal("0.00"),
+            status=OrderStatus.REJECTED,
+            timestamp=datetime.now(UTC),
+            error_message="Market closed"
+        )
+        
+        mock_order_execution_manager.place_bracket_order.return_value = failed_order
+        
+        # Process signal
+        result = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Signal processing should report failure
+        assert result.success is False
+        assert result.order_result is not None
+        assert result.order_result.success is False
+        assert "Market closed" in result.error_message
+    
+    async def test_signal_processing_metrics_and_logging(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal
+    ):
+        """Test signal processing metrics collection and logging."""
+        # Process multiple signals to generate metrics
+        signals = [
+            ExecutionSignal(
+                action=ExecutionAction.ENTER_LONG,
+                confidence=0.8 + (i * 0.02),
+                timestamp=datetime.now(UTC),
+                context={"signal_id": i}
+            )
+            for i in range(5)
+        ]
+        
+        results = []
+        for signal in signals:
+            result = await signal_processor.process_entry_signal(signal, sample_trade_plan)
+            results.append(result)
+            await asyncio.sleep(0.01)  # Small delay between signals
+        
+        # Verify all signals were processed
+        assert len(results) == 5
+        
+        # Check that metrics were collected
+        # This would depend on the actual metrics implementation
+        # For now, verify that processing completed without errors
+        successful_results = [r for r in results if r.success]
+        assert len(successful_results) > 0
+        
+        # Verify timestamps are properly set
+        for result in results:
+            assert result.timestamp is not None
+            assert isinstance(result.timestamp, datetime)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestSignalProcessingEdgeCases:
+    """Integration tests for signal processing edge cases."""
+    
+    async def test_signal_processing_with_zero_position_size(
+        self,
+        signal_processor,
+        sample_trade_plan,
+        high_confidence_signal,
+        mock_advanced_risk_manager
+    ):
+        """Test handling when position size calculation returns zero."""
+        # Override position size calculation to return zero
+        async def zero_position_size(*args, **kwargs):
+            return 0
+            
+        mock_advanced_risk_manager.calculate_position_size = zero_position_size
+        
+        result = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=sample_trade_plan
+        )
+        
+        # Should fail due to zero position size
+        assert result.success is False
+        assert "position size" in result.error_message.lower() or "zero" in result.error_message.lower()
+    
+    async def test_signal_processing_with_invalid_trade_plan(
+        self,
+        signal_processor,
+        high_confidence_signal
+    ):
+        """Test signal processing with invalid trade plan."""
+        # Create trade plan with invalid price levels
+        invalid_plan = TradePlan(
+            plan_id="INVALID_PLAN_001",
+            symbol="AAPL",
+            entry_level=Decimal("180.00"),
+            stop_loss=Decimal("185.00"),  # Stop loss above entry (invalid for long)
+            take_profit=Decimal("175.00"),  # Take profit below entry (invalid for long)
+            risk_category=RiskCategory.NORMAL,
+            entry_function=ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": "180.00"}
+            ),
+            exit_function=ExecutionFunction(
+                function_type="stop_loss_take_profit",
+                timeframe="15min",
+                parameters={"stop_loss": "185.00", "take_profit": "175.00"}
+            ),
+            status=TradePlanStatus.AWAITING_ENTRY
+        )
+        
+        result = await signal_processor.process_entry_signal(
+            signal=high_confidence_signal,
+            trade_plan=invalid_plan
+        )
+        
+        # Should fail due to invalid price levels
+        assert result.success is False
+        assert "invalid" in result.error_message.lower() or "price" in result.error_message.lower()

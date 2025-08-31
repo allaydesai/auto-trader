@@ -91,8 +91,11 @@ class MockMultiTimeframeDetector:
             print(f"  Checking {timeframe.value}: minute={minute}, should_close={should_close}")
         
         if should_close:
-            # Schedule bar close event
-            asyncio.create_task(self._trigger_bar_close(symbol, timeframe, bar))
+            # Schedule bar close event and store task for tracking
+            task = asyncio.create_task(self._trigger_bar_close(symbol, timeframe, bar))
+            if not hasattr(self, '_pending_tasks'):
+                self._pending_tasks = []
+            self._pending_tasks.append(task)
     
     def _should_trigger_close(self, timeframe: Timeframe, timestamp: datetime) -> bool:
         """Determine if a bar close should be triggered based on timeframe."""
@@ -138,6 +141,14 @@ class MockMultiTimeframeDetector:
                 await callback(event)
             except Exception as e:
                 pass  # Ignore callback errors in mock
+    
+    async def await_all_tasks(self):
+        """Await all pending bar close tasks."""
+        if hasattr(self, '_pending_tasks'):
+            # Wait for all tasks to complete
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+            # Clear completed tasks
+            self._pending_tasks.clear()
     
     def _create_timeframe_bar(self, symbol: str, timeframe: Timeframe, timestamp: datetime) -> BarData:
         """Create aggregated bar for the timeframe."""
@@ -514,8 +525,11 @@ class TestMultiTimeframeIntegration:
         for bar in bars:
             await setup["market_adapter"].on_market_data_update(bar)
         
-        # Allow processing time
-        await asyncio.sleep(0.2)
+        # Await all pending bar close tasks
+        await setup["detector"].await_all_tasks()
+        
+        # Allow additional processing time
+        await asyncio.sleep(0.1)
         
         # Verify synchronization: 15-minute timeframe should trigger at minute 15
         logs = await setup["logger"].query_logs(limit=100)
