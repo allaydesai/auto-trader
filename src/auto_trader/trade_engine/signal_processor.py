@@ -10,68 +10,14 @@ from auto_trader.models.enums import ExecutionAction, OrderSide
 from auto_trader.models.order import OrderResult
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
 from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
+from auto_trader.trade_engine.signal_validation import (
+    SignalProcessingResult,
+    SignalProcessorConfig,
+    SignalValidator
+)
 from auto_trader.risk_management.risk_manager import RiskManager
 
 
-class SignalProcessingResult:
-    """Result of signal processing operation."""
-    
-    def __init__(
-        self,
-        success: bool,
-        action_taken: str,
-        order_result: Optional[OrderResult] = None,
-        error_message: Optional[str] = None,
-        risk_check_passed: Optional[bool] = None,
-        signal_confidence: Optional[float] = None,
-        plan_id: Optional[str] = None,
-    ):
-        """Initialize signal processing result.
-        
-        Args:
-            success: Whether processing was successful
-            action_taken: Description of action taken
-            order_result: Order execution result if applicable
-            error_message: Error message if processing failed
-            risk_check_passed: Whether risk validation passed
-            signal_confidence: Confidence level of the signal
-            plan_id: Associated trade plan ID
-        """
-        self.success = success
-        self.action_taken = action_taken
-        self.order_result = order_result
-        self.error_message = error_message
-        self.risk_check_passed = risk_check_passed
-        self.signal_confidence = signal_confidence
-        self.plan_id = plan_id
-        self.timestamp = datetime.now(UTC)
-
-
-class SignalProcessorConfig:
-    """Configuration for signal processor."""
-    
-    def __init__(
-        self,
-        enable_risk_validation: bool = True,
-        minimum_confidence_threshold: float = 0.5,
-        max_processing_time_seconds: int = 30,
-        enable_signal_filtering: bool = True,
-        enable_duplicate_detection: bool = True,
-    ):
-        """Initialize signal processor config.
-        
-        Args:
-            enable_risk_validation: Enable risk management validation
-            minimum_confidence_threshold: Minimum signal confidence to process
-            max_processing_time_seconds: Maximum processing time per signal
-            enable_signal_filtering: Enable signal quality filtering
-            enable_duplicate_detection: Enable duplicate signal detection
-        """
-        self.enable_risk_validation = enable_risk_validation
-        self.minimum_confidence_threshold = minimum_confidence_threshold
-        self.max_processing_time_seconds = max_processing_time_seconds
-        self.enable_signal_filtering = enable_signal_filtering
-        self.enable_duplicate_detection = enable_duplicate_detection
 
 
 class SignalProcessor:
@@ -98,8 +44,8 @@ class SignalProcessor:
         self.risk_manager = risk_manager
         self.config = config or SignalProcessorConfig()
         
-        # Track recent signals for duplicate detection
-        self.recent_signals: Dict[str, datetime] = {}
+        # Signal validation
+        self.validator = SignalValidator(self.config)
         
         # Performance metrics
         self.processing_stats = {
@@ -358,19 +304,12 @@ class SignalProcessor:
         Returns:
             Validation result
         """
-        if not self.config.enable_signal_filtering:
-            return SignalProcessingResult(
-                success=True,
-                action_taken="quality_check_passed",
-                plan_id=trade_plan.plan_id,
-            )
-        
-        # Check confidence threshold
-        if signal.confidence < self.config.minimum_confidence_threshold:
+        # Use validator for quality checks
+        if not self.validator.validate_signal_quality(signal, trade_plan):
             return SignalProcessingResult(
                 success=False,
-                action_taken="rejected_low_confidence",
-                error_message=f"Signal confidence {signal.confidence} below threshold {self.config.minimum_confidence_threshold}",
+                action_taken="rejected_quality_check",
+                error_message=f"Signal quality validation failed",
                 signal_confidence=signal.confidence,
                 plan_id=trade_plan.plan_id,
             )
@@ -405,20 +344,15 @@ class SignalProcessor:
         Returns:
             Duplicate check result
         """
-        signal_key = f"{trade_plan.plan_id}_{function_name}_{signal.action.value}"
-        current_time = datetime.now(UTC)
-        
-        # Check if we've seen this signal recently (within 60 seconds)
-        if signal_key in self.recent_signals:
-            time_since_last = (current_time - self.recent_signals[signal_key]).total_seconds()
-            if time_since_last < 60:
-                return SignalProcessingResult(
-                    success=False,
-                    action_taken="rejected_duplicate",
-                    error_message=f"Duplicate signal detected within {time_since_last:.1f}s",
-                    signal_confidence=signal.confidence,
-                    plan_id=trade_plan.plan_id,
-                )
+        # Use validator for duplicate checks
+        if self.validator.check_duplicate_signal(signal, trade_plan):
+            return SignalProcessingResult(
+                success=False,
+                action_taken="rejected_duplicate",
+                error_message="Duplicate signal detected within time window",
+                signal_confidence=signal.confidence,
+                plan_id=trade_plan.plan_id,
+            )
         
         return SignalProcessingResult(
             success=True,
@@ -521,18 +455,7 @@ class SignalProcessor:
             trade_plan: Trade plan
             function_name: Function name
         """
-        signal_key = f"{trade_plan.plan_id}_{function_name}_{signal.action.value}"
-        self.recent_signals[signal_key] = datetime.now(UTC)
-        
-        # Clean up old signals (older than 5 minutes)
-        current_time = datetime.now(UTC)
-        keys_to_remove = [
-            key for key, timestamp in self.recent_signals.items()
-            if (current_time - timestamp).total_seconds() > 300
-        ]
-        
-        for key in keys_to_remove:
-            del self.recent_signals[key]
+        self.validator.record_signal(signal, trade_plan)
     
     def get_processing_statistics(self) -> Dict[str, Any]:
         """Get signal processing statistics.
@@ -546,14 +469,13 @@ class SignalProcessor:
             if total_signals > 0 else 0
         )
         
-        return {
+        stats = {
             "total_processed": total_signals,
             "executed": self.processing_stats["signals_executed"],
             "rejected": self.processing_stats["signals_rejected"],
             "risk_failures": self.processing_stats["risk_failures"],
             "processing_errors": self.processing_stats["processing_errors"],
             "execution_rate_percent": round(execution_rate, 2),
-            "recent_signals_tracked": len(self.recent_signals),
             "config": {
                 "risk_validation_enabled": self.config.enable_risk_validation,
                 "minimum_confidence": self.config.minimum_confidence_threshold,
@@ -561,6 +483,10 @@ class SignalProcessor:
                 "duplicate_detection_enabled": self.config.enable_duplicate_detection,
             },
         }
+        
+        # Add validator statistics
+        stats["validator"] = self.validator.get_validation_statistics()
+        return stats
     
     def reset_statistics(self) -> None:
         """Reset processing statistics."""
@@ -576,5 +502,5 @@ class SignalProcessor:
     
     def clear_recent_signals(self) -> None:
         """Clear recent signals cache."""
-        self.recent_signals.clear()
+        self.validator.clear_recent_signals()
         logger.info("Recent signals cache cleared")

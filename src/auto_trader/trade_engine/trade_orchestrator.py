@@ -18,65 +18,16 @@ from auto_trader.trade_engine.signal_processor import SignalProcessor, SignalPro
 from auto_trader.trade_engine.position_state_manager import PositionStateManager
 from auto_trader.trade_engine.exit_processor import ExitProcessor
 from auto_trader.trade_engine.lifecycle_manager import TradeLifecycleManager
+from auto_trader.trade_engine.lifecycle_events import (
+    TradeLifecycleEvent,
+    TradeOrchestrationConfig,
+    LifecycleEventManager
+)
+from auto_trader.trade_engine.trade_statistics import TradeStatisticsCalculator
 from auto_trader.integrations.ibkr_client.order_execution_manager import OrderExecutionManager
 from auto_trader.risk_management.risk_manager import RiskManager
 
 
-class TradeLifecycleEvent:
-    """Represents a trade lifecycle transition event."""
-    
-    def __init__(
-        self,
-        event_type: str,
-        plan_id: str,
-        old_status: Optional[TradePlanStatus],
-        new_status: TradePlanStatus,
-        context: Optional[Dict[str, Any]] = None,
-        timestamp: Optional[datetime] = None,
-    ):
-        """Initialize lifecycle event.
-        
-        Args:
-            event_type: Type of event (status_change, entry_signal, exit_signal)
-            plan_id: Trade plan ID
-            old_status: Previous status 
-            new_status: New status
-            context: Additional context data
-            timestamp: Event timestamp
-        """
-        self.event_type = event_type
-        self.plan_id = plan_id
-        self.old_status = old_status
-        self.new_status = new_status
-        self.context = context or {}
-        self.timestamp = timestamp or datetime.now(UTC)
-
-
-class TradeOrchestrationConfig:
-    """Configuration for trade orchestrator behavior."""
-    
-    def __init__(
-        self,
-        max_concurrent_trades: int = 10,
-        signal_timeout_seconds: int = 300,
-        state_save_interval_seconds: int = 60,
-        enable_position_tracking: bool = True,
-        enable_risk_validation: bool = True,
-    ):
-        """Initialize orchestration config.
-        
-        Args:
-            max_concurrent_trades: Maximum simultaneous trades
-            signal_timeout_seconds: Signal processing timeout
-            state_save_interval_seconds: State persistence interval
-            enable_position_tracking: Enable position state tracking
-            enable_risk_validation: Enable risk management validation
-        """
-        self.max_concurrent_trades = max_concurrent_trades
-        self.signal_timeout_seconds = signal_timeout_seconds
-        self.state_save_interval_seconds = state_save_interval_seconds
-        self.enable_position_tracking = enable_position_tracking
-        self.enable_risk_validation = enable_risk_validation
 
 
 class TradeOrchestrator:
@@ -130,8 +81,8 @@ class TradeOrchestrator:
             risk_manager=risk_manager,
         )
         
-        # Event handlers
-        self.lifecycle_handlers: List[Callable[[TradeLifecycleEvent], None]] = []
+        # Event management
+        self.event_manager = LifecycleEventManager(self.config)
         
         # State tracking
         self.active_plans: Dict[str, TradePlan] = {}
@@ -501,11 +452,7 @@ class TradeOrchestrator:
         Args:
             event: Lifecycle event to emit
         """
-        for handler in self.lifecycle_handlers:
-            try:
-                handler(event)
-            except Exception as e:
-                logger.error(f"Error in lifecycle event handler: {e}")
+        self.event_manager.emit_event(event)
     
     def add_lifecycle_handler(self, handler: Callable[[TradeLifecycleEvent], None]) -> None:
         """Add lifecycle event handler.
@@ -513,7 +460,7 @@ class TradeOrchestrator:
         Args:
             handler: Event handler function
         """
-        self.lifecycle_handlers.append(handler)
+        self.event_manager.add_event_handler(handler)
     
     def remove_lifecycle_handler(self, handler: Callable[[TradeLifecycleEvent], None]) -> None:
         """Remove lifecycle event handler.
@@ -521,8 +468,7 @@ class TradeOrchestrator:
         Args:
             handler: Event handler function to remove
         """
-        if handler in self.lifecycle_handlers:
-            self.lifecycle_handlers.remove(handler)
+        self.event_manager.remove_event_handler(handler)
     
     async def _load_active_trade_plans(self) -> None:
         """Load all active trade plans from storage."""
@@ -593,24 +539,16 @@ class TradeOrchestrator:
         Returns:
             Dictionary with status information
         """
-        return {
-            "is_running": self.is_running,
-            "active_plans_count": len(self.active_plans),
-            "position_plans_count": len(self.position_plans),
-            "open_positions_count": len(self.position_manager.get_open_positions()),
-            "total_positions": len(self.position_manager.positions),
-            "config": {
-                "max_concurrent_trades": self.config.max_concurrent_trades,
-                "risk_validation_enabled": self.config.enable_risk_validation,
-                "position_tracking_enabled": self.config.enable_position_tracking,
-            },
-            "processors": {
-                "signal_processor_stats": self.signal_processor.get_processing_statistics(),
-                "exit_processor_stats": self.exit_processor.get_processing_statistics(),
-                "lifecycle_manager_stats": self.lifecycle_manager.get_lifecycle_statistics(),
-                "position_manager_summary": self.position_manager.get_position_summary(),
-            },
-        }
+        return TradeStatisticsCalculator.get_orchestrator_status_summary(
+            is_running=self.is_running,
+            active_plans=self.active_plans,
+            position_plans=self.position_plans,
+            position_manager=self.position_manager,
+            config=self.config,
+            signal_processor=self.signal_processor,
+            exit_processor=self.exit_processor,
+            lifecycle_manager=self.lifecycle_manager,
+        )
     
     def _calculate_dollar_risk(self, plan: TradePlan, order_result: OrderResult) -> Decimal:
         """Calculate dollar risk for a position.
@@ -622,11 +560,7 @@ class TradeOrchestrator:
         Returns:
             Dollar risk amount
         """
-        entry_price = order_result.average_fill_price
-        stop_price = plan.stop_loss
-        quantity = order_result.filled_quantity
-        
-        return abs((entry_price - stop_price) * quantity)
+        return TradeStatisticsCalculator.calculate_dollar_risk(plan, order_result)
     
     # Convenience methods for test compatibility
     async def add_trade_plan(self, trade_plan: TradePlan) -> None:

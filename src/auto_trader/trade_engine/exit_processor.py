@@ -10,47 +10,14 @@ from auto_trader.models.execution import ExecutionSignal, ExecutionContext
 from auto_trader.models.enums import ExecutionAction, OrderSide, OrderStatus
 from auto_trader.models.order import OrderResult
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
-from auto_trader.trade_engine.position_state_manager import PositionStateManager, PositionEntry
+from auto_trader.trade_engine.position_state_manager import PositionStateManager
+from auto_trader.trade_engine.position_entry import PositionEntry
+from auto_trader.trade_engine.order_builders import ExitProcessingResult, ExitOrderBuilder
 from auto_trader.trade_engine.signal_processor import SignalProcessingResult
 from auto_trader.integrations.ibkr_client.order_execution_manager import OrderExecutionManager
 from auto_trader.risk_management.risk_manager import RiskManager
 
 
-class ExitProcessingResult:
-    """Result of exit signal processing operation."""
-    
-    def __init__(
-        self,
-        success: bool,
-        action_taken: str,
-        position_closed: bool = False,
-        order_result: Optional[OrderResult] = None,
-        orders_cancelled: Optional[List[str]] = None,
-        error_message: Optional[str] = None,
-        position_id: Optional[str] = None,
-        plan_id: Optional[str] = None,
-    ):
-        """Initialize exit processing result.
-        
-        Args:
-            success: Whether processing was successful
-            action_taken: Description of action taken
-            position_closed: Whether position was fully closed
-            order_result: Exit order result if applicable
-            orders_cancelled: List of cancelled order IDs
-            error_message: Error message if processing failed
-            position_id: Associated position ID
-            plan_id: Associated trade plan ID
-        """
-        self.success = success
-        self.action_taken = action_taken
-        self.position_closed = position_closed
-        self.order_result = order_result
-        self.orders_cancelled = orders_cancelled or []
-        self.error_message = error_message
-        self.position_id = position_id
-        self.plan_id = plan_id
-        self.timestamp = datetime.now(UTC)
 
 
 class ExitProcessor:
@@ -426,26 +393,16 @@ class ExitProcessor:
         Returns:
             Order request for exit
         """
-        # Determine exit side (opposite of entry)
-        exit_side = OrderSide.SELL if position.is_long else OrderSide.BUY
-        
-        # Use remaining quantity for exit
-        exit_quantity = abs(position.remaining_quantity)
-        
-        # Create order request (simplified - would use actual OrderRequest model)
-        return {
-            "symbol": trade_plan.symbol,
-            "side": exit_side,
-            "quantity": exit_quantity,
-            "order_type": "MKT",
-            "trade_plan_id": trade_plan.plan_id,
-            "metadata": {
-                "exit_reason": signal.reasoning,
-                "function_name": signal.metadata.get("function_name", "unknown"),
-                "position_id": position.position_id,
-                "signal_confidence": signal.confidence,
-            },
+        metadata = {
+            "function_name": signal.metadata.get("function_name", "unknown"),
+            "exit_context": "signal_triggered",
         }
+        return ExitOrderBuilder.create_exit_order_request(
+            signal=signal,
+            trade_plan=trade_plan,
+            position=position,
+            metadata=metadata,
+        )
     
     def _create_stop_order_request(
         self,
@@ -463,23 +420,13 @@ class ExitProcessor:
         Returns:
             Stop order request
         """
-        # Determine stop side (opposite of entry)
-        stop_side = OrderSide.SELL if position.is_long else OrderSide.BUY
-        
-        return {
-            "symbol": trade_plan.symbol,
-            "side": stop_side,
-            "quantity": abs(position.remaining_quantity),
-            "order_type": "STP",
-            "stop_price": stop_price,
-            "trade_plan_id": trade_plan.plan_id,
-            "metadata": {
-                "order_purpose": "stop_loss",
-                "position_id": position.position_id,
-                "original_stop": str(trade_plan.stop_loss),
-                "new_stop": str(stop_price),
-            },
-        }
+        metadata = {"stop_context": "trailing_stop_adjustment"}
+        return ExitOrderBuilder.create_stop_order_request(
+            trade_plan=trade_plan,
+            position=position,
+            stop_price=stop_price,
+            metadata=metadata,
+        )
     
     async def _handle_exit_fill(
         self,
