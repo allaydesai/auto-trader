@@ -167,7 +167,7 @@ class TestTradeLifecycleManager:
         
         assert isinstance(state, TradeLifecycleState)
         assert state.plan == sample_trade_plan
-        assert sample_trade_plan.plan_id in lifecycle_manager.lifecycle_states
+        assert sample_trade_plan.plan_id in lifecycle_manager.states
         
     def test_create_duplicate_state_raises_error(self, lifecycle_manager, sample_trade_plan):
         """Test that creating duplicate state raises error."""
@@ -194,7 +194,7 @@ class TestTradeLifecycleManager:
         
         result = lifecycle_manager.remove_lifecycle_state(sample_trade_plan.plan_id)
         assert result is True
-        assert sample_trade_plan.plan_id not in lifecycle_manager.lifecycle_states
+        assert sample_trade_plan.plan_id not in lifecycle_manager.states
         
     def test_remove_nonexistent_state(self, lifecycle_manager):
         """Test removing nonexistent state returns False."""
@@ -244,12 +244,13 @@ class TestStateTransitions:
         lifecycle_manager.create_lifecycle_state(sample_trade_plan)
         
         # Transition to position open
-        state = await lifecycle_manager.transition_to_position_open(
-            sample_trade_plan,
+        successful_order_result.filled_quantity = 100
+        successful_order_result.average_fill_price = Decimal("180.75")
+        await lifecycle_manager.transition_to_position_open(
+            sample_trade_plan.plan_id,
             successful_order_result,
-            position_quantity=100,
-            entry_price=Decimal("180.75"),
         )
+        state = lifecycle_manager.get_lifecycle_state(sample_trade_plan.plan_id)
         
         assert sample_trade_plan.status == TradePlanStatus.POSITION_OPEN
         assert state.entry_order_id == "ORDER_001"
@@ -266,9 +267,11 @@ class TestStateTransitions:
         # Create plan already in position_open state
         plan = create_test_trade_plan("TEST_002", status=TradePlanStatus.POSITION_OPEN)
         
+        lifecycle_manager.create_lifecycle_state(plan)
+        
         with pytest.raises(StateTransitionError):
             await lifecycle_manager.transition_to_position_open(
-                plan, successful_order_result, 100, Decimal("180.75")
+                plan.plan_id, successful_order_result
             )
     
     @pytest.mark.asyncio
@@ -300,9 +303,10 @@ class TestStateTransitions:
         )
         
         # Transition to completed
-        final_state = await lifecycle_manager.transition_to_completed(
-            sample_trade_plan, exit_result, Decimal("185.25")
+        await lifecycle_manager.transition_to_completed(
+            sample_trade_plan.plan_id, exit_result, Decimal("185.25")
         )
+        final_state = lifecycle_manager.get_lifecycle_state(sample_trade_plan.plan_id)
         
         assert sample_trade_plan.status == TradePlanStatus.COMPLETED
         assert final_state.exit_order_id == "ORDER_EXIT"
@@ -315,9 +319,11 @@ class TestStateTransitions:
         # Plan still in awaiting_entry state
         exit_result = Mock()
         
+        lifecycle_manager.create_lifecycle_state(sample_trade_plan)
+        
         with pytest.raises(StateTransitionError):
             await lifecycle_manager.transition_to_completed(
-                sample_trade_plan, exit_result, Decimal("185.00")
+                sample_trade_plan.plan_id, exit_result, Decimal("185.00")
             )
     
     @pytest.mark.asyncio
@@ -326,9 +332,9 @@ class TestStateTransitions:
         plan = create_test_trade_plan("TEST_NO_STATE", status=TradePlanStatus.POSITION_OPEN)
         exit_result = Mock()
         
-        with pytest.raises(StateTransitionError, match="No lifecycle state found"):
+        with pytest.raises(ValueError, match="No lifecycle state found"):
             await lifecycle_manager.transition_to_completed(
-                plan, exit_result, Decimal("185.00")
+                plan.plan_id, exit_result, Decimal("185.00")
             )
     
     @pytest.mark.asyncio
@@ -336,9 +342,10 @@ class TestStateTransitions:
         """Test transitioning to error status."""
         lifecycle_manager.create_lifecycle_state(sample_trade_plan)
         
-        state = await lifecycle_manager.transition_to_error(
-            sample_trade_plan, "Test error"
+        await lifecycle_manager.transition_to_error(
+            sample_trade_plan.plan_id, "Test error"
         )
+        state = lifecycle_manager.get_lifecycle_state(sample_trade_plan.plan_id)
         
         assert sample_trade_plan.status == TradePlanStatus.ERROR
         assert state.plan.status == TradePlanStatus.ERROR
@@ -348,9 +355,10 @@ class TestStateTransitions:
         """Test transitioning to cancelled status."""
         lifecycle_manager.create_lifecycle_state(sample_trade_plan)
         
-        state = await lifecycle_manager.transition_to_cancelled(
-            sample_trade_plan, "User requested"
+        await lifecycle_manager.transition_to_cancelled(
+            sample_trade_plan.plan_id, "User requested"
         )
+        state = lifecycle_manager.get_lifecycle_state(sample_trade_plan.plan_id)
         
         assert sample_trade_plan.status == TradePlanStatus.CANCELLED
         assert state.plan.status == TradePlanStatus.CANCELLED
@@ -361,8 +369,10 @@ class TestStateTransitions:
         # Create completed plan
         plan = create_test_trade_plan("TEST_COMPLETED", status=TradePlanStatus.COMPLETED)
         
+        lifecycle_manager.create_lifecycle_state(plan)
+        
         with pytest.raises(StateTransitionError):
-            await lifecycle_manager.transition_to_cancelled(plan, "Invalid")
+            await lifecycle_manager.transition_to_cancelled(plan.plan_id, "Invalid")
 
 
 class TestQueryMethods:
@@ -476,6 +486,7 @@ class TestStateValidation:
         state2.update(
             entry_order_id="ORDER_001",
             position_quantity=50,
+            entry_price=Decimal("100.00"),
         )
         
         errors = lifecycle_manager.validate_state_consistency()
@@ -500,7 +511,7 @@ class TestStateValidation:
         
         assert len(errors) >= 2
         assert any("AWAITING_ENTRY but has position" in error for error in errors)
-        assert any("POSITION_OPEN but no position" in error for error in errors)
+        assert any("POSITION_OPEN but has no position quantity" in error for error in errors)
     
     def test_cleanup_terminal_states(self, lifecycle_manager):
         """Test cleaning up terminal states."""
@@ -517,17 +528,17 @@ class TestStateValidation:
             plan = create_test_trade_plan(f"PLAN_{i}", status=status)
             lifecycle_manager.create_lifecycle_state(plan)
         
-        assert len(lifecycle_manager.lifecycle_states) == 5
+        assert len(lifecycle_manager.states) == 5
         
         # Cleanup terminal states
         removed_count = lifecycle_manager.cleanup_terminal_states()
         
         assert removed_count == 2  # COMPLETED and CANCELLED
-        assert len(lifecycle_manager.lifecycle_states) == 3
+        assert len(lifecycle_manager.states) == 3
         
         # Verify remaining states
         remaining_statuses = {
-            state.plan.status for state in lifecycle_manager.lifecycle_states.values()
+            state.plan.status for state in lifecycle_manager.states.values()
         }
         expected_remaining = {
             TradePlanStatus.AWAITING_ENTRY,
@@ -537,27 +548,37 @@ class TestStateValidation:
         assert remaining_statuses == expected_remaining
     
     def test_validation_caching(self, lifecycle_manager):
-        """Test that validation results are cached for performance."""
-        # Create a plan with consistent state
-        plan = create_test_trade_plan("CACHE_TEST")
-        lifecycle_manager.create_lifecycle_state(plan)
+        """Test that transition validation results are cached for performance."""
+        # Cache should be empty initially
+        assert len(lifecycle_manager.validator._validation_cache) == 0
         
-        # First validation should populate cache
-        assert not lifecycle_manager._cache_valid
-        errors1 = lifecycle_manager.validate_state_consistency()
-        assert lifecycle_manager._cache_valid
-        assert lifecycle_manager._validation_cache is not None
+        # First transition validation should populate cache
+        is_valid1 = lifecycle_manager.validate_transition(
+            TradePlanStatus.AWAITING_ENTRY, TradePlanStatus.POSITION_OPEN
+        )
+        assert is_valid1 is True
         
-        # Second validation should return cached result
-        errors2 = lifecycle_manager.validate_state_consistency()
-        assert errors1 == errors2
-        assert lifecycle_manager._cache_valid
+        # Cache should now have entries
+        cache_size_after_first = len(lifecycle_manager.validator._validation_cache)
+        assert cache_size_after_first > 0
         
-        # Modifying state should invalidate cache
-        lifecycle_manager.create_lifecycle_state(create_test_trade_plan("CACHE_TEST_2"))
-        assert not lifecycle_manager._cache_valid
+        # Second validation should return same result from cache
+        is_valid2 = lifecycle_manager.validate_transition(
+            TradePlanStatus.AWAITING_ENTRY, TradePlanStatus.POSITION_OPEN
+        )
+        assert is_valid2 == is_valid1
         
-        # Next validation should rebuild cache
-        errors3 = lifecycle_manager.validate_state_consistency()
-        assert lifecycle_manager._cache_valid
-        assert isinstance(errors3, list)
+        # Cache should have same number of entries (hit from cache)
+        cache_size_after_second = len(lifecycle_manager.validator._validation_cache)
+        assert cache_size_after_second == cache_size_after_first
+        
+        # Test different transition to add more cache entries
+        is_valid3 = lifecycle_manager.validate_transition(
+            TradePlanStatus.POSITION_OPEN, TradePlanStatus.COMPLETED
+        )
+        assert is_valid3 is True
+        assert len(lifecycle_manager.validator._validation_cache) > cache_size_after_first
+        
+        # Invalidating cache should clear it
+        lifecycle_manager.validator.invalidate_cache()
+        assert len(lifecycle_manager.validator._validation_cache) == 0
