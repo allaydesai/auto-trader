@@ -535,3 +535,29 @@ class TestStateValidation:
             TradePlanStatus.ERROR,
         }
         assert remaining_statuses == expected_remaining
+    
+    def test_validation_caching(self, lifecycle_manager):
+        """Test that validation results are cached for performance."""
+        # Create a plan with consistent state
+        plan = create_test_trade_plan("CACHE_TEST")
+        lifecycle_manager.create_lifecycle_state(plan)
+        
+        # First validation should populate cache
+        assert not lifecycle_manager._cache_valid
+        errors1 = lifecycle_manager.validate_state_consistency()
+        assert lifecycle_manager._cache_valid
+        assert lifecycle_manager._validation_cache is not None
+        
+        # Second validation should return cached result
+        errors2 = lifecycle_manager.validate_state_consistency()
+        assert errors1 == errors2
+        assert lifecycle_manager._cache_valid
+        
+        # Modifying state should invalidate cache
+        lifecycle_manager.create_lifecycle_state(create_test_trade_plan("CACHE_TEST_2"))
+        assert not lifecycle_manager._cache_valid
+        
+        # Next validation should rebuild cache
+        errors3 = lifecycle_manager.validate_state_consistency()
+        assert lifecycle_manager._cache_valid
+        assert isinstance(errors3, list)

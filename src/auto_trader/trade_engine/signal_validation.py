@@ -2,6 +2,7 @@
 
 from typing import Dict, Optional, Any
 from datetime import datetime, UTC, timedelta
+from collections import OrderedDict
 
 from loguru import logger
 
@@ -130,7 +131,7 @@ class SignalValidator:
             config: Signal processor configuration
         """
         self.config = config
-        self.recent_signals: Dict[str, datetime] = {}
+        self.recent_signals: OrderedDict[str, datetime] = OrderedDict()
     
     def validate_signal_quality(self, signal: ExecutionSignal, trade_plan: TradePlan) -> bool:
         """Validate signal quality and confidence.
@@ -207,21 +208,28 @@ class SignalValidator:
         return False
     
     def _cleanup_old_signals(self, cutoff_time: datetime) -> None:
-        """Remove old signals from tracking.
+        """Remove old signals from tracking using efficient OrderedDict approach.
         
         Args:
             cutoff_time: Remove signals older than this time
         """
-        signals_to_remove = [
-            key for key, timestamp in self.recent_signals.items()
-            if timestamp <= cutoff_time
-        ]
+        # Use OrderedDict's FIFO nature for efficient cleanup
+        # Remove from the beginning until we find a recent signal
+        removed_count = 0
+        while self.recent_signals:
+            # Check the oldest signal (first in OrderedDict)
+            oldest_key = next(iter(self.recent_signals))
+            oldest_timestamp = self.recent_signals[oldest_key]
+            
+            if oldest_timestamp <= cutoff_time:
+                del self.recent_signals[oldest_key]
+                removed_count += 1
+            else:
+                # All remaining signals are recent
+                break
         
-        for key in signals_to_remove:
-            del self.recent_signals[key]
-        
-        if signals_to_remove:
-            logger.debug(f"Cleaned up {len(signals_to_remove)} old signal records")
+        if removed_count > 0:
+            logger.debug(f"Cleaned up {removed_count} old signal records")
     
     def record_signal(self, signal: ExecutionSignal, trade_plan: TradePlan) -> None:
         """Record a signal for duplicate detection.

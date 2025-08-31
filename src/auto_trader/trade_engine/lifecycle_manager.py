@@ -1,6 +1,6 @@
 """Trade lifecycle state management and validation."""
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Set
 from datetime import datetime, UTC
 from decimal import Decimal
 
@@ -92,6 +92,10 @@ class TradeLifecycleManager:
         # Track lifecycle states by plan ID
         self.lifecycle_states: Dict[str, TradeLifecycleState] = {}
         
+        # Performance optimization: simple validation cache
+        self._validation_cache: Optional[List[str]] = None
+        self._cache_valid = False
+        
         # Valid state transitions
         self.valid_transitions = {
             TradePlanStatus.AWAITING_ENTRY: [
@@ -114,6 +118,10 @@ class TradeLifecycleManager:
         
         logger.info("TradeLifecycleManager initialized")
     
+    def _invalidate_validation_cache(self) -> None:
+        """Invalidate validation cache when states change."""
+        self._cache_valid = False
+    
     def create_lifecycle_state(self, plan: TradePlan) -> TradeLifecycleState:
         """Create new lifecycle state for a trade plan.
         
@@ -131,6 +139,7 @@ class TradeLifecycleManager:
         
         state = TradeLifecycleState(plan)
         self.lifecycle_states[plan.plan_id] = state
+        self._invalidate_validation_cache()
         
         logger.debug(f"Created lifecycle state for plan {plan.plan_id}")
         return state
@@ -157,6 +166,7 @@ class TradeLifecycleManager:
         """
         if plan_id in self.lifecycle_states:
             del self.lifecycle_states[plan_id]
+            self._invalidate_validation_cache()
             logger.debug(f"Removed lifecycle state for plan {plan_id}")
             return True
         return False
@@ -223,6 +233,7 @@ class TradeLifecycleManager:
             quantity=position_quantity,
             order_id=entry_order_result.order_id,
         )
+        self._invalidate_validation_cache()
         
         return state
     
@@ -277,6 +288,7 @@ class TradeLifecycleManager:
             pnl=float(pnl) if pnl else None,
             order_id=exit_order_result.order_id,
         )
+        self._invalidate_validation_cache()
         
         return state
     
@@ -314,6 +326,7 @@ class TradeLifecycleManager:
             old_status=old_status,
             error=error_reason,
         )
+        self._invalidate_validation_cache()
         
         return state
     
@@ -351,6 +364,7 @@ class TradeLifecycleManager:
             old_status=old_status,
             reason=cancel_reason,
         )
+        self._invalidate_validation_cache()
         
         return state
     
@@ -423,32 +437,54 @@ class TradeLifecycleManager:
         return stats
     
     def validate_state_consistency(self) -> List[str]:
-        """Validate consistency of all lifecycle states.
+        """Validate consistency of all lifecycle states with caching.
         
         Returns:
             List of consistency errors found
         """
-        errors = []
+        # Return cached result if available
+        if self._cache_valid and self._validation_cache is not None:
+            return self._validation_cache.copy()
         
+        # Perform full validation
+        errors = []
         for plan_id, state in self.lifecycle_states.items():
-            # Check plan status matches expected state
-            plan_status = state.plan.status
-            
-            if plan_status == TradePlanStatus.AWAITING_ENTRY:
-                if state.has_position:
-                    errors.append(f"Plan {plan_id}: AWAITING_ENTRY but has position")
-                if state.entry_order_id:
-                    errors.append(f"Plan {plan_id}: AWAITING_ENTRY but has entry order")
-            
-            elif plan_status == TradePlanStatus.POSITION_OPEN:
-                if not state.has_position:
-                    errors.append(f"Plan {plan_id}: POSITION_OPEN but no position")
-                if not state.entry_order_id:
-                    errors.append(f"Plan {plan_id}: POSITION_OPEN but no entry order ID")
-            
-            elif plan_status in [TradePlanStatus.COMPLETED, TradePlanStatus.CANCELLED]:
-                if state.has_position:
-                    errors.append(f"Plan {plan_id}: {plan_status.value} but still has position")
+            errors.extend(self._validate_single_state(plan_id, state))
+        
+        # Cache results
+        self._validation_cache = errors.copy()
+        self._cache_valid = True
+        
+        return errors
+    
+    def _validate_single_state(self, plan_id: str, state: TradeLifecycleState) -> List[str]:
+        """Validate a single lifecycle state.
+        
+        Args:
+            plan_id: Plan identifier
+            state: Lifecycle state to validate
+        
+        Returns:
+            List of validation errors for this state
+        """
+        errors = []
+        plan_status = state.plan.status
+        
+        if plan_status == TradePlanStatus.AWAITING_ENTRY:
+            if state.has_position:
+                errors.append(f"Plan {plan_id}: AWAITING_ENTRY but has position")
+            if state.entry_order_id:
+                errors.append(f"Plan {plan_id}: AWAITING_ENTRY but has entry order")
+        
+        elif plan_status == TradePlanStatus.POSITION_OPEN:
+            if not state.has_position:
+                errors.append(f"Plan {plan_id}: POSITION_OPEN but no position")
+            if not state.entry_order_id:
+                errors.append(f"Plan {plan_id}: POSITION_OPEN but no entry order ID")
+        
+        elif plan_status in [TradePlanStatus.COMPLETED, TradePlanStatus.CANCELLED]:
+            if state.has_position:
+                errors.append(f"Plan {plan_id}: {plan_status.value} but still has position")
         
         return errors
     

@@ -254,6 +254,22 @@ class MockMultiTimeframeDetector:
             for symbol, timeframes in self.monitored_timeframes.items()
         }
     
+    def is_monitoring(self, symbol: str, timeframe: Optional[Timeframe] = None) -> bool:
+        """Check if symbol/timeframe is being monitored."""
+        if symbol not in self.monitored_timeframes:
+            return False
+        if timeframe is None:
+            return len(self.monitored_timeframes[symbol]) > 0
+        return timeframe in self.monitored_timeframes[symbol]
+    
+    async def start(self) -> None:
+        """Start the detector (mock implementation)."""
+        pass
+    
+    async def stop(self) -> None:
+        """Stop the detector (mock implementation)."""
+        pass
+
     async def stop_monitoring(self, symbol: Optional[str] = None, timeframe: Optional[Timeframe] = None):
         """Stop monitoring symbol/timeframe."""
         if symbol and timeframe:
@@ -494,16 +510,18 @@ class TestMultiTimeframeIntegration:
             await setup["registry"].create_function(config)
             await setup["market_adapter"].start_monitoring("AAPL", tf)
         
-        # Create data that should trigger at specific timeframe boundaries
-        start_time = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        # Create data that should trigger at specific timeframe boundaries  
+        # Use past timestamp to avoid future data validation errors
+        start_time = (datetime.now(UTC) - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
         
-        # Feed 20 minutes of data with price crossing threshold at minute 15
+        # Feed 60 minutes of data with price crossing threshold at minute 45
+        # This ensures we have enough historical data (20+ bars) for longer timeframes
         bars = []
-        for i in range(20):
+        for i in range(60):
             bar_time = start_time + timedelta(minutes=i)
             
-            # Price crosses threshold at minute 15
-            if i < 15:
+            # Price crosses threshold at minute 45 (enough data for all timeframes)
+            if i < 45:
                 close_price = Decimal("179.50")
             else:
                 close_price = Decimal("180.50")  # Above threshold
@@ -524,14 +542,16 @@ class TestMultiTimeframeIntegration:
         # Process all bars
         for bar in bars:
             await setup["market_adapter"].on_market_data_update(bar)
+            # Allow immediate processing of bar close events
+            await asyncio.sleep(0.01)
         
         # Await all pending bar close tasks
         await setup["detector"].await_all_tasks()
         
-        # Allow additional processing time
-        await asyncio.sleep(0.1)
+        # Allow additional processing time for all callbacks
+        await asyncio.sleep(0.2)
         
-        # Verify synchronization: 15-minute timeframe should trigger at minute 15
+        # Verify synchronization: 15-minute timeframe should trigger at minute 45
         logs = await setup["logger"].query_logs(limit=100)
         
         # Look for 15-minute evaluation at the right time
@@ -570,7 +590,8 @@ class TestMultiTimeframeIntegration:
             await setup["market_adapter"].start_monitoring("AAPL", timeframe)
         
         # Create scenario where all timeframes should trigger
-        start_time = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        # Use past timestamp to avoid future data validation errors
+        start_time = (datetime.now(UTC) - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
         
         # Build up to strong breakout
         bars = []
@@ -651,9 +672,11 @@ class TestMultiTimeframeIntegration:
         # Generate substantial data load
         start_time = datetime.now()
         
+        # Use past timestamp to avoid future data validation errors
+        past_start_time = (datetime.now(UTC) - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
         bars = create_timeframe_bar_sequence(
             symbol="AAPL",
-            start_time=datetime.now(UTC),
+            start_time=past_start_time,
             duration_minutes=120,  # 2 hours of data
             base_price=179.0,
             price_trend=3.0
@@ -703,7 +726,8 @@ class TestMultiTimeframeIntegration:
         await setup["market_adapter"].start_monitoring("AAPL", Timeframe.FIVE_MIN)
         
         # Create precise 1-minute data for 5-minute aggregation
-        start_time = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        # Use past timestamp to avoid future data validation errors
+        start_time = (datetime.now(UTC) - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
         
         # Create 25 bars to ensure we have enough historical data for evaluation
         minute_bars = []
