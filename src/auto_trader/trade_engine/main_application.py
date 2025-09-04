@@ -3,6 +3,7 @@
 import asyncio
 from typing import Optional, Dict, Any
 from datetime import datetime, UTC
+from decimal import Decimal
 from pathlib import Path
 
 from loguru import logger
@@ -12,7 +13,9 @@ from auto_trader.models.plan_loader import TradePlanLoader
 from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
 from auto_trader.trade_engine.trade_orchestrator import TradeOrchestrator, TradeOrchestrationConfig
 from auto_trader.integrations.ibkr_client.order_execution_manager import OrderExecutionManager
+from auto_trader.integrations.ibkr_client.client import IBKRClient
 from auto_trader.risk_management.risk_manager import RiskManager
+from auto_trader.risk_management.order_risk_validator import OrderRiskValidator
 
 
 class ApplicationConfig(BaseModel):
@@ -88,16 +91,24 @@ class TradingApplication:
             
             # Initialize execution function registry
             self.function_registry = ExecutionFunctionRegistry()
-            await self.function_registry.initialize()
             
             # Initialize risk manager
             self.risk_manager = RiskManager(
-                account_value=self.config.account_value,
-                max_portfolio_risk_percent=self.config.max_portfolio_risk_percent,
+                account_value=Decimal(str(self.config.account_value)),
+            )
+            
+            # Initialize IBKR client and risk validator for order execution
+            self.ibkr_client = IBKRClient()
+            self.order_risk_validator = OrderRiskValidator(
+                position_sizer=self.risk_manager.position_sizer,
+                portfolio_tracker=self.risk_manager.portfolio_tracker,
+                account_value=Decimal(str(self.config.account_value))
             )
             
             # Initialize order execution manager
             self.order_execution_manager = OrderExecutionManager(
+                ibkr_client=self.ibkr_client,
+                risk_validator=self.order_risk_validator,
                 simulation_mode=self.config.simulation_mode,
                 state_dir=Path(self.config.state_directory),
             )

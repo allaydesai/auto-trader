@@ -5,12 +5,12 @@
 default_account_value: 10000
 
 # Risk Profile
-default_risk_category: "moderate"
+default_risk_category: "normal"
 
 # Trading Preferences
 preferred_timeframes:
   - "15min"
-  - "1hour"
+  - "1h"
 
 # Default Execution Functions by Trade Type
 default_execution_functions:

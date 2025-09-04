@@ -178,7 +178,7 @@ class PortfolioRiskState(BaseModel):
     @property
     def total_dollar_risk(self) -> Decimal:
         """Total dollar risk across all positions."""
-        return sum(pos.risk_amount for pos in self.positions)
+        return sum((pos.risk_amount for pos in self.positions), Decimal("0"))
 
 
 class RiskValidationResult(BaseModel):

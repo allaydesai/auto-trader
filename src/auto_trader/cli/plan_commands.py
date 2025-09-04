@@ -307,8 +307,8 @@ def create_plan_interactive(
             Panel(
                 f"[blue]📊 PORTFOLIO STATUS[/blue]\n\n"
                 f"Account Value: ${portfolio_summary['account_value']:,.2f}\n"
-                f"Current Risk: {portfolio_summary['current_portfolio_risk']:.2f}%\n"
-                f"Available Capacity: {portfolio_summary['available_risk_capacity_percent']:.2f}%\n"
+                f"Current Risk: {portfolio_summary['current_risk_percentage']:.2f}%\n"
+                f"Available Capacity: {portfolio_summary['remaining_capacity_percent']:.2f}%\n"
                 f"Open Positions: {portfolio_summary['position_count']}",
                 title="Portfolio Overview",
                 border_style="blue"

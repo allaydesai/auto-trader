@@ -59,69 +59,101 @@ uv sync
 
 ### 2. Initial Setup
 
-Run the interactive setup wizard:
+Copy the example configuration files and customize them:
+
+```bash
+# Copy example files
+cp .env.example .env
+cp config.yaml.example config.yaml
+cp user_config.yaml.example user_config.yaml
+
+# Edit with your settings
+# IMPORTANT: Update .env with your IBKR connection details and Discord webhook
+```
+
+Alternatively, run the interactive setup wizard:
 
 ```bash
 uv run python -m auto_trader.cli.commands setup
 ```
 
 This will create the necessary configuration files:
-- `.env` - Environment variables and secrets
-- `config.yaml` - System configuration
-- `user_config.yaml` - Trading preferences
+- `.env` - Environment variables and secrets (connection details, API keys)
+- `config.yaml` - System configuration (behavior settings, risk limits)
+- `user_config.yaml` - Trading preferences (account value, risk categories)
 
 ### 3. Configuration
 
 #### Environment Variables (`.env`)
 
 ```bash
-# Interactive Brokers
-IBKR_HOST=127.0.0.1
-IBKR_PORT=7497
-IBKR_CLIENT_ID=1
+# IBKR Connection (deployment-specific)
+IBKR_HOST=127.0.0.1        # TWS/Gateway host
+IBKR_PORT=7497             # 7497=TWS Paper, 7496=TWS Live, 4002=Gateway Paper, 4001=Gateway Live
+IBKR_CLIENT_ID=1           # Must be unique per connection
 
-# Discord Integration
+# Secrets (never commit!)
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
 
-# System Settings
-SIMULATION_MODE=true
-DEBUG=false
+# Optional Overrides (these override config.yaml if set)
+# SIMULATION_MODE=true     # Forces simulation mode
+# DEBUG=true              # Enables debug logging
 ```
 
 #### System Configuration (`config.yaml`)
 
 ```yaml
+# IBKR Behavior (not connection details - those are in .env)
+ibkr:
+  timeout: 30                    # Connection timeout in seconds
+  reconnect_attempts: 5          # Max reconnection attempts
+  graceful_shutdown: true        # Close positions on shutdown
+
 # Risk Management
 risk:
-  max_position_percent: 10.0  # Max 10% of account per position
+  max_position_percent: 10.0     # Max 10% of account per position
   daily_loss_limit_percent: 2.0  # Stop trading at 2% daily loss
-  max_open_positions: 5
+  max_open_positions: 5          # Maximum concurrent positions
+  max_concurrent_trades: 10      # Maximum trades processing simultaneously
+  max_portfolio_risk_percent: 10.0 # Maximum total portfolio risk
 
 # Trading Settings
 trading:
-  simulation_mode: true  # Set to false for live trading
-  market_hours_only: true
-  default_timeframe: "15min"
+  simulation_mode: true          # Default mode (can be overridden by .env)
+  market_hours_only: true        # Only trade during market hours
+  default_timeframe: "15min"     # Default execution timeframe
+  order_timeout: 60              # Order timeout in seconds
 ```
 
 #### User Preferences (`user_config.yaml`)
 
 ```yaml
 # Account Settings
-default_account_value: 10000
-default_risk_category: "conservative"
+account_value: 10000            # Account balance for calculations
+default_account_value: 10000    # Default for position sizing
+default_risk_category: "normal"  # small (1%), normal (2%), or large (3%)
 
-# Preferred Settings
+# Trading Preferences
 preferred_timeframes:
   - "15min"
-  - "1hour"
+  - "30min"
 
-default_execution_functions:
-  long: "close_above"
-  short: "close_below"
+default_execution_function: "close_above"  # Default entry function
+use_fractional_shares: false              # Allow fractional share trading
 ```
 
-### 4. Create Trade Plans
+**Note:** See [Configuration Guide](docs/configuration-guide.md) for detailed explanation of the configuration hierarchy and which settings belong in each file.
+
+### 4. Validate Configuration
+
+Before creating trade plans, verify your configuration is correct:
+
+```bash
+# Check all configuration sources
+uv run python run_auto_trader.py --check-config
+```
+
+### 5. Create Trade Plans
 
 Create your first trade plan using the interactive wizard:
 
@@ -139,7 +171,7 @@ uv run python -m auto_trader.cli.commands create-plan-template
 uv run python -m auto_trader.cli.commands list-templates --verbose
 ```
 
-### 5. Validation
+### 6. Validation
 
 Verify your configuration and trade plans:
 
@@ -154,7 +186,7 @@ uv run python -m auto_trader.cli.commands validate-plans --verbose
 uv run python -m auto_trader.cli.commands list-plans --verbose
 ```
 
-### 6. Monitoring
+### 7. Monitoring
 
 Monitor your trading system:
 
@@ -169,38 +201,93 @@ uv run python -m auto_trader.cli.commands summary --period week
 uv run python -m auto_trader.cli.commands history --symbol AAPL --days 7
 ```
 
-### 7. Running the Complete Trading System
+### 8. Running the Complete Trading System
 
-The Auto-Trader now features a complete trade lifecycle management system that can automatically execute your trades from entry to exit.
+The Auto-Trader now features a fully integrated automated trading system with complete trade lifecycle management.
 
 #### Start the Trading System
 
 ```bash
-# Run the complete trading system with trade lifecycle management
-uv run python -m auto_trader.trade_engine.main_application
+# Production startup script with all integrations
+uv run python run_auto_trader.py
 
-# Or use the main entry point (will be updated to use the new system)
-uv run python -m auto_trader.main
+# Run with configuration check first
+uv run python run_auto_trader.py --check-config
+
+# Run in simulation mode (default)
+uv run python run_auto_trader.py
+
+# Run with debug logging
+uv run python run_auto_trader.py --debug
+
+# Run in live trading mode (requires confirmation)
+uv run python run_auto_trader.py --live
+```
+
+#### Production Deployment
+
+**Linux (systemd):**
+```bash
+# Install service file
+sudo cp scripts/auto-trader.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable auto-trader
+sudo systemctl start auto-trader
+
+# Check status
+sudo systemctl status auto-trader
+journalctl -u auto-trader -f  # Follow logs
+```
+
+**Windows:**
+```batch
+# Using batch script
+scripts\run_auto_trader.bat
+
+# Using PowerShell
+powershell -ExecutionPolicy Bypass -File scripts\run_auto_trader.ps1
 ```
 
 #### What the Trading System Does
 
 When you start the trading system, it will:
 
-1. **Load Trade Plans**: Automatically load all trade plans from `data/trade_plans/`
-2. **Connect to IBKR**: Establish connection to Interactive Brokers for market data and order execution
-3. **Monitor Entry Conditions**: Continuously evaluate execution functions for awaiting_entry plans
-4. **Process Entry Signals**: When entry conditions are met:
+1. **Initialize Components**: 
+   - Load configuration from `.env`, `config.yaml`, and `user_config.yaml`
+   - Initialize trade engine, risk manager, and IBKR client
+   - Setup Discord notifications and file watcher
+
+2. **Load Trade Plans**: Automatically load all trade plans from `data/trade_plans/`
+   - **Hot-reload enabled**: Changes to YAML files are automatically detected
+
+3. **Connect to IBKR**: Establish connection to Interactive Brokers
+   - Uses connection settings from `.env` (host, port, client_id)
+   - Implements circuit breaker for connection resilience
+
+4. **Monitor Entry Conditions**: Continuously evaluate execution functions
+   - Real-time market data processing
+   - Candle-close based triggers to avoid stop-hunting
+
+5. **Process Entry Signals**: When entry conditions are met:
    - Validate risk limits and portfolio exposure
    - Calculate position size based on your risk category
    - Submit bracket orders (entry + stop-loss + take-profit)
    - Add position to risk registry upon fill confirmation
-5. **Monitor Exit Conditions**: Track open positions for exit signals  
-6. **Process Exit Signals**: When exit conditions are met:
+
+6. **Monitor Exit Conditions**: Track open positions for exit signals  
+
+7. **Process Exit Signals**: When exit conditions are met:
    - Cancel remaining orders for the symbol
    - Remove position from risk registry
    - Update trade plan status to completed
-7. **Send Notifications**: Discord alerts for all trade events and status changes
+
+8. **Send Notifications**: Discord alerts for all trade events
+   - Rich formatted messages with trade details
+   - [SIM] prefix in simulation mode
+
+9. **Persist State**: Automatic state persistence
+   - Position state saved for recovery across restarts
+   - Atomic writes with backup recovery
 
 #### Trade Plan Status Flow
 
@@ -227,27 +314,20 @@ uv run python -m auto_trader.cli.commands summary --period week
 uv run python -m auto_trader.cli.commands doctor
 ```
 
-#### Configuration for Automated Trading
+#### Important Configuration Notes
 
-Ensure your configuration supports automated execution:
+**Configuration Hierarchy:**
+1. **Environment variables (.env)** - Highest priority, overrides all
+2. **System configuration (config.yaml)** - Application behavior
+3. **User preferences (user_config.yaml)** - Trading preferences
 
-```yaml
-# config.yaml
-trading:
-  simulation_mode: false  # Set to true for paper trading
-  market_hours_only: true
-  auto_execution_enabled: true  # Enable automated trade execution
+**Key Settings:**
+- IBKR connection details (host, port, client_id) MUST be in `.env`
+- `SIMULATION_MODE` in `.env` overrides `trading.simulation_mode` in config.yaml
+- Risk limits and trading behavior in `config.yaml`
+- Account value and preferences in `user_config.yaml`
 
-risk:
-  max_position_percent: 10.0    # Maximum position size per trade
-  daily_loss_limit_percent: 2.0 # Stop trading at daily loss limit
-  max_open_positions: 5         # Maximum concurrent positions
-
-execution:
-  signal_to_order_latency_ms: 1000  # Target <1 second execution
-  order_timeout_seconds: 60
-  retry_failed_orders: true
-```
+See [Configuration Guide](docs/configuration-guide.md) for complete details.
 
 ## Project Structure
 
@@ -475,7 +555,32 @@ uv run python -m auto_trader.cli.commands plan-stats
 | `cancelled` | Plan cancelled before execution |
 | `error` | Error occurred during execution |
 
-## Configuration Options
+## Configuration
+
+### Configuration Files
+
+The Auto-Trader uses a three-tier configuration system:
+
+1. **`.env`** - Deployment-specific settings and secrets
+   - IBKR connection details (host, port, client_id)
+   - API keys and webhooks
+   - Environment overrides
+
+2. **`config.yaml`** - System behavior and limits
+   - Risk management rules
+   - Trading system behavior
+   - Logging configuration
+
+3. **`user_config.yaml`** - User preferences
+   - Account values
+   - Default risk categories
+   - Trading preferences
+
+**Important:** IBKR connection settings (host, port, client_id) are ONLY in `.env`, not in `config.yaml`.
+
+See [Configuration Guide](docs/configuration-guide.md) for detailed information.
+
+### Configuration Options
 
 ### Risk Management
 
@@ -724,6 +829,24 @@ uv run python -m auto_trader.cli.commands doctor --export-debug
 ```
 
 ## Recent Improvements
+
+### Fully Integrated Main Application (v4.0.0) 🚀
+**MAJOR RELEASE**: Complete integration of all components into unified application:
+
+- **Main Application Integration**: Connected AutoTraderApp with TradingApplication for seamless operation
+- **File Watcher Integration**: Automatic hot-reload of trade plans when YAML files change
+- **Production Startup Scripts**: 
+  - Python entry point with CLI arguments (`run_auto_trader.py`)
+  - Linux systemd service file for production deployment
+  - Windows batch and PowerShell scripts
+- **Configuration Cleanup**: 
+  - Removed duplicate settings between `.env` and `config.yaml`
+  - Clear separation: `.env` for deployment/secrets, `config.yaml` for behavior
+  - Proper override hierarchy with environment variables taking precedence
+- **Comprehensive Documentation**: 
+  - [Data Flow Architecture](docs/data-flow-architecture.md)
+  - [Component Interaction Diagrams](docs/component-interaction-diagram.md)
+  - [Configuration Guide](docs/configuration-guide.md)
 
 ### Complete Trade Lifecycle Management System (v3.3.0) 🎉
 **MAJOR MILESTONE**: Full implementation of automated trade execution from entry to exit:
@@ -1011,12 +1134,31 @@ uv remove package-name
 
 ## Troubleshooting
 
+### Testing the Integration
+
+Run the integration test to verify all components are working:
+
+```bash
+# Test all components without starting the full system
+uv run python test_integration.py
+```
+
+This will verify:
+- Configuration loading from all sources
+- Trade plan loading and validation
+- Risk manager initialization
+- IBKR client setup
+- Discord notifier configuration
+- Trade engine components
+- Main application initialization
+
 ### Common Issues
 
 1. **Configuration validation fails**
    - Check `.env` file exists and has correct values
    - Verify YAML syntax in config files
    - Ensure Discord webhook URL is valid
+   - Run `uv run python run_auto_trader.py --check-config` to diagnose
 
 2. **Trade plan validation errors**
    - Check YAML syntax (indentation, colons, quotes)

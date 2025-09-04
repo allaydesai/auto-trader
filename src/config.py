@@ -43,6 +43,12 @@ class RiskConfig(BaseModel):
     min_account_balance: Decimal = Field(
         default=Decimal("1000"), ge=0, description="Minimum account balance required"
     )
+    max_concurrent_trades: int = Field(
+        default=10, ge=1, le=50, description="Maximum concurrent trades"
+    )
+    max_portfolio_risk_percent: float = Field(
+        default=10.0, ge=1.0, le=20.0, description="Maximum portfolio risk percentage"
+    )
 
 
 class TradingConfig(BaseModel):
@@ -89,6 +95,11 @@ class UserPreferences(BaseModel):
         default=Decimal("10000"),
         ge=1000,
         description="Total account balance for position sizing calculations",
+    )
+    default_account_value: Decimal = Field(
+        default=Decimal("10000"),
+        ge=1000,
+        description="Default account balance for position sizing calculations",
     )
     default_risk_category: str = Field(
         default="normal", 
@@ -151,8 +162,8 @@ class Settings(BaseSettings):
         None, description="Discord webhook URL for notifications"
     )
 
-    # System Settings
-    simulation_mode: bool = Field(default=True, description="Enable simulation mode")
+    # System Settings (these can override config.yaml)
+    simulation_mode: Optional[bool] = Field(default=None, description="Override simulation mode from config.yaml")
     debug: bool = Field(default=False, description="Enable debug logging")
 
     # File Paths
@@ -163,6 +174,12 @@ class Settings(BaseSettings):
         default=Path("user_config.yaml"), description="User preferences file path"
     )
     logs_dir: Path = Field(default=Path("logs"), description="Logs directory path")
+    plans_directory: Path = Field(
+        default=Path("data/trade_plans"), description="Trade plans directory path"
+    )
+    state_directory: Path = Field(
+        default=Path("data/state"), description="State persistence directory path"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -173,7 +190,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("logs_dir", "config_file", "user_config_file")
+    @field_validator("logs_dir", "config_file", "user_config_file", "plans_directory", "state_directory")
     @classmethod
     def validate_paths(cls, v: Path) -> Path:
         """Ensure paths are absolute."""

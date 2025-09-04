@@ -26,12 +26,12 @@ class ComponentCoordinator:
             Dictionary of active trade plans by plan_id
         """
         try:
-            all_plans = await self.trade_plan_loader.load_all_plans()
+            all_plans = self.trade_plan_loader.load_all_plans()
             
             # Filter for active plans
             active_plans = {
-                plan.plan_id: plan 
-                for plan in all_plans
+                plan_id: plan 
+                for plan_id, plan in all_plans.items()
                 if plan.status in [
                     TradePlanStatus.AWAITING_ENTRY,
                     TradePlanStatus.POSITION_OPEN

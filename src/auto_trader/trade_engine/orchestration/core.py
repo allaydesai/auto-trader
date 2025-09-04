@@ -76,6 +76,11 @@ class TradeOrchestrator:
         self.data_router = MarketDataRouter()
         self.status_tracker = PlanStatusTracker()
         
+        # Initialize execution adapter
+        self.execution_adapter = ExecutionOrderAdapter(
+            order_execution_manager=self.order_execution_manager
+        )
+        
         # Initialize core processors
         self._initialize_processors()
         
@@ -95,7 +100,7 @@ class TradeOrchestrator:
         # Signal processing
         signal_config = SignalProcessorConfig(**self.config_manager.get_signal_processor_config())
         self.signal_processor = SignalProcessor(
-            function_registry=self.function_registry,
+            execution_adapter=self.execution_adapter,
             risk_manager=self.risk_manager,
             config=signal_config,
         )
@@ -118,9 +123,8 @@ class TradeOrchestrator:
             # Load all active trade plans
             self.active_plans = await self.coordinator.load_active_trade_plans()
             
-            # Initialize execution function registry if needed
-            if not self.function_registry._functions:
-                await self.function_registry.initialize()
+            # Function registry is already initialized in constructor
+            # No additional initialization needed
             
             self.is_running = True
             logger.info(
@@ -323,6 +327,32 @@ class TradeOrchestrator:
                 "subscription_stats": self.data_router.get_subscription_stats(),
             }
         )
+    
+    def get_status_summary(self) -> Dict[str, Any]:
+        """Get status summary for application statistics.
+        
+        Returns:
+            Dictionary with orchestrator status and processor statistics
+        """
+        base_status = self.get_orchestrator_status()
+        
+        # Add processor statistics if available
+        processors = {}
+        
+        # Add signal processor stats
+        if hasattr(self, 'signal_processor') and hasattr(self.signal_processor, 'get_stats'):
+            processors["signal_processor_stats"] = self.signal_processor.get_stats()
+        else:
+            processors["signal_processor_stats"] = {"total_processed": 0}
+        
+        # Add exit processor stats  
+        if hasattr(self, 'exit_processor') and hasattr(self.exit_processor, 'get_stats'):
+            processors["exit_processor_stats"] = self.exit_processor.get_stats()
+        else:
+            processors["exit_processor_stats"] = {"positions_closed": 0}
+        
+        base_status["processors"] = processors
+        return base_status
     
     def _calculate_dollar_risk(self, plan: TradePlan, order_result: OrderResult) -> Decimal:
         """Calculate dollar risk for a position.

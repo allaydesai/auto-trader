@@ -166,14 +166,14 @@ class PortfolioTracker:
         if self._account_value <= 0:
             return Decimal("0")
         
-        total_risk_dollars = sum(pos.risk_amount for pos in self._positions.values())
+        total_risk_dollars = sum((pos.risk_amount for pos in self._positions.values()), Decimal("0"))
         risk_percentage = (total_risk_dollars / self._account_value) * Decimal("100")
         
         return risk_percentage.quantize(Decimal("0.01"))
     
     def get_total_dollar_risk(self) -> Decimal:
         """Get total dollar risk across all positions."""
-        return sum(pos.risk_amount for pos in self._positions.values())
+        return sum((pos.risk_amount for pos in self._positions.values()), Decimal("0"))
     
     def get_position_count(self) -> int:
         """Get number of open positions."""

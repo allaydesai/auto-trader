@@ -88,6 +88,16 @@ class TradePlanLoader:
         self._watcher: Optional[TradePlanFileWatcher] = None
         self._watching = False
     
+    def reload_plans(self) -> Dict[str, TradePlan]:
+        """
+        Reload all trade plans from the plans directory.
+        
+        Returns:
+            Dictionary mapping plan IDs to TradePlan instances
+        """
+        logger.info("Reloading all trade plans")
+        return self.load_all_plans(validate=True)
+    
     def load_all_plans(self, validate: bool = True) -> Dict[str, TradePlan]:
         """
         Load all trade plans from the plans directory.
