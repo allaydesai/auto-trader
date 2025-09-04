@@ -50,11 +50,13 @@ graph TB
     Orchestrator -->|Controls| LifecycleMgr
     PlanLoader -->|Loads Plans| Orchestrator
     
-    %% Integration flows
+    %% Integration flows (UPDATED with new market data flow)
     TradeEng -->|Executes via| IBKRClient
     LifecycleMgr -->|Notifies| DiscordNotif
-    MarketDataMgr -->|Feeds| TradeEng
-    IBKRClient -->|Provides| MarketDataMgr
+    MarketDataMgr -->|Real-time bars| Orchestrator
+    IBKRClient -->|IB instance| MarketDataMgr
+    TradingApp -->|Initializes| MarketDataMgr
+    TradingApp -->|Subscribes| MarketDataMgr
     
     %% Persistence flows
     LifecycleMgr -->|Saves State| StateMan
@@ -98,49 +100,67 @@ sequenceDiagram
     end
 ```
 
-## 3. Market Data Pipeline
+## 3. Market Data Pipeline ✅ **FULLY INTEGRATED**
 
 ```mermaid
 graph LR
     subgraph "IBKR Integration"
         TWS[IBKR TWS/Gateway]
-        ConnMgr[Connection<br/>Manager]
-        CircuitBreaker[Circuit<br/>Breaker]
+        IBKRClient[IBKR Client<br/>client.py]
+        IB_Instance[IB Instance<br/>get_ib_client()]
     end
     
-    subgraph "Data Processing"
-        SubMgr[Subscription<br/>Manager]
-        BarConv[Bar<br/>Converter]
-        DataOrch[Data<br/>Orchestrator]
-        DataDist[Data<br/>Distribution]
+    subgraph "Market Data Management (NEW)"
+        MktDataMgr[Market Data Manager<br/>market_data_manager.py]
+        SubMgr[Subscription Manager<br/>subscription_manager.py]
+        DataDist[Data Distribution<br/>market_data_distribution.py]
+        BarConv[Bar Converter<br/>bar_converter.py]
     end
     
-    subgraph "Data Storage"
-        Cache[Market Data<br/>Cache]
-        HistData[Historical<br/>Data Fetcher]
+    subgraph "Application Integration (NEW)"
+        TradingApp[Trading Application<br/>main_application.py]
+        Callback[Market Data Callback<br/>_market_data_callback()]
+        TradeOrch[Trade Orchestrator<br/>trade_orchestrator.py]
     end
     
-    subgraph "Consumers"
-        BarDetect[Bar Close<br/>Detector]
-        ExecFunc[Execution<br/>Functions]
-        SignalProc[Signal<br/>Processor]
+    subgraph "Signal Processing"
+        BarData[Bar Data Events]
+        ExecFunc[Execution Functions<br/>close_above/below/trailing]
+        SignalProc[Signal Processor<br/>signal_processor.py]
     end
     
-    TWS -->|Raw Data| ConnMgr
-    ConnMgr -->|Protected by| CircuitBreaker
-    ConnMgr -->|Stream| SubMgr
-    SubMgr -->|Ticks| BarConv
-    BarConv -->|Bars| DataOrch
-    DataOrch -->|Organized| DataDist
-    DataDist -->|Current| Cache
-    DataDist -->|History| HistData
+    subgraph "Plan Analysis (NEW)"
+        PlanLoader[Active Trade Plans]
+        SymbolExtract[Symbol Extraction<br/>['AAPL', 'MSFT']]
+        TimeframeExtract[Timeframe Extraction<br/>['1min', '5min', '15min', '30min']]
+    end
     
-    Cache -->|Real-time| BarDetect
-    BarDetect -->|Candle Close| ExecFunc
-    ExecFunc -->|Signals| SignalProc
+    TWS -->|Real-time Data| IBKRClient
+    IBKRClient -->|Exposes| IB_Instance
+    IB_Instance -->|Connects| MktDataMgr
     
-    style DataOrch fill:#fbb,stroke:#333,stroke-width:2px
-    style Cache fill:#bfb,stroke:#333,stroke-width:2px
+    TradingApp -->|Initializes| MktDataMgr
+    TradingApp -->|Registers Callback| MktDataMgr
+    
+    PlanLoader -->|Active Plans| TradingApp
+    TradingApp -->|Extract| SymbolExtract
+    TradingApp -->|Extract| TimeframeExtract
+    SymbolExtract -->|Subscribe| SubMgr
+    TimeframeExtract -->|Subscribe| SubMgr
+    
+    MktDataMgr -->|Manages| SubMgr
+    SubMgr -->|Real-time Bars| BarConv
+    BarConv -->|Processed| DataDist
+    DataDist -->|Distribute| Callback
+    Callback -->|Route| TradeOrch
+    
+    TradeOrch -->|Process| BarData
+    BarData -->|Evaluate| ExecFunc
+    ExecFunc -->|Generate| SignalProc
+    
+    style MktDataMgr fill:#f9f,stroke:#333,stroke-width:3px
+    style TradingApp fill:#bbf,stroke:#333,stroke-width:3px
+    style Callback fill:#bfb,stroke:#333,stroke-width:3px
 ```
 
 ## 4. Trade Execution Lifecycle
@@ -433,6 +453,82 @@ mindmap
         Position State
 ```
 
+## 11. Periodic Signal Evaluation Flow ✅ **NEW IMPLEMENTATION**
+
+```mermaid
+sequenceDiagram
+    participant TWS as IBKR TWS/Gateway
+    participant IBKR as IBKRClient
+    participant MDM as MarketDataManager
+    participant TA as TradingApplication
+    participant TO as TradeOrchestrator
+    participant EF as ExecutionFunction
+    participant SP as SignalProcessor
+    participant OEM as OrderExecutionManager
+    
+    Note over TWS,OEM: Real-time Periodic Evaluation Flow
+    
+    %% Initialization Phase
+    TA->>IBKR: connect()
+    IBKR-->>TA: Connected
+    TA->>IBKR: get_ib_client()
+    IBKR-->>TA: IB instance
+    TA->>MDM: new MarketDataManager(ib)
+    TA->>MDM: add_subscriber("trade_orchestrator", callback)
+    
+    %% Subscription Phase
+    TA->>TO: start() - loads active plans
+    TO-->>TA: active_plans loaded
+    TA->>TA: extract symbols ['AAPL', 'MSFT']
+    TA->>TA: extract timeframes ['1min', '5min', '15min', '30min']
+    TA->>MDM: subscribe_symbols(symbols, timeframes)
+    MDM-->>TA: 8 subscriptions successful
+    
+    %% Real-time Processing Loop
+    loop Every Bar (1min, 5min, 15min, 30min)
+        TWS->>IBKR: Real-time bar data
+        IBKR->>MDM: Bar update
+        MDM->>MDM: Process & convert bar
+        MDM->>TA: _market_data_callback(bar_data)
+        TA->>TO: process_market_data_event(bar_data)
+        
+        alt Plan Status = AWAITING_ENTRY
+            TO->>EF: evaluate_entry_function(plan, bar_data)
+            EF-->>TO: ExecutionSignal (ENTER_LONG/NO_ACTION)
+            
+            alt Signal = ENTER_LONG
+                TO->>SP: process_entry_signal(plan, signal)
+                SP->>OEM: execute_order(entry_order)
+                OEM-->>SP: OrderResult
+                SP-->>TO: Entry successful
+                TO->>TO: Update plan.status = POSITION_OPEN
+            end
+            
+        else Plan Status = POSITION_OPEN
+            TO->>EF: evaluate_exit_function(plan, bar_data)
+            EF-->>TO: ExecutionSignal (EXIT/NO_ACTION)
+            
+            alt Signal = EXIT
+                TO->>SP: process_exit_signal(plan, signal)
+                SP->>OEM: execute_order(exit_order)
+                OEM-->>SP: OrderResult
+                SP-->>TO: Exit successful
+                TO->>TO: Update plan.status = COMPLETED
+            end
+        end
+    end
+    
+    Note over TWS,OEM: Continuous evaluation during market hours
+```
+
+**Key Implementation Details:**
+
+1. **Automatic Symbol Detection**: Extracts unique symbols from all active trade plans
+2. **Dynamic Timeframe Subscription**: Subscribes to all timeframes used by entry/exit functions
+3. **Real-time Bar Processing**: Each bar update triggers evaluation for relevant plans
+4. **Status-Based Evaluation**: Entry functions for AWAITING_ENTRY, exit functions for POSITION_OPEN
+5. **Complete Lifecycle**: Automatic transition from entry → position tracking → exit → completion
+
 ## Component Communication Patterns
 
 ### 1. **Request-Response**
@@ -440,15 +536,17 @@ mindmap
 - Risk Manager → Position Sizer
 - Order Manager → IBKR Client
 
-### 2. **Event-Driven**
-- Market Data → Bar Close Events
-- Order Events → Discord Notifications
-- File Changes → Plan Reloading
+### 2. **Event-Driven** ✅ **NOW FULLY FUNCTIONAL**
+- **Market Data → Bar Close Events** ✅ Real-time IBKR integration complete
+- **Bar Events → Signal Evaluation** ✅ Automatic periodic evaluation
+- **Order Events → Discord Notifications** ✅ Complete trade lifecycle notifications
+- File Changes → Plan Reloading (planned for v2)
 
-### 3. **Publish-Subscribe**
-- Market Data Distribution
-- Signal Broadcasting
-- State Change Notifications
+### 3. **Publish-Subscribe** ✅ **ENHANCED WITH REAL-TIME DATA**
+- **Market Data Distribution** ✅ MarketDataManager → TradeOrchestrator subscription
+- **Real-time Bar Streaming** ✅ Automatic distribution to all registered subscribers
+- Signal Broadcasting ✅ Signal events distributed to order processors
+- State Change Notifications ✅ Position state changes broadcasted
 
 ### 4. **Pipeline**
 - Market Data → Processing → Caching

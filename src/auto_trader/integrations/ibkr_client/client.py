@@ -180,6 +180,15 @@ class IBKRClient:
         """
         return self._connection_status
 
+    def get_ib_client(self):
+        """
+        Get the underlying IB client instance.
+        
+        Returns:
+            IB client instance for advanced operations
+        """
+        return self._ib
+
     async def _detect_account_type(self) -> Tuple[str, bool]:
         """
         Detect if connected to paper or live account.

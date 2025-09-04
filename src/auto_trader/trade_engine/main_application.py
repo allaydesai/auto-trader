@@ -14,6 +14,7 @@ from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
 from auto_trader.trade_engine.trade_orchestrator import TradeOrchestrator, TradeOrchestrationConfig
 from auto_trader.integrations.ibkr_client.order_execution_manager import OrderExecutionManager
 from auto_trader.integrations.ibkr_client.client import IBKRClient
+from auto_trader.integrations.ibkr_client.market_data_manager import MarketDataManager
 from auto_trader.risk_management.risk_manager import RiskManager
 from auto_trader.risk_management.order_risk_validator import OrderRiskValidator
 
@@ -62,6 +63,7 @@ class TradingApplication:
         self.order_execution_manager: Optional[OrderExecutionManager] = None
         self.risk_manager: Optional[RiskManager] = None
         self.trade_orchestrator: Optional[TradeOrchestrator] = None
+        self.market_data_manager = None
         
         # Application state
         self.is_running = False
@@ -97,8 +99,10 @@ class TradingApplication:
                 account_value=Decimal(str(self.config.account_value)),
             )
             
-            # Initialize IBKR client and risk validator for order execution
-            self.ibkr_client = IBKRClient()
+            # Initialize IBKR client with settings (passes connection config from .env)
+            from config import Settings
+            settings = Settings()
+            self.ibkr_client = IBKRClient(settings=settings)
             self.order_risk_validator = OrderRiskValidator(
                 position_sizer=self.risk_manager.position_sizer,
                 portfolio_tracker=self.risk_manager.portfolio_tracker,
@@ -149,8 +153,17 @@ class TradingApplication:
             if not self.trade_orchestrator:
                 await self.initialize()
             
+            # Connect to IBKR (required for both live and simulation mode for market data)
+            await self._connect_ibkr()
+            
+            # Initialize market data manager after IBKR connection
+            await self._initialize_market_data()
+            
             # Start the trade orchestrator
             await self.trade_orchestrator.start()
+            
+            # Subscribe to market data for active trade plans
+            await self._subscribe_to_market_data()
             
             # Mark as running
             self.is_running = True
@@ -179,6 +192,12 @@ class TradingApplication:
             if self.trade_orchestrator:
                 await self.trade_orchestrator.stop()
             
+            # Stop market data subscriptions
+            await self._cleanup_market_data()
+            
+            # Disconnect from IBKR
+            await self._disconnect_ibkr()
+            
             # Update statistics
             if self.start_time:
                 uptime = datetime.now(UTC) - self.start_time
@@ -192,6 +211,141 @@ class TradingApplication:
         except Exception as e:
             logger.error(f"Error during application shutdown: {e}")
             raise
+    
+    async def _connect_ibkr(self) -> None:
+        """Connect to IBKR for market data and order execution."""
+        if not self.ibkr_client:
+            logger.warning("IBKR client not initialized, skipping connection")
+            return
+        
+        try:
+            logger.info("Connecting to IBKR...", 
+                       host=self.config.ibkr_host, 
+                       port=self.config.ibkr_port,
+                       client_id=self.config.ibkr_client_id,
+                       simulation_mode=self.config.simulation_mode)
+            
+            await self.ibkr_client.connect()
+            
+            # Check connection status
+            if self.ibkr_client.is_connected():
+                logger.info("Successfully connected to IBKR")
+            else:
+                logger.warning("IBKR connection attempt completed but status unclear")
+                
+        except Exception as e:
+            logger.error(f"Failed to connect to IBKR: {e}")
+            if not self.config.simulation_mode:
+                # In live mode, IBKR connection is critical
+                raise
+            else:
+                # In simulation mode, we can continue without IBKR connection
+                logger.warning("Continuing in simulation mode without IBKR connection")
+    
+    async def _disconnect_ibkr(self) -> None:
+        """Disconnect from IBKR gracefully."""
+        if self.ibkr_client and self.ibkr_client.is_connected():
+            try:
+                await self.ibkr_client.disconnect()
+                logger.info("Disconnected from IBKR")
+            except Exception as e:
+                logger.error(f"Error disconnecting from IBKR: {e}")
+    
+    async def _initialize_market_data(self) -> None:
+        """Initialize market data manager after IBKR connection."""
+        if not self.ibkr_client or not self.ibkr_client.is_connected():
+            logger.warning("IBKR client not connected, skipping market data initialization")
+            return
+        
+        try:
+            logger.info("Initializing market data manager...")
+            
+            # Get the underlying IB client instance
+            ib_client = self.ibkr_client.get_ib_client()
+            
+            # Initialize market data manager
+            self.market_data_manager = MarketDataManager(ib_client=ib_client)
+            
+            logger.info("Market data manager initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize market data manager: {e}")
+            raise
+    
+    async def _cleanup_market_data(self) -> None:
+        """Cleanup market data subscriptions and resources."""
+        if self.market_data_manager:
+            try:
+                logger.info("Cleaning up market data subscriptions...")
+                await self.market_data_manager.cleanup()
+                logger.info("Market data cleanup complete")
+            except Exception as e:
+                logger.error(f"Error during market data cleanup: {e}")
+    
+    async def _subscribe_to_market_data(self) -> None:
+        """Subscribe to market data for all active trade plan symbols."""
+        if not self.market_data_manager or not self.trade_orchestrator:
+            logger.warning("Market data manager or trade orchestrator not initialized")
+            return
+        
+        try:
+            logger.info("Setting up market data subscriptions...")
+            
+            # Register TradeOrchestrator as subscriber
+            self.market_data_manager.add_subscriber(
+                "trade_orchestrator", 
+                self._market_data_callback
+            )
+            
+            # Get active trade plans to extract symbols and timeframes
+            active_plans = self.trade_orchestrator.active_plans
+            if not active_plans:
+                logger.info("No active trade plans found, skipping market data subscription")
+                return
+            
+            # Extract unique symbols from all active plans
+            symbols = list(set(plan.symbol for plan in active_plans.values()))
+            
+            # Extract unique timeframes from entry and exit functions
+            timeframes = set()
+            for plan in active_plans.values():
+                timeframes.add(plan.entry_function.timeframe)
+                timeframes.add(plan.exit_function.timeframe)
+            
+            logger.info(
+                f"Subscribing to market data",
+                symbols=symbols,
+                timeframes=list(timeframes)
+            )
+            
+            # Subscribe to all symbols with all required timeframes
+            subscription_results = await self.market_data_manager.subscribe_symbols(
+                symbols=symbols,
+                bar_sizes=list(timeframes)
+            )
+            
+            # Log subscription results
+            successful_subs = sum(1 for result in subscription_results.values() if result)
+            total_subs = len(subscription_results)
+            
+            logger.info(
+                f"Market data subscriptions completed",
+                successful={successful_subs},
+                total={total_subs}
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to subscribe to market data: {e}")
+            raise
+    
+    async def _market_data_callback(self, bar_data) -> None:
+        """Handle market data updates from MarketDataManager."""
+        try:
+            # Forward market data to trade orchestrator for evaluation
+            await self.trade_orchestrator.process_market_data_event(bar_data)
+        except Exception as e:
+            logger.error(f"Error processing market data in callback: {e}")
+            self.app_stats["errors_encountered"] += 1
     
     async def run_forever(self) -> None:
         """Run the trading application until shutdown is requested."""
