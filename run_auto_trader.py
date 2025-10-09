@@ -12,6 +12,7 @@ import signal
 import argparse
 from pathlib import Path
 from typing import Optional
+from decimal import Decimal
 
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -116,7 +117,8 @@ async def check_configuration(settings: Settings) -> bool:
         
         logger.info("Configuration validation successful:")
         logger.info(f"  - Simulation Mode: {system_config.trading.simulation_mode}")
-        logger.info(f"  - Account Value: ${user_preferences.default_account_value:,.2f}")
+        account_val = user_preferences.account_value or user_preferences.default_account_value or Decimal("10000")
+        logger.info(f"  - Account Value: ${account_val:,.2f}")
         logger.info(f"  - Default Risk: {user_preferences.default_risk_category}")
         logger.info(f"  - Plans Directory: {settings.plans_directory}")
         logger.info(f"  - State Directory: {settings.state_directory}")

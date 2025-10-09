@@ -169,6 +169,9 @@ class AutoTraderApp:
                 else system_config.trading.simulation_mode
             )
             
+            # Get account value - prefer new field, fallback to legacy field
+            account_val = user_preferences.account_value or user_preferences.default_account_value or Decimal("10000")
+
             app_config = ApplicationConfig(
                 trade_plans_directory=str(self.settings.plans_directory),
                 state_directory=str(self.settings.state_directory),
@@ -176,7 +179,7 @@ class AutoTraderApp:
                 max_concurrent_trades=system_config.risk.max_concurrent_trades,
                 enable_risk_validation=True,
                 enable_position_tracking=True,
-                account_value=float(user_preferences.default_account_value),
+                account_value=float(account_val),
                 max_portfolio_risk_percent=float(system_config.risk.max_portfolio_risk_percent),
                 signal_timeout_seconds=30,
                 state_save_interval_seconds=60,
@@ -270,18 +273,18 @@ class AutoTraderApp:
                 self.logger.info(f"Created trade plans directory: {plans_dir}")
             
             # Define callback for file changes
-            def on_file_change(event):
+            def on_file_change(file_path: Path, event_type):
                 """Handle file change events."""
                 try:
                     self.logger.info(
-                        f"Trade plan file {event.event_type.value}: {event.file_path}"
+                        f"Trade plan file {event_type.value}: {file_path}"
                     )
-                    
+
                     # Reload plans in the trade engine if it's running
                     if self.trading_app and self.trading_app.trade_orchestrator:
                         # Schedule plan reload in the event loop
-                        asyncio.create_task(self._reload_trade_plans(event.file_path))
-                        
+                        asyncio.create_task(self._reload_trade_plans(file_path))
+
                 except Exception as e:
                     self.logger.error(f"Error handling file change: {e}")
             
