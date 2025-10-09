@@ -9,7 +9,7 @@ from loguru import logger
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
 from auto_trader.models.plan_loader import TradePlanLoader
 from auto_trader.models.execution import ExecutionSignal, ExecutionContext
-from auto_trader.models.enums import ExecutionAction
+from auto_trader.models.enums import ExecutionAction, Timeframe
 from auto_trader.models.order import OrderResult
 from auto_trader.models.market_data import BarData
 from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
@@ -153,26 +153,34 @@ class TradeOrchestrator:
         """
         if not self.is_running:
             return
-        
+
         symbol = bar_data.symbol
-        timeframe = bar_data.timeframe
-        
-        # Find relevant trade plans for this symbol
-        relevant_plans = self.coordinator.filter_plans_for_symbol(
+        bar_size = bar_data.bar_size
+
+        # FIX Gap #1: Check BOTH active_plans AND position_plans
+        relevant_active_plans = self.coordinator.filter_plans_for_symbol(
             self.active_plans, symbol
         )
-        
-        if not relevant_plans:
-            return
-        
-        logger.debug(
-            f"Processing market data for {len(relevant_plans)} plans",
-            symbol=symbol,
-            timeframe=timeframe.value,
+
+        relevant_position_plans = self.coordinator.filter_plans_for_symbol(
+            self.position_plans, symbol
         )
-        
-        # Process each relevant plan
-        for plan in relevant_plans:
+
+        # Combine both lists
+        all_relevant_plans = list(relevant_active_plans) + list(relevant_position_plans)
+
+        if not all_relevant_plans:
+            return
+
+        logger.debug(
+            f"Processing {len(relevant_active_plans)} awaiting entry, "
+            f"{len(relevant_position_plans)} open positions",
+            symbol=symbol,
+            bar_size=bar_size,
+        )
+
+        # Process ALL relevant plans (both active and positions)
+        for plan in all_relevant_plans:
             try:
                 await self._evaluate_trade_plan(plan, bar_data)
                 self.statistics.record_plan_processed(plan.plan_id)
@@ -204,15 +212,41 @@ class TradeOrchestrator:
             bar_data: Market data for evaluation
         """
         try:
+            # Build execution context with all required parameters
             context = ExecutionContext(
                 symbol=plan.symbol,
+                timeframe=Timeframe(bar_data.bar_size),
                 current_bar=bar_data,
-                has_position=False,
+                historical_bars=[],  # TODO: Get from market data manager
+                trade_plan_params=plan.entry_function.parameters,
+                position_state=None,  # No position yet for entry
+                account_balance=self.risk_manager.account_value,
+                timestamp=bar_data.timestamp,
             )
-            
+
+            # Get or create execution function instance from plan config
+            from auto_trader.models.execution import ExecutionFunctionConfig
+
+            entry_config = ExecutionFunctionConfig(
+                name=f"{plan.plan_id}_entry",
+                function_type=plan.entry_function.function_type,
+                timeframe=plan.entry_function.timeframe,
+                parameters=plan.entry_function.parameters,
+                enabled=True,
+                lookback_bars=0,  # TODO: Implement historical data manager
+            )
+
+            entry_function = await self.function_registry.get_or_create_function(entry_config)
+            signal = await entry_function.evaluate(context)
+
+            # Only process if signal should execute
+            if not signal or not signal.should_execute:
+                logger.debug(f"No entry signal for plan {plan.plan_id}: {signal.reasoning if signal else 'No signal'}")
+                return
+
             # Process entry signal
             result = await self.signal_processor.process_entry_signal(
-                plan, context, plan.entry_function.function_type
+                plan, context, plan.entry_function.function_type, signal=signal
             )
             
             if result.success and result.order_result:
@@ -228,7 +262,15 @@ class TradeOrchestrator:
                 
                 # Move to position tracking
                 self.position_plans[plan.plan_id] = plan
-                
+                if plan.plan_id in self.active_plans:
+                    del self.active_plans[plan.plan_id]
+
+                # Create position entry in position manager
+                await self.position_manager.create_position_from_fill(
+                    trade_plan=plan,
+                    order_result=result.order_result
+                )
+
                 # Record position opened
                 dollar_risk = self._calculate_dollar_risk(plan, result.order_result)
                 self.statistics.record_position_opened(
@@ -241,7 +283,10 @@ class TradeOrchestrator:
     
     async def _evaluate_exit_functions(self, plan: TradePlan, bar_data: BarData) -> None:
         """Evaluate exit functions for an open position.
-        
+
+        Evaluates both stop loss and take profit exit functions.
+        First function to trigger will close the position.
+
         Args:
             plan: Trade plan with open position
             bar_data: Market data for evaluation
@@ -252,46 +297,84 @@ class TradeOrchestrator:
             if not position:
                 logger.warning(f"No position found for plan {plan.plan_id}")
                 return
-            
-            context = ExecutionContext(
-                symbol=plan.symbol,
-                current_bar=bar_data,
-                has_position=True,
-                position_entry_price=position.average_entry_price,
-                current_quantity=position.quantity,
-            )
-            
-            # Evaluate exit function
-            function = self.function_registry.get_function(plan.exit_function.function_type)
-            signal = await function.evaluate(context)
-            
-            if signal and signal.action in [ExecutionAction.EXIT, ExecutionAction.MODIFY_STOP]:
-                # Process exit signal
-                exit_result = await self.exit_processor.process_exit_signal(
-                    signal, context, plan, plan.exit_function.function_type
+
+            # Evaluate both stop loss and take profit functions
+            exit_functions = [
+                ("stop_loss", plan.stop_loss_function),
+                ("take_profit", plan.take_profit_function),
+            ]
+
+            for exit_type, exit_func in exit_functions:
+                # Build execution context for this exit function
+                context = ExecutionContext(
+                    symbol=plan.symbol,
+                    timeframe=Timeframe(bar_data.bar_size),
+                    current_bar=bar_data,
+                    historical_bars=[],  # TODO: Get from market data manager
+                    trade_plan_params=exit_func.parameters,
+                    position_state=position,
+                    account_balance=self.risk_manager.account_value,
+                    timestamp=bar_data.timestamp,
                 )
-                
-                if exit_result.success:
-                    self.statistics.record_signal_generated(plan.plan_id, signal.action.value)
-                    
-                    if exit_result.position_closed:
-                        # Position fully closed
-                        old_status = plan.status
-                        plan.status = TradePlanStatus.COMPLETED
-                        self.status_tracker.record_status_change(
-                            plan.plan_id, old_status, plan.status, "exit_filled"
-                        )
-                        
-                        # Remove from active tracking
-                        if plan.plan_id in self.position_plans:
-                            del self.position_plans[plan.plan_id]
-                        
-                        # Record position closed
-                        if exit_result.order_result:
-                            self.statistics.record_position_closed(
-                                plan.plan_id, exit_result.order_result, exit_result.realized_pnl
+
+                # Get or create exit function instance from plan config
+                from auto_trader.models.execution import ExecutionFunctionConfig
+
+                exit_config = ExecutionFunctionConfig(
+                    name=f"{plan.plan_id}_{exit_type}",
+                    function_type=exit_func.function_type,
+                    timeframe=exit_func.timeframe,
+                    parameters=exit_func.parameters,
+                    enabled=True,
+                    lookback_bars=0,  # TODO: Implement historical data manager
+                )
+
+                exit_function = await self.function_registry.get_or_create_function(exit_config)
+                signal = await exit_function.evaluate(context)
+
+                if signal and signal.action in [ExecutionAction.EXIT, ExecutionAction.MODIFY_STOP]:
+                    logger.info(
+                        f"Exit signal triggered: {exit_type}",
+                        plan_id=plan.plan_id,
+                        exit_type=exit_type,
+                        action=signal.action.value,
+                    )
+
+                    # Process exit signal
+                    exit_result = await self.exit_processor.process_exit_signal(
+                        signal, context, plan, exit_func.function_type
+                    )
+
+                    logger.debug(
+                        f"Exit result for {plan.plan_id}: success={exit_result.success}, "
+                        f"position_closed={getattr(exit_result, 'position_closed', None)}"
+                    )
+
+                    if exit_result.success:
+                        self.statistics.record_signal_generated(plan.plan_id, signal.action.value)
+
+                        if exit_result.position_closed:
+                            # Position fully closed
+                            old_status = plan.status
+                            plan.status = TradePlanStatus.COMPLETED
+                            self.status_tracker.record_status_change(
+                                plan.plan_id, old_status, plan.status, f"{exit_type}_exit_filled"
                             )
-                
+
+                            # Remove from active tracking
+                            if plan.plan_id in self.position_plans:
+                                del self.position_plans[plan.plan_id]
+
+                            # Record position closed
+                            if exit_result.order_result:
+                                realized_pnl = getattr(exit_result.order_result, "realized_pnl", None)
+                                self.statistics.record_position_closed(
+                                    plan.plan_id, exit_result.order_result, realized_pnl
+                                )
+
+                            # Exit early - position is closed, don't evaluate other exit
+                            return
+
         except Exception as e:
             logger.error(f"Error evaluating exit functions for plan {plan.plan_id}: {e}")
             await self._handle_plan_error(plan, str(e))

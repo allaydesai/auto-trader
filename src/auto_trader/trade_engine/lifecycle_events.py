@@ -72,9 +72,10 @@ class TradeOrchestrationConfig:
         enable_risk_validation: bool = True,
         enable_lifecycle_logging: bool = True,
         event_handler_timeout_seconds: int = 30,
+        minimum_confidence_threshold: float = 0.7,
     ):
         """Initialize orchestration config.
-        
+
         Args:
             max_concurrent_trades: Maximum simultaneous trades
             signal_timeout_seconds: Signal processing timeout
@@ -83,6 +84,7 @@ class TradeOrchestrationConfig:
             enable_risk_validation: Enable risk management validation
             enable_lifecycle_logging: Enable detailed lifecycle logging
             event_handler_timeout_seconds: Timeout for event handlers
+            minimum_confidence_threshold: Minimum signal confidence (0.0-1.0)
         """
         self.max_concurrent_trades = max_concurrent_trades
         self.signal_timeout_seconds = signal_timeout_seconds
@@ -91,6 +93,7 @@ class TradeOrchestrationConfig:
         self.enable_risk_validation = enable_risk_validation
         self.enable_lifecycle_logging = enable_lifecycle_logging
         self.event_handler_timeout_seconds = event_handler_timeout_seconds
+        self.minimum_confidence_threshold = minimum_confidence_threshold
         
         # Validate configuration
         self._validate_config()

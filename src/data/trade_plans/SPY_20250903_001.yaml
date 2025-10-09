@@ -10,10 +10,18 @@ entry_function:
   parameters:
     threshold: '634.95'
   last_evaluated: null
-exit_function:
+stop_loss_function:
   function_type: trailing_stop
   timeframe: 15min
-  parameters: {}
+  parameters:
+    trail_percent: 2.0
+    activation_threshold: 1.0
+  last_evaluated: null
+take_profit_function:
+  function_type: close_below
+  timeframe: 15min
+  parameters:
+    threshold: '629.20'
   last_evaluated: null
 status: awaiting_entry
 calculated_position_size: 10

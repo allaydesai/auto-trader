@@ -223,7 +223,7 @@ class ExecutionFunctionConfig(BaseModel):
     )
     enabled: bool = Field(True, description="Whether function is active")
     lookback_bars: int = Field(
-        20, ge=1, le=1000, description="Number of historical bars needed"
+        20, ge=0, le=1000, description="Number of historical bars needed"
     )
 
     def get_param(self, key: str, default: Any = None) -> Any:

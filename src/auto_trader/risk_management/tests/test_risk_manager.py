@@ -121,10 +121,15 @@ class TestTradePlanValidation:
                     timeframe="15min",
                     parameters={"threshold": 180.00},
                 ),
-                exit_function=ExecutionFunction(
-                    function_type="stop_loss_take_profit",
+                stop_loss_function=ExecutionFunction(
+                    function_type="close_below",
                     timeframe="15min",
-                    parameters={},
+                    parameters={"threshold": 180.00},
+                ),
+                take_profit_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="15min",
+                    parameters={"threshold": 190.00},
                 ),
             )
             # If we reach here, the TradePlan validation didn't catch it
@@ -214,10 +219,15 @@ class TestPositionSizeCalculation:
                 timeframe="15min",
                 parameters={"threshold": 180.00},
             ),
-            exit_function=ExecutionFunction(
-                function_type="stop_loss_take_profit",
+            stop_loss_function=ExecutionFunction(
+                function_type="close_below",
                 timeframe="15min",
-                parameters={},
+                parameters={"threshold": 175.00},
+            ),
+            take_profit_function=ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": 190.00},
             ),
         )
         

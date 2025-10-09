@@ -128,9 +128,15 @@ class TestSavePlanToYaml:
                 function_type="close_above",
                 timeframe="15min"
             ),
-            "exit_function": ExecutionFunction(
-                function_type="stop_loss_take_profit",
-                timeframe="15min"
+            "stop_loss_function": ExecutionFunction(
+                function_type="close_below",
+                timeframe="15min",
+                parameters={"threshold": "178.00"}
+            ),
+            "take_profit_function": ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": "185.00"}
             ),
         }
     
@@ -207,7 +213,7 @@ class TestSavePlanToYaml:
             # Check all required fields are present in the file
             required_fields = [
                 "plan_id", "symbol", "entry_level", "stop_loss", 
-                "take_profit", "risk_category", "entry_function", "exit_function"
+                "take_profit", "risk_category", "entry_function", "stop_loss_function", "take_profit_function"
             ]
             
             for field in required_fields:

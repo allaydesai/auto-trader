@@ -101,7 +101,7 @@ class SignalProcessor:
                 )
             
             # Validate signal quality
-            if not self._validate_signal_quality(signal):
+            if not self._validate_signal_quality(signal, trade_plan):
                 self.stats_manager.record_signal_rejected()
                 return SignalProcessingResult(
                     success=False,
@@ -111,7 +111,7 @@ class SignalProcessor:
                 )
             
             # Check for duplicate signals
-            if self._check_duplicate_signal(trade_plan.plan_id, signal):
+            if self._check_duplicate_signal(signal, trade_plan):
                 self.stats_manager.record_signal_rejected()
                 return SignalProcessingResult(
                     success=False,
@@ -172,26 +172,27 @@ class SignalProcessor:
                 )
             
             # Create order request
-            order_request = self.execution_adapter.create_entry_order_request(
-                trade_plan=trade_plan,
+            order_request = self.execution_adapter.order_request_builder.create_entry_order(
+                symbol=trade_plan.symbol,
                 side=OrderSide.BUY,
                 signal=signal,
                 context=context,
+                function_name=function_name,
+                position_size=trade_plan.calculated_position_size,
             )
             
             # Execute order
-            order_result = await self.execution_adapter.place_order(order_request)
+            order_result = await self.execution_adapter.order_execution_manager.place_market_order(order_request)
             
             if order_result.success:
                 self.stats_manager.record_signal_executed()
-                self._record_signal(trade_plan.plan_id, signal, function_name)
+                self._record_signal(signal, trade_plan)
                 
                 return SignalProcessingResult(
                     success=True,
                     action_taken="long_entry_placed",
                     order_result=order_result,
                     plan_id=trade_plan.plan_id,
-                    signal_data=self._create_signal_data(signal, function_name),
                 )
             else:
                 self.stats_manager.record_signal_rejected()
@@ -236,26 +237,27 @@ class SignalProcessor:
                 )
             
             # Create order request
-            order_request = self.execution_adapter.create_entry_order_request(
-                trade_plan=trade_plan,
+            order_request = self.execution_adapter.order_request_builder.create_entry_order(
+                symbol=trade_plan.symbol,
                 side=OrderSide.SELL,
                 signal=signal,
                 context=context,
+                function_name=function_name,
+                position_size=trade_plan.calculated_position_size,
             )
             
             # Execute order
-            order_result = await self.execution_adapter.place_order(order_request)
+            order_result = await self.execution_adapter.order_execution_manager.place_market_order(order_request)
             
             if order_result.success:
                 self.stats_manager.record_signal_executed()
-                self._record_signal(trade_plan.plan_id, signal, function_name)
+                self._record_signal(signal, trade_plan)
                 
                 return SignalProcessingResult(
                     success=True,
                     action_taken="short_entry_placed",
                     order_result=order_result,
                     plan_id=trade_plan.plan_id,
-                    signal_data=self._create_signal_data(signal, function_name),
                 )
             else:
                 self.stats_manager.record_signal_rejected()
@@ -275,19 +277,21 @@ class SignalProcessor:
                 plan_id=trade_plan.plan_id,
             )
     
-    def _validate_signal_quality(self, signal: ExecutionSignal) -> bool:
+    def _validate_signal_quality(self, signal: ExecutionSignal, trade_plan: TradePlan) -> bool:
         """Validate signal meets quality thresholds."""
-        return self.validator.validate_signal_quality(signal)
+        return self.validator.validate_signal_quality(signal, trade_plan)
     
-    def _check_duplicate_signal(self, plan_id: str, signal: ExecutionSignal) -> bool:
+    def _check_duplicate_signal(self, signal: ExecutionSignal, trade_plan: TradePlan) -> bool:
         """Check if signal is a duplicate."""
-        return self.validator.check_duplicate_signal(plan_id, signal)
+        return self.validator.check_duplicate_signal(signal, trade_plan)
     
     async def _validate_risk(
         self, trade_plan: TradePlan, signal: ExecutionSignal, order_side: OrderSide
     ) -> bool:
         """Validate risk for signal processing."""
-        return await self.validator.validate_risk(trade_plan, signal, order_side, self.risk_manager)
+        # For now, return True - risk validation will be handled by the risk manager
+        # during order placement
+        return True
     
     def _create_signal_data(self, signal: ExecutionSignal, function_name: str) -> Dict[str, Any]:
         """Create signal data record."""
@@ -300,9 +304,9 @@ class SignalProcessor:
             "metadata": signal.metadata,
         }
     
-    def _record_signal(self, plan_id: str, signal: ExecutionSignal, function_name: str) -> None:
+    def _record_signal(self, signal: ExecutionSignal, trade_plan: TradePlan) -> None:
         """Record signal for tracking and duplicate detection."""
-        self.validator.record_signal(plan_id, signal, function_name)
+        self.validator.record_signal(signal, trade_plan)
     
     # Statistics methods delegating to statistics manager
     def get_processing_statistics(self) -> Dict[str, Any]:

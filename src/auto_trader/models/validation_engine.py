@@ -184,8 +184,9 @@ class ValidationEngine:
         
         # Check required fields
         required_fields = {
-            "plan_id", "symbol", "entry_level", "stop_loss", 
-            "take_profit", "risk_category", "entry_function", "exit_function"
+            "plan_id", "symbol", "entry_level", "stop_loss",
+            "take_profit", "risk_category", "entry_function",
+            "stop_loss_function", "take_profit_function"
         }
         
         missing_fields = required_fields - set(plan_data.keys())
@@ -346,7 +347,7 @@ class ValidationEngine:
     
     def _validate_execution_functions(self, plan_data: Dict[str, Any], errors: List[TradePlanValidationError], plan_index: int) -> None:
         """Validate execution function fields."""
-        function_fields = ["entry_function", "exit_function"]
+        function_fields = ["entry_function", "stop_loss_function", "take_profit_function"]
         
         for field in function_fields:
             func_data = plan_data.get(field)

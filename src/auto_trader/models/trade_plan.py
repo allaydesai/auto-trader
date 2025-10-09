@@ -124,9 +124,13 @@ class TradePlan(BaseModel):
         ...,
         description="Entry trigger logic",
     )
-    exit_function: ExecutionFunction = Field(
+    stop_loss_function: ExecutionFunction = Field(
         ...,
-        description="Exit trigger logic",
+        description="Stop loss exit trigger logic",
+    )
+    take_profit_function: ExecutionFunction = Field(
+        ...,
+        description="Take profit exit trigger logic",
     )
     status: TradePlanStatus = Field(
         default=TradePlanStatus.AWAITING_ENTRY,

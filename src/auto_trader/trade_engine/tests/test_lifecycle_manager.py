@@ -36,10 +36,15 @@ def sample_trade_plan():
             timeframe="15min",
             parameters={"threshold": "180.50"},
         ),
-        exit_function=ExecutionFunction(
-            function_type="stop_loss_take_profit",
+        stop_loss_function=ExecutionFunction(
+            function_type="close_below",
             timeframe="15min",
-            parameters={"stop_loss": "178.00", "take_profit": "185.00"},
+            parameters={"threshold": "178.00"},
+        ),
+        take_profit_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": "185.00"},
         ),
         status=TradePlanStatus.AWAITING_ENTRY,
     )
@@ -76,10 +81,15 @@ def create_test_trade_plan(plan_id: str, symbol: str = "AAPL", status: TradePlan
             timeframe="15min",
             parameters={"threshold": "180.00"},
         ),
-        exit_function=ExecutionFunction(
-            function_type="stop_loss_take_profit",
+        stop_loss_function=ExecutionFunction(
+            function_type="close_below",
             timeframe="15min",
-            parameters={"stop_loss": "178.00", "take_profit": "185.00"},
+            parameters={"threshold": "178.00"},
+        ),
+        take_profit_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": "185.00"},
         ),
         status=status,
     )

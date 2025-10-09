@@ -30,10 +30,16 @@ entry_function:
   timeframe: "15min"
   parameters:
     threshold: 180.50
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 178.00
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 """
     
     def test_valid_yaml_validation(self, engine, valid_yaml_content):
@@ -155,10 +161,16 @@ symbol: "AAPL"
     function_type: "close_above"
     timeframe: "15min"
     parameters: {}
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "1min"
-    parameters: {}
+    parameters:
+      threshold: 178.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "1min"
+    parameters:
+      threshold: 185.00
 
 - plan_id: "AAPL_001"  # Duplicate ID
   symbol: "MSFT"
@@ -170,10 +182,16 @@ symbol: "AAPL"
     function_type: "close_below"
     timeframe: "30min"
     parameters: {}
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "1min"
-    parameters: {}
+    parameters:
+      threshold: 295.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "1min"
+    parameters:
+      threshold: 310.00
 """
         result = engine.validate_yaml_content(yaml_with_duplicates)
         
@@ -193,10 +211,16 @@ symbol: "AAPL"
     function_type: "close_above"
     timeframe: "15min"
     parameters: {}
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "1min"
-    parameters: {}
+    parameters:
+      threshold: 178.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "1min"
+    parameters:
+      threshold: 185.00
 
 - plan_id: "MSFT_001"
   symbol: "MSFT"
@@ -208,10 +232,16 @@ symbol: "AAPL"
     function_type: "close_below"
     timeframe: "30min"
     parameters: {}
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "1min"
-    parameters: {}
+    parameters:
+      threshold: 295.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "1min"
+    parameters:
+      threshold: 310.00
 """
         result = engine.validate_yaml_content(multiple_plans_yaml)
         
@@ -280,10 +310,16 @@ entry_function:
   function_type: "close_above"
   timeframe: "15min"
   parameters: "invalid_parameters"  # Should be object, not string
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 178.00
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 """
         result = engine.validate_yaml_content(yaml_with_invalid_function)
         
@@ -304,10 +340,16 @@ entry_function:
   function_type: "close_above"
   timeframe: "15min"
   parameters: {}
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 180.50
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 """
         result = engine.validate_yaml_content(yaml_with_invalid_prices)
         
@@ -318,7 +360,7 @@ exit_function:
         """Test that all errors are collected, not just the first one."""
         yaml_with_multiple_errors = """
 plan_id: "invalid-plan-id"  # Invalid format
-symbol: "aapl123"           # Invalid symbol  
+symbol: "aapl123"           # Invalid symbol
 entry_level: -180.50        # Negative price
 stop_loss: 178.123456       # Too many decimals
 take_profit: 185.00
@@ -327,10 +369,16 @@ entry_function:
   function_type: "invalid_function"  # Invalid function
   timeframe: "invalid_time"          # Invalid timeframe
   parameters: {}
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 178.123456
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 """
         result = engine.validate_yaml_content(yaml_with_multiple_errors)
         

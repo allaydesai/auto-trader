@@ -67,12 +67,20 @@ def sample_trade_plan():
             parameters={"threshold": 180.50},
             last_evaluated=None
         ),
-        
-        # Exit function: trigger when price closes below 178.00 on 15min bar
-        exit_function=PlanExecutionFunction(
+
+        # Stop loss function: trigger when price closes below 178.00 on 15min bar
+        stop_loss_function=PlanExecutionFunction(
             function_type="close_below",
             timeframe="15min",
             parameters={"threshold": 178.00},
+            last_evaluated=None
+        ),
+
+        # Take profit function: trigger when price closes above 185.00 on 15min bar
+        take_profit_function=PlanExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": 185.00},
             last_evaluated=None
         ),
         
@@ -129,6 +137,9 @@ def mock_risk_manager():
     risk_manager.portfolio_tracker.add_position = Mock()
     risk_manager.portfolio_tracker.remove_position = Mock()
     risk_manager.portfolio_tracker.get_current_portfolio_risk = Mock(return_value=Decimal("0.0"))
+
+    # Mock remove_position method for cleanup
+    risk_manager.remove_position = AsyncMock()
     
     # Mock validation
     risk_manager.validate_trade_plan = Mock(return_value=Mock(
@@ -155,23 +166,38 @@ def mock_order_execution_manager():
     async def mock_place_order(order_request):
         """Mock order placement that tracks calls."""
         manager.orders_placed.append(order_request)
-        
+
+        # Handle both dict and object order requests
+        if isinstance(order_request, dict):
+            trade_plan_id = order_request.get("trade_plan_id")
+            symbol = order_request.get("symbol")
+            side = order_request.get("side")
+            quantity = order_request.get("quantity", order_request.get("calculated_position_size"))
+            order_type = order_request.get("order_type", "MKT")
+        else:
+            trade_plan_id = order_request.trade_plan_id
+            symbol = order_request.symbol
+            side = order_request.side
+            quantity = order_request.calculated_position_size
+            order_type = order_request.order_type
+
         return OrderResult(
             success=True,
             order_id=f"ORDER_{len(manager.orders_placed)}",
-            trade_plan_id=order_request.trade_plan_id,
+            trade_plan_id=trade_plan_id,
             order_status=OrderStatus.FILLED,
-            symbol=order_request.symbol,
-            side=order_request.side,
-            quantity=order_request.quantity,
-            order_type=order_request.order_type,
-            fill_price=Decimal("180.75"),
-            fill_time=datetime.now(UTC)
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            order_type=order_type,
+            filled_quantity=quantity,
+            average_fill_price=Decimal("180.75")
         )
     
     manager.place_market_order = AsyncMock(side_effect=mock_place_order)
     manager.place_bracket_order = AsyncMock(side_effect=mock_place_order)
-    
+    manager.place_order = AsyncMock(side_effect=mock_place_order)
+
     return manager
 
 
@@ -199,7 +225,8 @@ async def orchestrator(
         signal_timeout_seconds=30,
         state_save_interval_seconds=60,
         enable_position_tracking=True,
-        enable_risk_validation=True
+        enable_risk_validation=True,
+        minimum_confidence_threshold=0.5  # Lower threshold for testing
     )
     
     orchestrator = TradeOrchestrator(
@@ -526,10 +553,16 @@ class TestCompleteTradeLifecycle:
                 parameters={"threshold": 182.00},
                 last_evaluated=None
             ),
-            exit_function=PlanExecutionFunction(
+            stop_loss_function=PlanExecutionFunction(
                 function_type="close_below",
                 timeframe="15min",
                 parameters={"threshold": 180.00},
+                last_evaluated=None
+            ),
+            take_profit_function=PlanExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": 185.00},
                 last_evaluated=None
             ),
             status=TradePlanStatus.AWAITING_ENTRY,

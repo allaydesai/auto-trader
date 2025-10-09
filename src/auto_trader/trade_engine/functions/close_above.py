@@ -48,6 +48,10 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
         Returns:
             True if valid
         """
+        # Accept both 'threshold' and 'threshold_price' for backward compatibility
+        if "threshold" in params and "threshold_price" not in params:
+            params["threshold_price"] = params["threshold"]
+
         # Check required threshold_price
         if not self.validate_price_parameter(params, "threshold_price"):
             logger.error("Invalid or missing threshold_price parameter")

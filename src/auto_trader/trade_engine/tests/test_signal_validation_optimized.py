@@ -22,13 +22,19 @@ def create_test_trade_plan(plan_id: str = "TEST_001") -> TradePlan:
         timeframe="15min",
         parameters={"threshold": 150.0}
     )
-    
-    exit_function = ExecutionFunction(
-        function_type="close_below", 
+
+    stop_loss_function = ExecutionFunction(
+        function_type="close_below",
         timeframe="15min",
         parameters={"threshold": 145.0}
     )
-    
+
+    take_profit_function = ExecutionFunction(
+        function_type="close_above",
+        timeframe="15min",
+        parameters={"threshold": 155.0}
+    )
+
     return TradePlan(
         plan_id=plan_id,
         symbol="AAPL",
@@ -39,7 +45,8 @@ def create_test_trade_plan(plan_id: str = "TEST_001") -> TradePlan:
         risk_category=RiskCategory.NORMAL,
         status=TradePlanStatus.AWAITING_ENTRY,
         entry_function=entry_function,
-        exit_function=exit_function
+        stop_loss_function=stop_loss_function,
+        take_profit_function=take_profit_function
     )
 
 

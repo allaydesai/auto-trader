@@ -1,6 +1,7 @@
 """Component coordination logic for trade orchestration."""
 
 from typing import Dict, List, Optional
+from datetime import datetime, UTC
 from loguru import logger
 
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
@@ -21,12 +22,12 @@ class ComponentCoordinator:
         
     async def load_active_trade_plans(self) -> Dict[str, TradePlan]:
         """Load all active trade plans from storage.
-        
+
         Returns:
             Dictionary of active trade plans by plan_id
         """
         try:
-            all_plans = self.trade_plan_loader.load_all_plans()
+            all_plans = await self.trade_plan_loader.load_all_plans()
             
             # Filter for active plans
             active_plans = {
@@ -156,32 +157,36 @@ class PlanStatusTracker:
         self.status_history: Dict[str, List[Dict]] = {}
         
     def record_status_change(
-        self, 
-        plan_id: str, 
-        old_status: TradePlanStatus, 
+        self,
+        plan_id: str,
+        old_status: TradePlanStatus,
         new_status: TradePlanStatus,
         context: Optional[str] = None
     ) -> None:
         """Record a plan status change.
-        
+
         Args:
             plan_id: Plan identifier
-            old_status: Previous status
-            new_status: New status
+            old_status: Previous status (can be enum or string due to use_enum_values)
+            new_status: New status (can be enum or string due to use_enum_values)
             context: Optional context for the change
         """
         if plan_id not in self.status_history:
             self.status_history[plan_id] = []
-            
+
+        # Handle both enum and string values (use_enum_values=True in TradePlan)
+        old_status_value = old_status.value if hasattr(old_status, 'value') else old_status
+        new_status_value = new_status.value if hasattr(new_status, 'value') else new_status
+
         self.status_history[plan_id].append({
-            "old_status": old_status.value,
-            "new_status": new_status.value,
+            "old_status": old_status_value,
+            "new_status": new_status_value,
             "context": context,
-            "timestamp": logger._core.now(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
-        
+
         logger.debug(
-            f"Plan {plan_id} status change: {old_status.value} -> {new_status.value}"
+            f"Plan {plan_id} status change: {old_status_value} -> {new_status_value}"
         )
     
     def get_plan_history(self, plan_id: str) -> List[Dict]:

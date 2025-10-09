@@ -61,10 +61,15 @@ def sample_trade_plan():
             timeframe="5min",
             parameters={"threshold": 181.00}
         ),
-        exit_function=ExecutionFunction(
+        stop_loss_function=ExecutionFunction(
             function_type="close_below",
             timeframe="5min",
             parameters={"threshold": 179.00}
+        ),
+        take_profit_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="5min",
+            parameters={"threshold": 185.00}
         )
     )
 
@@ -254,10 +259,15 @@ class TestHistoricalDataFetcher:
                 timeframe="5min",
                 parameters={"threshold": 180.00}
             ),
-            exit_function=ExecutionFunction(
+            stop_loss_function=ExecutionFunction(
                 function_type="close_above",
                 timeframe="5min",
                 parameters={"threshold": 182.00}
+            ),
+            take_profit_function=ExecutionFunction(
+                function_type="close_below",
+                timeframe="5min",
+                parameters={"threshold": 176.00}
             )
         )
         

@@ -64,10 +64,15 @@ def sample_plan():
             "timeframe": "15min",
             "parameters": {"threshold": "180.50"}
         },
-        exit_function={
-            "function_type": "stop_loss_take_profit",
+        stop_loss_function={
+            "function_type": "close_below",
             "timeframe": "1min",
-            "parameters": {}
+            "parameters": {"threshold": "178.00"}
+        },
+        take_profit_function={
+            "function_type": "close_above",
+            "timeframe": "1min",
+            "parameters": {"threshold": "185.00"}
         },
     )
 
@@ -679,7 +684,8 @@ class TestCalculateAllPlanRisks:
             risk_category=RiskCategory.NORMAL,
             status=TradePlanStatus.AWAITING_ENTRY,
             entry_function={"function_type": "close_above", "parameters": {"threshold": "180.50"}, "timeframe": "15min"},
-            exit_function={"function_type": "stop_loss_take_profit", "parameters": {}, "timeframe": "1min"}
+            stop_loss_function={"function_type": "close_below", "parameters": {"threshold": "178.00"}, "timeframe": "1min"},
+            take_profit_function={"function_type": "close_above", "parameters": {"threshold": "185.00"}, "timeframe": "1min"}
         )
         
         open_plan = TradePlan(
@@ -691,7 +697,8 @@ class TestCalculateAllPlanRisks:
             risk_category=RiskCategory.NORMAL,
             status=TradePlanStatus.POSITION_OPEN,
             entry_function={"function_type": "close_above", "parameters": {"threshold": "320.00"}, "timeframe": "15min"},
-            exit_function={"function_type": "stop_loss_take_profit", "parameters": {}, "timeframe": "1min"}
+            stop_loss_function={"function_type": "close_below", "parameters": {"threshold": "315.00"}, "timeframe": "1min"},
+            take_profit_function={"function_type": "close_above", "parameters": {"threshold": "330.00"}, "timeframe": "1min"}
         )
         
         completed_plan = TradePlan(
@@ -703,7 +710,8 @@ class TestCalculateAllPlanRisks:
             risk_category=RiskCategory.NORMAL,
             status=TradePlanStatus.COMPLETED,  # Should be excluded from active risk
             entry_function={"function_type": "close_above", "parameters": {"threshold": "250.00"}, "timeframe": "15min"},
-            exit_function={"function_type": "stop_loss_take_profit", "parameters": {}, "timeframe": "1min"}
+            stop_loss_function={"function_type": "close_below", "parameters": {"threshold": "245.00"}, "timeframe": "1min"},
+            take_profit_function={"function_type": "close_above", "parameters": {"threshold": "260.00"}, "timeframe": "1min"}
         )
         
         plans = [awaiting_plan, open_plan, completed_plan]
@@ -780,7 +788,8 @@ class TestCalculateAllPlanRisks:
             risk_category=RiskCategory.NORMAL,
             status=TradePlanStatus.AWAITING_ENTRY,
             entry_function={"function_type": "close_above", "parameters": {"threshold": "100.00"}, "timeframe": "15min"},
-            exit_function={"function_type": "stop_loss_take_profit", "parameters": {}, "timeframe": "1min"}
+            stop_loss_function={"function_type": "close_below", "parameters": {"threshold": "95.00"}, "timeframe": "1min"},
+            take_profit_function={"function_type": "close_above", "parameters": {"threshold": "105.00"}, "timeframe": "1min"}
         )
         
         plans = [plan]
@@ -822,7 +831,8 @@ class TestCalculateAllPlanRisks:
             risk_category=RiskCategory.NORMAL,
             status=TradePlanStatus.AWAITING_ENTRY,
             entry_function={"function_type": "close_above", "parameters": {"threshold": "180.50"}, "timeframe": "15min"},
-            exit_function={"function_type": "stop_loss_take_profit", "parameters": {}, "timeframe": "1min"}
+            stop_loss_function={"function_type": "close_below", "parameters": {"threshold": "178.00"}, "timeframe": "1min"},
+            take_profit_function={"function_type": "close_above", "parameters": {"threshold": "185.00"}, "timeframe": "1min"}
         )
         
         plan2 = TradePlan(
@@ -834,7 +844,8 @@ class TestCalculateAllPlanRisks:
             risk_category=RiskCategory.NORMAL,
             status=TradePlanStatus.AWAITING_ENTRY,
             entry_function={"function_type": "close_above", "parameters": {"threshold": "180.50"}, "timeframe": "15min"},
-            exit_function={"function_type": "stop_loss_take_profit", "parameters": {}, "timeframe": "1min"}
+            stop_loss_function={"function_type": "close_below", "parameters": {"threshold": "178.00"}, "timeframe": "1min"},
+            take_profit_function={"function_type": "close_above", "parameters": {"threshold": "185.00"}, "timeframe": "1min"}
         )
         
         plans = [plan1, plan2]

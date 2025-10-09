@@ -50,16 +50,18 @@ class OrderRequestBuilder:
         signal: ExecutionSignal,
         context: ExecutionContext,
         function_name: str,
+        position_size: Optional[int] = None,
     ) -> Optional[OrderRequest]:
         """Create order request for entry signals.
-        
+
         Args:
             symbol: Trading symbol
             side: Order side (BUY/SELL)
             signal: Execution signal
             context: Execution context
             function_name: Name of generating function
-            
+            position_size: Position size (if pre-calculated)
+
         Returns:
             OrderRequest or None if cannot create
         """
@@ -90,6 +92,7 @@ class OrderRequestBuilder:
                 stop_loss_price=stop_loss_price,
                 take_profit_price=take_profit_price,
                 risk_category=risk_category,
+                calculated_position_size=position_size,
                 notes=f"Entry triggered by {function_name}: {signal.reasoning}",
             )
             

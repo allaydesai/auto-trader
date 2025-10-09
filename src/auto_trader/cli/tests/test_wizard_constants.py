@@ -66,13 +66,14 @@ class TestWizardConstants:
         """Test execution function types have correct structure."""
         assert isinstance(ENTRY_FUNCTION_TYPES, list)
         assert isinstance(EXIT_FUNCTION_TYPES, list)
-        
+
         # Check entry function types
         assert "close_above" in ENTRY_FUNCTION_TYPES
         assert "close_below" in ENTRY_FUNCTION_TYPES
-        
-        # Check exit function types
-        assert "stop_loss_take_profit" in EXIT_FUNCTION_TYPES
+
+        # Check exit function types (can now use any of the execution function types)
+        assert "close_above" in EXIT_FUNCTION_TYPES
+        assert "close_below" in EXIT_FUNCTION_TYPES
         assert "trailing_stop" in EXIT_FUNCTION_TYPES
     
     def test_default_execution_function_types_valid(self):
@@ -80,7 +81,7 @@ class TestWizardConstants:
         assert DEFAULT_ENTRY_FUNCTION_TYPE in ENTRY_FUNCTION_TYPES
         assert DEFAULT_EXIT_FUNCTION_TYPE in EXIT_FUNCTION_TYPES
         assert DEFAULT_ENTRY_FUNCTION_TYPE == "close_above"
-        assert DEFAULT_EXIT_FUNCTION_TYPE == "stop_loss_take_profit"
+        assert DEFAULT_EXIT_FUNCTION_TYPE == "close_below"
     
     def test_no_hardcoded_magic_numbers(self):
         """Test that all constants are properly defined to avoid magic numbers."""

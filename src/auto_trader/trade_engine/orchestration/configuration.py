@@ -59,13 +59,13 @@ class ConfigurationManager:
     
     def get_signal_processor_config(self) -> dict:
         """Get configuration for signal processor.
-        
+
         Returns:
             Signal processor configuration dictionary
         """
         return {
             "enable_risk_validation": self.config.enable_risk_validation,
-            "minimum_confidence_threshold": 0.7,  # Default value
+            "minimum_confidence_threshold": self.config.minimum_confidence_threshold,
             "enable_signal_filtering": True,  # Default value
         }
     

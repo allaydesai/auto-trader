@@ -171,11 +171,10 @@ class ExitProcessor:
                 return ExitProcessingResult(
                     success=True,
                     action_taken="exit_order_placed",
-                    order_id=order_result.order_id,
-                    cancelled_order_ids=cancelled_orders,
+                    order_result=order_result,
+                    orders_cancelled=cancelled_orders,
                     position_id=position.position_id,
                     plan_id=trade_plan.plan_id,
-                    realized_pnl=getattr(order_result, "realized_pnl", None),
                     position_closed=(order_result.filled_quantity == position.quantity),
                 )
             else:
@@ -253,10 +252,9 @@ class ExitProcessor:
                 return ExitProcessingResult(
                     success=True,
                     action_taken="stop_modified",
-                    order_id=order_result.order_id,
+                    order_result=order_result,
                     position_id=position.position_id,
                     plan_id=trade_plan.plan_id,
-                    stop_price=new_stop_price,
                 )
             else:
                 logger.error(

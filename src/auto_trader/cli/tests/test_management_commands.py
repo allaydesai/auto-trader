@@ -49,10 +49,15 @@ def sample_plan_data():
             "timeframe": "15min",
             "parameters": {"threshold": "180.50"}
         },
-        "exit_function": {
-            "function_type": "stop_loss_take_profit",
+        "stop_loss_function": {
+            "function_type": "close_below",
             "timeframe": "1min",
-            "parameters": {}
+            "parameters": {"threshold": "178.00"}
+        },
+        "take_profit_function": {
+            "function_type": "close_above",
+            "timeframe": "1min",
+            "parameters": {"threshold": "185.00"}
         },
     }
 
@@ -687,9 +692,14 @@ class TestErrorHandlingInCommands:
                 'parameters': {'threshold': '180.50'},
                 'timeframe': '15min'
             },
-            'exit_function': {
-                'function_type': 'stop_loss_take_profit',
-                'parameters': {},
+            'stop_loss_function': {
+                'function_type': 'close_below',
+                'parameters': {'threshold': '178.00'},
+                'timeframe': '1min'
+            },
+            'take_profit_function': {
+                'function_type': 'close_above',
+                'parameters': {'threshold': '185.00'},
                 'timeframe': '1min'
             }
         }
@@ -735,9 +745,14 @@ class TestErrorHandlingInCommands:
                 'parameters': {'threshold': '180.50'},
                 'timeframe': '15min'
             },
-            'exit_function': {
-                'function_type': 'stop_loss_take_profit',
-                'parameters': {},
+            'stop_loss_function': {
+                'function_type': 'close_below',
+                'parameters': {'threshold': '178.00'},
+                'timeframe': '1min'
+            },
+            'take_profit_function': {
+                'function_type': 'close_above',
+                'parameters': {'threshold': '185.00'},
                 'timeframe': '1min'
             }
         }

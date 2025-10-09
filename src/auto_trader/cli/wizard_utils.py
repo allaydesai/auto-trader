@@ -415,19 +415,19 @@ class WizardFieldCollector:
             except InvalidOperation:
                 self.console.print("[red]❌ Invalid number format.[/red]")
     
-    def collect_execution_functions(self) -> Tuple[ExecutionFunction, ExecutionFunction]:
+    def collect_execution_functions(self) -> Tuple[ExecutionFunction, ExecutionFunction, ExecutionFunction]:
         """
-        Collect entry and exit execution functions.
-        
+        Collect entry, stop loss, and take profit execution functions.
+
         Returns:
-            Tuple of (entry_function, exit_function)
+            Tuple of (entry_function, stop_loss_function, take_profit_function)
         """
         # Available timeframes from constants
         timeframes = AVAILABLE_TIMEFRAMES
         default_timeframe = DEFAULT_TIMEFRAME
-        
+
         self.console.print("\n[bold]⚙️  Execution Functions:[/bold]")
-        
+
         # Entry function
         self.console.print("\n[cyan]Entry Function:[/cyan]")
         entry_type = Prompt.ask(
@@ -435,48 +435,70 @@ class WizardFieldCollector:
             choices=ENTRY_FUNCTION_TYPES,
             default=DEFAULT_ENTRY_FUNCTION_TYPE
         )
-        
+
         entry_timeframe = Prompt.ask(
             "Entry timeframe",
             choices=timeframes,
             default=default_timeframe
         )
-        
+
         entry_function = ExecutionFunction(
             function_type=entry_type,
             timeframe=entry_timeframe,
             parameters={"threshold": self.collected_data.get("entry_level", Decimal("0"))}
         )
-        
-        # Exit function
-        self.console.print("\n[cyan]Exit Function:[/cyan]")
-        exit_type = Prompt.ask(
-            "Exit trigger",
+
+        # Stop loss exit function
+        self.console.print("\n[cyan]Stop Loss Exit Function:[/cyan]")
+        stop_loss_type = Prompt.ask(
+            "Stop loss trigger",
             choices=EXIT_FUNCTION_TYPES,
             default=DEFAULT_EXIT_FUNCTION_TYPE
         )
-        
-        exit_timeframe = Prompt.ask(
-            "Exit timeframe",
+
+        stop_loss_timeframe = Prompt.ask(
+            "Stop loss timeframe",
             choices=timeframes,
             default=default_timeframe
         )
-        
-        exit_function = ExecutionFunction(
-            function_type=exit_type,
-            timeframe=exit_timeframe,
-            parameters={}
+
+        stop_loss_function = ExecutionFunction(
+            function_type=stop_loss_type,
+            timeframe=stop_loss_timeframe,
+            parameters={"threshold": self.collected_data.get("stop_loss", Decimal("0"))}
         )
-        
+
+        # Take profit exit function
+        self.console.print("\n[cyan]Take Profit Exit Function:[/cyan]")
+        take_profit_type = Prompt.ask(
+            "Take profit trigger",
+            choices=EXIT_FUNCTION_TYPES,
+            default=DEFAULT_EXIT_FUNCTION_TYPE
+        )
+
+        take_profit_timeframe = Prompt.ask(
+            "Take profit timeframe",
+            choices=timeframes,
+            default=default_timeframe
+        )
+
+        take_profit_function = ExecutionFunction(
+            function_type=take_profit_type,
+            timeframe=take_profit_timeframe,
+            parameters={"threshold": self.collected_data.get("take_profit", Decimal("0"))}
+        )
+
         logger.info(
             "Execution functions collected",
             entry_type=entry_type,
             entry_timeframe=entry_timeframe,
-            exit_type=exit_type,
-            exit_timeframe=exit_timeframe
+            stop_loss_type=stop_loss_type,
+            stop_loss_timeframe=stop_loss_timeframe,
+            take_profit_type=take_profit_type,
+            take_profit_timeframe=take_profit_timeframe
         )
-        
-        return entry_function, exit_function
+
+        return entry_function, stop_loss_function, take_profit_function
     
     
     def _display_portfolio_risk_status(self, portfolio_check: RiskCheck) -> None:

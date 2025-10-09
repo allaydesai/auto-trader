@@ -57,13 +57,9 @@ class PositionCleanupManager:
             # Remove position from risk registry if fully closed
             if position_closed:
                 await self._remove_position_from_risk_registry(position, trade_plan)
-                
-                # Update trade plan status
-                await self.position_manager.update_trade_plan_status(
-                    trade_plan.plan_id,
-                    trade_plan.status.completed
-                )
-                
+
+                # Note: Trade plan status update is handled by orchestrator
+
                 processing_stats["positions_closed"] += 1
                 
                 logger.info(

@@ -335,11 +335,11 @@ def create_plan_interactive(
         )
         
         collected_target = field_collector.collect_take_profit(target)
-        entry_func, exit_func = field_collector.collect_execution_functions()
-        
+        entry_func, stop_loss_func, take_profit_func = field_collector.collect_execution_functions()
+
         # Generate plan ID with duplicate checking
         plan_id = generate_plan_id(collected_symbol, output_dir)
-        
+
         # Prepare complete plan data
         plan_data = {
             "plan_id": plan_id,
@@ -349,7 +349,8 @@ def create_plan_interactive(
             "take_profit": collected_target,
             "risk_category": collected_risk,
             "entry_function": entry_func,
-            "exit_function": exit_func,
+            "stop_loss_function": stop_loss_func,
+            "take_profit_function": take_profit_func,
             "calculated_position_size": position_size,
             "dollar_risk": dollar_risk,
         }

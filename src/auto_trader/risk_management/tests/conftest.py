@@ -135,10 +135,15 @@ def sample_trade_plan() -> TradePlan:
             timeframe="15min",
             parameters={"threshold": 180.00},
         ),
-        exit_function=ExecutionFunction(
-            function_type="stop_loss_take_profit",
+        stop_loss_function=ExecutionFunction(
+            function_type="close_below",
             timeframe="15min",
-            parameters={},
+            parameters={"threshold": 175.00},
+        ),
+        take_profit_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": 190.00},
         ),
         status=TradePlanStatus.AWAITING_ENTRY,
     )
@@ -159,10 +164,15 @@ def high_risk_trade_plan() -> TradePlan:
             timeframe="15min",
             parameters={"threshold": 250.00},
         ),
-        exit_function=ExecutionFunction(
-            function_type="stop_loss_take_profit",
+        stop_loss_function=ExecutionFunction(
+            function_type="close_below",
             timeframe="15min",
-            parameters={},
+            parameters={"threshold": 240.00},
+        ),
+        take_profit_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": 270.00},
         ),
         status=TradePlanStatus.AWAITING_ENTRY,
     )

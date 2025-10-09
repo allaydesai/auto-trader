@@ -309,7 +309,8 @@ class TemplateManager:
                 r'take_profit:',
                 r'risk_category:',
                 r'entry_function:',
-                r'exit_function:',
+                r'stop_loss_function:',
+                r'take_profit_function:',
             ]
             
             for pattern in required_patterns:

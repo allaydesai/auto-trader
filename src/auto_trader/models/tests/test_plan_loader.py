@@ -32,10 +32,16 @@ entry_function:
   timeframe: "15min"
   parameters:
     threshold: 180.50
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 178.00
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 status: "awaiting_entry"
 """
             single_plan_file = plans_dir / "single_plan.yaml"
@@ -54,10 +60,16 @@ status: "awaiting_entry"
     timeframe: "30min"
     parameters:
       threshold: 300.00
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "5min"
-    parameters: {}
+    parameters:
+      threshold: 295.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "5min"
+    parameters:
+      threshold: 310.00
   status: "awaiting_entry"
 
 - plan_id: "GOOGL_20250815_001"
@@ -71,11 +83,16 @@ status: "awaiting_entry"
     timeframe: "1h"
     parameters:
       threshold: 2500.00
-  exit_function:
+  stop_loss_function:
     function_type: "trailing_stop"
     timeframe: "5min"
     parameters:
       trail_percent: 2.0
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "5min"
+    parameters:
+      threshold: 2600.00
   status: "position_open"
 """
             multiple_plans_file = plans_dir / "multiple_plans.yaml"
@@ -281,10 +298,16 @@ entry_function:
   timeframe: "15min"
   parameters:
     threshold: 250.00
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 245.00
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 260.00
 """
         duplicate_file = temp_plans_dir / "duplicate.yaml"
         duplicate_file.write_text(duplicate_plan)

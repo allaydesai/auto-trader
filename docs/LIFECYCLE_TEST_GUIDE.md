@@ -37,30 +37,24 @@ PYTHONPATH=src uv run pytest \
     -v -s --tb=short
 ```
 
-## Expected Results (BEFORE Fix)
+## Test Status: ✅ ALL TESTS PASSING
 
 ### Test: `test_complete_lifecycle_entry_to_exit`
 
-**What should happen**:
+**What happens**:
 ```
 Phase 1: Plan loaded ✓
 Phase 2: Bar below threshold → No entry ✓
 Phase 3: Bar above threshold → Entry triggered ✓
 Phase 4: Bar above stop → No exit ✓
-Phase 5: Bar below stop → Exit triggered ❌ FAILS HERE
+Phase 5: Bar below stop → Exit triggered ✓ PASSES!
 ```
 
-**Why it fails**:
-```
-AssertionError: ❌ GAP #1 DETECTED: Expected COMPLETED, got POSITION_OPEN.
-This means exit function was never evaluated because position_plans
-are not included in process_market_data_event()!
-```
-
-**The problem**:
-- After entry, plan moves from `active_plans` to `position_plans`
-- `process_market_data_event()` only checks `active_plans`
-- Exit function is **never evaluated**
+**What was fixed**:
+- Bug #1: Mock field name (`quantity` → `calculated_position_size`)
+- Bug #2: Explicit `active_plans` cleanup when moving to `position_plans`
+- Gap #2: PositionEntry creation in position_state_manager
+- Multiple additional fixes for signal processing and exit handling
 
 ### Test Output Example
 
@@ -101,116 +95,25 @@ Current state:
   - In position_plans: True
 
 After processing exit bar:
-  - Plan status: position_open  ← STILL OPEN!
-  - In active_plans: False
-  - In position_plans: True
-  - Orders placed: 0  ← NO EXIT ORDER!
-
-FAILED: Expected COMPLETED, got position_open
-```
-
-## The Fix
-
-### Location
-`src/auto_trader/trade_engine/orchestration/core.py:148-184`
-
-### Change Required
-
-**Before (Buggy)**:
-```python
-async def process_market_data_event(self, bar_data: BarData) -> None:
-    """Process incoming market data and evaluate relevant trade plans."""
-    if not self.is_running:
-        return
-    
-    symbol = bar_data.symbol
-    
-    # BUG: Only checks active_plans!
-    relevant_plans = self.coordinator.filter_plans_for_symbol(
-        self.active_plans, symbol
-    )
-    
-    if not relevant_plans:
-        return  # Never evaluates position_plans!
-    
-    for plan in relevant_plans:
-        await self._evaluate_trade_plan(plan, bar_data)
-```
-
-**After (Fixed)**:
-```python
-async def process_market_data_event(self, bar_data: BarData) -> None:
-    """Process incoming market data and evaluate relevant trade plans."""
-    if not self.is_running:
-        return
-    
-    symbol = bar_data.symbol
-    timeframe = bar_data.timeframe
-    
-    # FIX: Check BOTH active_plans AND position_plans
-    relevant_active_plans = self.coordinator.filter_plans_for_symbol(
-        self.active_plans, symbol
-    )
-    
-    relevant_position_plans = self.coordinator.filter_plans_for_symbol(
-        self.position_plans, symbol
-    )
-    
-    # Combine both lists
-    all_relevant_plans = list(relevant_active_plans) + list(relevant_position_plans)
-    
-    if not all_relevant_plans:
-        return
-    
-    logger.debug(
-        f"Processing {len(relevant_active_plans)} awaiting entry, "
-        f"{len(relevant_position_plans)} open positions",
-        symbol=symbol,
-        timeframe=timeframe.value,
-    )
-    
-    # Process ALL relevant plans
-    for plan in all_relevant_plans:
-        try:
-            await self._evaluate_trade_plan(plan, bar_data)
-            self.statistics.record_plan_processed(plan.plan_id)
-        except Exception as e:
-            logger.error(f"Error evaluating plan {plan.plan_id}: {e}")
-            await self._handle_plan_error(plan, str(e))
-```
-
-## Expected Results (AFTER Fix)
-
-### Test: `test_complete_lifecycle_entry_to_exit`
-
-**What should happen**:
-```
-Phase 1: Plan loaded ✓
-Phase 2: Bar below threshold → No entry ✓
-Phase 3: Bar above threshold → Entry triggered ✓
-Phase 4: Bar above stop → No exit ✓
-Phase 5: Bar below stop → Exit triggered ✓ NOW PASSES!
-```
-
-**Output**:
-```
-==================================================
-PHASE 5: Sending bar BELOW stop loss (EXIT SIGNAL)
-==================================================
-Bar: AAPL @ 177.50 (15min)
-Stop loss threshold: 178.00
-Expected: EXIT signal triggered
-
-After processing exit bar:
   - Plan status: completed  ← FIXED!
   - In active_plans: False
   - In position_plans: False  ← REMOVED!
   - Orders placed: 1  ← EXIT ORDER PLACED!
 
-==================================================
+======================================================================
 ✅ TEST PASSED: Complete lifecycle works!
-==================================================
+======================================================================
+Final status: completed
+Total orders: 2
 ```
+
+## Split Exit Functions
+
+The test properly validates **split exit functions**:
+- **stop_loss_function**: Separate function for stop loss exit (close_below @ 178.00)
+- **take_profit_function**: Separate function for take profit exit (close_above @ 185.00)
+
+Both functions are evaluated independently, and the first one to trigger closes the position.
 
 ## Additional Tests
 
@@ -229,19 +132,18 @@ Validates multiple plans for same symbol:
 
 ## Workflow
 
-### Step 1: Run Test (Confirm Gaps)
+### Run Tests
 ```bash
-scripts/test_lifecycle.bat
-```
+# Linux/Mac
+./scripts/test_lifecycle.sh
 
-**Expected**: Test FAILS at Phase 5, confirming Gap #1
+# Windows
+scripts\test_lifecycle.bat
 
-### Step 2: Implement Fix
-Edit `src/auto_trader/trade_engine/orchestration/core.py` as shown above
-
-### Step 3: Run Test (Validate Fix)
-```bash
-scripts/test_lifecycle.bat
+# Manual
+PYTHONPATH=src uv run pytest \
+    src/auto_trader/trade_engine/tests/test_complete_lifecycle_integration.py \
+    -v -s --tb=short
 ```
 
 **Expected**: All tests PASS ✅
@@ -264,17 +166,23 @@ TradePlan(
     entry_level=180.50,
     stop_loss=178.00,
     take_profit=185.00,
-    
+
     entry_function={
         "function_type": "close_above",
         "timeframe": "15min",
         "parameters": {"threshold": 180.50}
     },
-    
-    exit_function={
+
+    stop_loss_function={
         "function_type": "close_below",
         "timeframe": "15min",
         "parameters": {"threshold": 178.00}
+    },
+
+    take_profit_function={
+        "function_type": "close_above",
+        "timeframe": "15min",
+        "parameters": {"threshold": 185.00}
     }
 )
 ```
@@ -325,18 +233,20 @@ logger.info(
 6. ✅ Exit order is placed
 7. ✅ Plan is removed from position_plans
 
-## Next Steps
+## Bugs Fixed
 
-1. **Run test** to confirm gaps
-2. **Implement fix** for Gap #1
-3. **Re-run test** to validate
-4. **Check for Gaps #2 and #3** (function instantiation, timeframe matching)
-5. **Implement additional fixes** if needed
-6. **Run full test suite** to ensure no regressions
+All issues identified in `ORCHESTRATION_BUGS_ANALYSIS.md` have been resolved:
+
+1. **Bug #1**: Mock field name mismatch (`quantity` → `calculated_position_size`)
+2. **Bug #2**: Explicit `active_plans` cleanup when moving to `position_plans`
+3. **Gap #2**: PositionEntry creation in position_state_manager after successful order
+4. **Signal Processing**: Fixed `_record_signal` method signature
+5. **Exit Processing**: Fixed ExitProcessingResult parameter mismatches
+6. **Cleanup Manager**: Removed incorrect `update_trade_plan_status` call
 
 ---
 
-**Status**: Ready to run
-**Expected Result**: Test will FAIL, exposing Gap #1
-**After Fix**: Test will PASS, confirming lifecycle works
+**Status**: ✅ All Tests Passing
+**Test Coverage**: Complete lifecycle from entry → position open → exit → position closed
+**Split Exit Functions**: Properly validated (stop_loss_function + take_profit_function)
 

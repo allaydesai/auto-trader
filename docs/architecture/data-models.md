@@ -19,11 +19,12 @@
 - `plan_id: str` - Unique identifier (format: SYMBOL_YYYYMMDD_NNN)
 - `symbol: str` - Trading symbol (1-10 uppercase chars, validated)
 - `entry_level: Decimal` - Price level for entry (4 decimal precision)
-- `stop_loss: Decimal` - Stop loss price (4 decimal precision) 
+- `stop_loss: Decimal` - Stop loss price (4 decimal precision)
 - `take_profit: Decimal` - Target price (4 decimal precision)
 - `risk_category: RiskCategory` - Risk level enum: small(1%), normal(2%), large(3%)
 - `entry_function: ExecutionFunction` - Entry trigger logic
-- `exit_function: ExecutionFunction` - Exit trigger logic
+- `stop_loss_function: ExecutionFunction` - Stop loss exit trigger logic
+- `take_profit_function: ExecutionFunction` - Take profit exit trigger logic
 - `status: TradePlanStatus` - Current state
 - `calculated_position_size: Optional[int]` - Dynamically calculated
 - `dollar_risk: Optional[Decimal]` - Calculated risk amount

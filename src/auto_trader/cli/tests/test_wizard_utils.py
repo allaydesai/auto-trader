@@ -324,17 +324,25 @@ class TestWizardFieldCollector:
     @patch('auto_trader.cli.wizard_utils.Prompt.ask')
     def test_collect_execution_functions(self, mock_prompt, field_collector):
         """Test collecting execution functions."""
-        mock_prompt.side_effect = ["close_above", "15min", "stop_loss_take_profit", "15min"]
-        
-        entry_func, exit_func = field_collector.collect_execution_functions()
-        
+        mock_prompt.side_effect = [
+            "close_above", "15min",  # entry function
+            "close_below", "15min",   # stop loss function
+            "close_above", "15min"    # take profit function
+        ]
+
+        entry_func, stop_loss_func, take_profit_func = field_collector.collect_execution_functions()
+
         assert isinstance(entry_func, ExecutionFunction)
         assert entry_func.function_type == "close_above"
         assert entry_func.timeframe == "15min"
-        
-        assert isinstance(exit_func, ExecutionFunction)
-        assert exit_func.function_type == "stop_loss_take_profit"
-        assert exit_func.timeframe == "15min"
+
+        assert isinstance(stop_loss_func, ExecutionFunction)
+        assert stop_loss_func.function_type == "close_below"
+        assert stop_loss_func.timeframe == "15min"
+
+        assert isinstance(take_profit_func, ExecutionFunction)
+        assert take_profit_func.function_type == "close_above"
+        assert take_profit_func.timeframe == "15min"
     
 
 
@@ -367,9 +375,15 @@ class TestTradePlanPreview:
                 function_type="close_above",
                 timeframe="15min"
             ),
-            "exit_function": ExecutionFunction(
-                function_type="stop_loss_take_profit",
-                timeframe="15min"
+            "stop_loss_function": ExecutionFunction(
+                function_type="close_below",
+                timeframe="15min",
+                parameters={"threshold": "178.00"}
+            ),
+            "take_profit_function": ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": "185.00"}
             ),
         }
     
@@ -428,9 +442,15 @@ class TestUtilityFunctions:
                 function_type="close_above",
                 timeframe="15min"
             ),
-            "exit_function": ExecutionFunction(
-                function_type="stop_loss_take_profit",
-                timeframe="15min"
+            "stop_loss_function": ExecutionFunction(
+                function_type="close_below",
+                timeframe="15min",
+                parameters={"threshold": "178.00"}
+            ),
+            "take_profit_function": ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": "185.00"}
             ),
         }
         
@@ -501,8 +521,10 @@ class TestIntegrationScenarios:
                 "185.00",  # take profit
                 "close_above",  # entry function
                 "15min",  # entry timeframe
-                "stop_loss_take_profit",  # exit function
-                "15min",  # exit timeframe
+                "close_below",  # stop loss function
+                "15min",  # stop loss timeframe
+                "close_above",  # take profit function
+                "15min",  # take profit timeframe
             ])
         ):
             # Mock position sizing
@@ -510,9 +532,9 @@ class TestIntegrationScenarios:
             mock_position_result.position_size = 100
             mock_position_result.dollar_risk = Decimal("250.00")
             mock_position_result.portfolio_risk_percentage = Decimal("2.5")
-            
+
             sample_risk_manager.position_sizer.calculate_position_size.return_value = mock_position_result
-            
+
             # Mock portfolio check
             mock_portfolio_check = Mock()
             mock_portfolio_check.passed = True
@@ -520,9 +542,9 @@ class TestIntegrationScenarios:
             mock_portfolio_check.new_trade_risk = Decimal("2.5")
             mock_portfolio_check.total_risk = Decimal("5.0")
             mock_portfolio_check.limit = Decimal("10.0")
-            
+
             sample_risk_manager.check_portfolio_risk_limit.return_value = mock_portfolio_check
-            
+
             # Collect all fields
             symbol = field_collector.collect_symbol()
             entry = field_collector.collect_entry_level()
@@ -530,8 +552,8 @@ class TestIntegrationScenarios:
             risk = field_collector.collect_risk_category()
             position_size, dollar_risk = field_collector.calculate_and_display_position_size(entry, stop, risk)
             target = field_collector.collect_take_profit()
-            entry_func, exit_func = field_collector.collect_execution_functions()
-            
+            entry_func, stop_loss_func, take_profit_func = field_collector.collect_execution_functions()
+
             # Verify results
             assert symbol == "AAPL"
             assert entry == Decimal("180.50")
@@ -541,7 +563,8 @@ class TestIntegrationScenarios:
             assert dollar_risk == Decimal("250.00")
             assert target == Decimal("185.00")
             assert entry_func.function_type == "close_above"
-            assert exit_func.function_type == "stop_loss_take_profit"
+            assert stop_loss_func.function_type == "close_below"
+            assert take_profit_func.function_type == "close_above"
     
     def test_cli_shortcuts_prepopulation(self, sample_config_loader, sample_risk_manager):
         """Test wizard flow with CLI shortcuts pre-populating fields."""

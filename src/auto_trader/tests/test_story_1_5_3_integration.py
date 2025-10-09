@@ -77,10 +77,15 @@ class TestStory153EndToEndIntegration:
                 "timeframe": "15min",
                 "parameters": {"threshold": str(entry_level)},
             },
-            "exit_function": {
-                "function_type": "stop_loss_take_profit",
+            "stop_loss_function": {
+                "function_type": "close_below",
                 "timeframe": "15min",
-                "parameters": {},
+                "parameters": {"threshold": "178.00"},
+            },
+            "take_profit_function": {
+                "function_type": "close_above",
+                "timeframe": "15min",
+                "parameters": {"threshold": "185.00"},
             },
         }
         

@@ -89,21 +89,44 @@ entry_function:
     threshold: 0.00  # 📝 UPDATE THIS: Your entry threshold
 
 # Exit strategy configuration (REQUIRED)
-# Defines how and when to exit the position
-exit_function:
-  # Exit mechanism: Standard stop-loss and take-profit
-  # Monitors price continuously and exits at predefined levels
-  # Simple, reliable, and widely used approach
-  function_type: "stop_loss_take_profit"
-  
-  # Exit monitoring timeframe (REQUIRED)
-  # Faster timeframes = quicker exit execution
+# Defines how and when to exit the position using two independent functions
+
+# Stop loss exit function (REQUIRED)
+# Triggers when price closes below stop_loss level
+stop_loss_function:
+  # Exit mechanism: close_below function
+  # Exits trade when candle CLOSES below stop loss price
+  # This avoids premature exit from wicks/spikes
+  function_type: "close_below"
+
+  # Timeframe for stop loss monitoring (REQUIRED)
+  # Faster timeframes = quicker stop loss execution
   # 💡 RECOMMENDED: 1min for rapid stop-loss execution
-  timeframe: "1min"  # 📝 UPDATE THIS: Your exit monitoring timeframe
-  
-  # Exit parameters (none needed for stop_loss_take_profit)
-  # Stop loss and take profit levels are defined above
-  parameters: {}
+  timeframe: "1min"  # 📝 UPDATE THIS: Your stop loss monitoring timeframe
+
+  # Stop loss parameters
+  parameters:
+    # Threshold should match your stop_loss price above
+    # Trade exits when {timeframe} candle closes BELOW this level
+    threshold: 0.00  # 📝 UPDATE THIS: Same as stop_loss value
+
+# Take profit exit function (REQUIRED)
+# Triggers when price closes above take_profit level
+take_profit_function:
+  # Exit mechanism: close_above function
+  # Exits trade when candle CLOSES above take profit price
+  function_type: "close_above"
+
+  # Timeframe for take profit monitoring (REQUIRED)
+  # Can use different timeframe than stop loss for optimal exits
+  # 💡 RECOMMENDED: 1min or 5min depending on strategy
+  timeframe: "1min"  # 📝 UPDATE THIS: Your take profit monitoring timeframe
+
+  # Take profit parameters
+  parameters:
+    # Threshold should match your take_profit price above
+    # Trade exits when {timeframe} candle closes ABOVE this level
+    threshold: 0.00  # 📝 UPDATE THIS: Same as take_profit value
 
 # SYSTEM MANAGEMENT (OPTIONAL)
 # =============================
@@ -122,7 +145,7 @@ exit_function:
 # EXAMPLE 1: Apple Stock Breakout (Conservative)
 # plan_id: "AAPL_20250815_001"
 # symbol: "AAPL"
-# entry_level: 180.50      # Above key resistance  
+# entry_level: 180.50      # Above key resistance
 # stop_loss: 178.00        # Below support level
 # take_profit: 185.00      # Next resistance target
 # risk_category: "small"   # Conservative 1% risk
@@ -131,12 +154,18 @@ exit_function:
 #   timeframe: "30min"     # Longer timeframe for confirmation
 #   parameters:
 #     threshold: 180.50
-# exit_function:
-#   function_type: "stop_loss_take_profit" 
-#   timeframe: "1min"
-#   parameters: {}
+# stop_loss_function:
+#   function_type: "close_below"
+#   timeframe: "1min"      # Fast stop loss execution
+#   parameters:
+#     threshold: 178.00
+# take_profit_function:
+#   function_type: "close_above"
+#   timeframe: "5min"      # Slower take profit for confirmation
+#   parameters:
+#     threshold: 185.00
 
-# EXAMPLE 2: SPY ETF Momentum Trade (Balanced)  
+# EXAMPLE 2: SPY ETF Momentum Trade (Balanced)
 # plan_id: "SPY_20250815_001"
 # symbol: "SPY"
 # entry_level: 425.00      # Round number breakout
@@ -148,13 +177,19 @@ exit_function:
 #   timeframe: "15min"     # Good balance
 #   parameters:
 #     threshold: 425.00
-# exit_function:
-#   function_type: "stop_loss_take_profit"
-#   timeframe: "1min"
-#   parameters: {}
+# stop_loss_function:
+#   function_type: "close_below"
+#   timeframe: "1min"      # Fast stop loss
+#   parameters:
+#     threshold: 422.00
+# take_profit_function:
+#   function_type: "close_above"
+#   timeframe: "1min"      # Fast take profit
+#   parameters:
+#     threshold: 430.00
 
 # EXAMPLE 3: Tesla Earnings Play (Aggressive)
-# plan_id: "TSLA_20250815_001"  
+# plan_id: "TSLA_20250815_001"
 # symbol: "TSLA"
 # entry_level: 250.00      # Post-earnings breakout
 # stop_loss: 245.00        # Tight 5-point stop
@@ -165,10 +200,16 @@ exit_function:
 #   timeframe: "5min"      # Fast execution on volatility
 #   parameters:
 #     threshold: 250.25    # Small buffer for confirmation
-# exit_function:
-#   function_type: "stop_loss_take_profit"
-#   timeframe: "1min"
-#   parameters: {}
+# stop_loss_function:
+#   function_type: "close_below"
+#   timeframe: "1min"      # Very fast stop loss on volatility
+#   parameters:
+#     threshold: 245.00
+# take_profit_function:
+#   function_type: "close_above"
+#   timeframe: "1min"      # Fast take profit
+#   parameters:
+#     threshold: 265.00
 
 # QUICK START CHECKLIST
 # =====================

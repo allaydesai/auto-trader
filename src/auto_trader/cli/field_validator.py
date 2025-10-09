@@ -203,9 +203,15 @@ class WizardFieldValidator:
                 function_type="close_above",
                 timeframe="15min"
             ),
-            "exit_function": ExecutionFunction(
-                function_type="stop_loss_take_profit", 
-                timeframe="15min"
+            "stop_loss_function": ExecutionFunction(
+                function_type="close_below",
+                timeframe="1min",
+                parameters={"threshold": 95.00}
+            ),
+            "take_profit_function": ExecutionFunction(
+                function_type="close_above",
+                timeframe="1min",
+                parameters={"threshold": 105.00}
             ),
         }
         

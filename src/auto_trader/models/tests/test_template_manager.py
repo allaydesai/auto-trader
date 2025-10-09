@@ -49,11 +49,19 @@ entry_function:
   parameters:
     threshold: 0.00
 
-# Exit execution function (REQUIRED)
-exit_function:
-  function_type: "stop_loss_take_profit"
+# Stop loss execution function (REQUIRED)
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 0.00
+
+# Take profit execution function (REQUIRED)
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 0.00
 
 # Example Complete Configuration:
 # plan_id: "AAPL_20250815_001"

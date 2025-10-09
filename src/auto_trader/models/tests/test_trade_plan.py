@@ -101,10 +101,15 @@ class TestTradePlan:
                 timeframe="15min",
                 parameters={"threshold": 180.50},
             ),
-            "exit_function": ExecutionFunction(
-                function_type="stop_loss_take_profit",
+            "stop_loss_function": ExecutionFunction(
+                function_type="close_below",
                 timeframe="1min",
-                parameters={},
+                parameters={"threshold": 178.00},
+            ),
+            "take_profit_function": ExecutionFunction(
+                function_type="close_above",
+                timeframe="1min",
+                parameters={"threshold": 185.00},
             ),
         }
     

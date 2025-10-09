@@ -64,15 +64,22 @@ class TradePlanPreview:
         entry_func = plan_data.get("entry_function", {})
         if entry_func:
             preview_table.add_row(
-                "Entry Function", 
+                "Entry Function",
                 f"{entry_func.function_type} ({entry_func.timeframe})"
             )
-        
-        exit_func = plan_data.get("exit_function", {})
-        if exit_func:
+
+        stop_loss_func = plan_data.get("stop_loss_function", {})
+        if stop_loss_func:
             preview_table.add_row(
-                "Exit Function",
-                f"{exit_func.function_type} ({exit_func.timeframe})"
+                "Stop Loss Function",
+                f"{stop_loss_func.function_type} ({stop_loss_func.timeframe})"
+            )
+
+        take_profit_func = plan_data.get("take_profit_function", {})
+        if take_profit_func:
+            preview_table.add_row(
+                "Take Profit Function",
+                f"{take_profit_func.function_type} ({take_profit_func.timeframe})"
             )
         
         self.console.print("\n")

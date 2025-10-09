@@ -82,10 +82,15 @@ def sample_trade_plan():
             timeframe="15min",
             parameters={"threshold": "180.00"}
         ),
-        exit_function=ExecutionFunction(
-            function_type="stop_loss_take_profit",
+        stop_loss_function=ExecutionFunction(
+            function_type="close_below",
             timeframe="15min",
-            parameters={"stop_loss": "178.00", "take_profit": "185.00"}
+            parameters={"threshold": "178.00"}
+        ),
+        take_profit_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": "185.00"}
         ),
         status=TradePlanStatus.AWAITING_ENTRY
     )
@@ -266,10 +271,15 @@ class TestPositionLifecycleIntegration:
                 timeframe="15min",
                 parameters={"threshold": "181.00"}
             ),
-            exit_function=ExecutionFunction(
-                function_type="stop_loss_take_profit",
+            stop_loss_function=ExecutionFunction(
+                function_type="close_below",
                 timeframe="15min",
-                parameters={"stop_loss": "179.00", "take_profit": "186.00"}
+                parameters={"threshold": "179.00"}
+            ),
+            take_profit_function=ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": "186.00"}
             ),
             status=TradePlanStatus.AWAITING_ENTRY
         )
@@ -569,10 +579,15 @@ class TestPositionStateManagerPerformance:
                     timeframe="15min",
                     parameters={"threshold": "100.00"}
                 ),
-                exit_function=ExecutionFunction(
-                    function_type="stop_loss_take_profit",
+                stop_loss_function=ExecutionFunction(
+                    function_type="close_below",
                     timeframe="15min",
-                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                    parameters={"threshold": "98.00"}
+                ),
+                take_profit_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="15min",
+                    parameters={"threshold": "105.00"}
                 ),
                 status=TradePlanStatus.AWAITING_ENTRY
             )
@@ -632,10 +647,15 @@ class TestPositionStateManagerPerformance:
                     timeframe="15min",
                     parameters={"threshold": "50.00"}
                 ),
-                exit_function=ExecutionFunction(
-                    function_type="stop_loss_take_profit",
+                stop_loss_function=ExecutionFunction(
+                    function_type="close_below",
                     timeframe="15min",
-                    parameters={"stop_loss": "48.00", "take_profit": "55.00"}
+                    parameters={"threshold": "48.00"}
+                ),
+                take_profit_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="15min",
+                    parameters={"threshold": "55.00"}
                 ),
                 status=TradePlanStatus.AWAITING_ENTRY
             )

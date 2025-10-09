@@ -11,10 +11,16 @@
     timeframe: "15min"
     parameters:
       threshold: 180.50
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "1min"
-    parameters: {}
+    parameters:
+      threshold: 178.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "1min"
+    parameters:
+      threshold: 185.00
   status: "awaiting_entry"
 
 - plan_id: "MSFT_20250815_001"
@@ -28,8 +34,14 @@
     timeframe: "30min"
     parameters:
       threshold: 300.00
-  exit_function:
-    function_type: "stop_loss_take_profit"
+  stop_loss_function:
+    function_type: "close_below"
     timeframe: "5min"
-    parameters: {}
+    parameters:
+      threshold: 295.00
+  take_profit_function:
+    function_type: "close_above"
+    timeframe: "5min"
+    parameters:
+      threshold: 310.00
   status: "awaiting_entry"

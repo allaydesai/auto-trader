@@ -376,12 +376,14 @@ class TestCreatePlanInteractive:
                 "AAPL",  # symbol
                 "180.50",  # entry
                 "178.00",  # stop
-                "normal",  # risk category  
+                "normal",  # risk category
                 "185.00",  # take profit
                 "close_above",  # entry function
                 "15min",  # entry timeframe
-                "stop_loss_take_profit",  # exit function
-                "15min",  # exit timeframe
+                "close_below",  # stop loss function
+                "15min",  # stop loss timeframe
+                "close_above",  # take profit function
+                "15min",  # take profit timeframe
             ]
             
             mock_preview.return_value = True  # User confirms
@@ -410,8 +412,10 @@ class TestCreatePlanInteractive:
                 "185.00",  # take profit (not provided via CLI)
                 "close_above",  # entry function
                 "15min",  # entry timeframe
-                "stop_loss_take_profit",  # exit function
-                "15min",  # exit timeframe
+                "close_below",  # stop loss function
+                "15min",  # stop loss timeframe
+                "close_above",  # take profit function
+                "15min",  # take profit timeframe
             ]
             
             mock_preview.return_value = True
@@ -440,7 +444,7 @@ class TestCreatePlanInteractive:
             
             mock_prompt.side_effect = [
                 "AAPL", "180.50", "178.00", "normal", "185.00",
-                "close_above", "15min", "stop_loss_take_profit", "15min"
+                "close_above", "15min", "close_below", "15min", "close_above", "15min"
             ]
             
             mock_preview.return_value = False  # User cancels
@@ -521,7 +525,7 @@ class TestCreatePlanInteractive:
             
             mock_prompt.side_effect = [
                 "AAPL", "180.50", "178.00", "normal", "185.00",
-                "close_above", "15min", "stop_loss_take_profit", "15min"
+                "close_above", "15min", "close_below", "15min", "close_above", "15min"
             ]
             
             mock_preview.return_value = True
@@ -553,8 +557,10 @@ class TestCreatePlanInteractive:
             mock_prompt.side_effect = [
                 "close_above",  # entry function
                 "15min",  # entry timeframe
-                "stop_loss_take_profit",  # exit function
-                "15min",  # exit timeframe
+                "close_below",  # stop loss function
+                "15min",  # stop loss timeframe
+                "close_above",  # take profit function
+                "15min",  # take profit timeframe
             ]
             
             mock_preview.return_value = True
@@ -640,8 +646,8 @@ class TestCreatePlanInteractive:
                 assert "function_type: close_above" in file_content
                 assert "timeframe: 15min" in file_content
                 
-                assert "exit_function:" in file_content
-                assert "function_type: stop_loss_take_profit" in file_content
+                assert "stop_loss_function:" in file_content
+                assert "take_profit_function:" in file_content
                 
                 # The file was successfully created by save_plan_to_yaml which validates via TradePlan
                 # so we know the structure is correct and loadable

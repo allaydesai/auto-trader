@@ -474,10 +474,16 @@ entry_function:
   timeframe: "15min"
   parameters:
     threshold: 180.50
-exit_function:
-  function_type: "stop_loss_take_profit"
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 178.00
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 status: "awaiting_entry"
 ```
 
@@ -787,11 +793,19 @@ entry_function:
   parameters:
     threshold: 180.50
 
-# Exit execution function (handles both stop and target)
-exit_function:
-  function_type: "stop_loss_take_profit"
+# Stop loss exit function
+stop_loss_function:
+  function_type: "close_below"
   timeframe: "1min"
-  parameters: {}
+  parameters:
+    threshold: 178.00
+
+# Take profit exit function
+take_profit_function:
+  function_type: "close_above"
+  timeframe: "1min"
+  parameters:
+    threshold: 185.00
 
 status: "awaiting_entry"
 ```
