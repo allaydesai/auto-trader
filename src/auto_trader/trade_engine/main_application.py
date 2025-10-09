@@ -310,7 +310,14 @@ class TradingApplication:
             timeframes = set()
             for plan in active_plans.values():
                 timeframes.add(plan.entry_function.timeframe)
-                timeframes.add(plan.exit_function.timeframe)
+                # Add both stop loss and take profit timeframes
+                if hasattr(plan, 'stop_loss_function') and plan.stop_loss_function:
+                    timeframes.add(plan.stop_loss_function.timeframe)
+                if hasattr(plan, 'take_profit_function') and plan.take_profit_function:
+                    timeframes.add(plan.take_profit_function.timeframe)
+                # Legacy support for old exit_function field
+                if hasattr(plan, 'exit_function') and plan.exit_function:
+                    timeframes.add(plan.exit_function.timeframe)
             
             logger.info(
                 f"Subscribing to market data",
