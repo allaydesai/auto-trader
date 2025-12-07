@@ -85,7 +85,9 @@ def sample_position_risk_entry() -> PositionRiskEntry:
 
 
 @pytest.fixture
-def sample_portfolio_risk_state(sample_position_risk_entry: PositionRiskEntry) -> PortfolioRiskState:
+def sample_portfolio_risk_state(
+    sample_position_risk_entry: PositionRiskEntry,
+) -> PortfolioRiskState:
     """Sample portfolio risk state for testing."""
     return PortfolioRiskState(
         positions=[sample_position_risk_entry],
@@ -106,14 +108,14 @@ def multiple_position_entries() -> list[PositionRiskEntry]:
             plan_id="AAPL_20250815_001",
         ),
         PositionRiskEntry(
-            position_id="TEST_POS_002", 
+            position_id="TEST_POS_002",
             symbol="MSFT",
             risk_amount=Decimal("300.00"),
             plan_id="MSFT_20250815_001",
         ),
         PositionRiskEntry(
             position_id="TEST_POS_003",
-            symbol="GOOGL", 
+            symbol="GOOGL",
             risk_amount=Decimal("150.00"),
             plan_id="GOOGL_20250815_001",
         ),
@@ -183,9 +185,9 @@ def temp_state_file() -> Path:
     """Temporary state file for testing."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as f:
         temp_path = Path(f.name)
-    
+
     yield temp_path
-    
+
     # Cleanup
     if temp_path.exists():
         temp_path.unlink()

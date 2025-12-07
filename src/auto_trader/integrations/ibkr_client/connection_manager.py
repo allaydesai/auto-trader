@@ -15,52 +15,48 @@ from config import Settings
 class ConnectionManager:
     """
     Connection manager with circuit breaker and graceful shutdown.
-    
+
     Integrates IBKRClient with CircuitBreaker for reliable connection
     management with automatic reconnection and failure handling.
     """
 
     def __init__(
-        self,
-        settings: Optional[Settings] = None,
-        state_dir: Optional[Path] = None
+        self, settings: Optional[Settings] = None, state_dir: Optional[Path] = None
     ):
         """
         Initialize connection manager.
-        
+
         Args:
             settings: Optional settings instance
             state_dir: Optional directory for state persistence
         """
         self._settings = settings or Settings()
         self._state_dir = state_dir or Path("state")
-        
+
         self._client = IBKRClient(self._settings)
         self._circuit_breaker = CircuitBreaker(
             failure_threshold=5,
             reset_timeout=60,
-            state_file=self._state_dir / "circuit_breaker_state.json"
+            state_file=self._state_dir / "circuit_breaker_state.json",
         )
-        
+
         self._shutdown_initiated = False
         self._reconnection_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> None:
         """
         Connect to IBKR with circuit breaker protection.
-        
+
         Raises:
             CircuitBreakerError: If circuit breaker is open
             IBKRConnectionError: If connection fails
         """
         try:
-            await self._circuit_breaker.call_with_circuit_breaker(
-                self._client.connect
-            )
-            
+            await self._circuit_breaker.call_with_circuit_breaker(self._client.connect)
+
             # Start monitoring for disconnections
             self._start_connection_monitoring()
-            
+
         except CircuitBreakerError as e:
             logger.error("Connection blocked by circuit breaker", error=str(e))
             raise
@@ -73,7 +69,7 @@ class ConnectionManager:
         Graceful disconnection with cleanup.
         """
         logger.info("Initiating graceful disconnection")
-        
+
         # Stop reconnection monitoring
         if self._reconnection_task and not self._reconnection_task.done():
             self._reconnection_task.cancel()
@@ -89,7 +85,7 @@ class ConnectionManager:
     def is_connected(self) -> bool:
         """
         Check if connected to IBKR.
-        
+
         Returns:
             True if connected
         """
@@ -98,7 +94,7 @@ class ConnectionManager:
     def get_connection_status(self) -> ConnectionStatus:
         """
         Get current connection status.
-        
+
         Returns:
             Connection status information
         """
@@ -107,7 +103,7 @@ class ConnectionManager:
     def get_circuit_breaker_state(self) -> CircuitBreakerState:
         """
         Get circuit breaker state.
-        
+
         Returns:
             Circuit breaker state information
         """
@@ -116,13 +112,13 @@ class ConnectionManager:
     async def health_check(self) -> dict:
         """
         Perform comprehensive health check.
-        
+
         Returns:
             Health check results
         """
         connection_status = self.get_connection_status()
         circuit_state = self.get_circuit_breaker_state()
-        
+
         return {
             "connected": self.is_connected(),
             "connection_state": connection_status.state.value,
@@ -150,7 +146,7 @@ class ConnectionManager:
     def _signal_handler(self, signum: int, frame) -> None:
         """
         Handle shutdown signals.
-        
+
         Args:
             signum: Signal number
             frame: Current stack frame
@@ -158,7 +154,7 @@ class ConnectionManager:
         if not self._shutdown_initiated:
             logger.info("Shutdown signal received", signal=signum)
             self._shutdown_initiated = True
-            
+
             # Create shutdown task
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -172,27 +168,29 @@ class ConnectionManager:
         """
         if self._shutdown_initiated:
             return
-            
+
         self._shutdown_initiated = True
-        
+
         try:
             logger.info("Starting graceful shutdown")
-            
+
             # Update connection state
             client_status = self._client.get_connection_status()
             client_status.state = ConnectionState.SHUTDOWN
-            
+
             # Handle position closure if configured
             ibkr_config = self._client._config_loader.system_config.ibkr
             if ibkr_config.graceful_shutdown and self.is_connected():
-                logger.info("Graceful shutdown configured - checking for open positions")
+                logger.info(
+                    "Graceful shutdown configured - checking for open positions"
+                )
                 await self._close_open_positions()
 
             # Disconnect from IBKR
             await self.disconnect()
-            
+
             logger.info("Graceful shutdown completed")
-            
+
         except Exception as e:
             logger.error("Error during graceful shutdown", error=str(e))
 
@@ -202,7 +200,7 @@ class ConnectionManager:
         """
         if self._reconnection_task and not self._reconnection_task.done():
             return
-            
+
         self._reconnection_task = asyncio.create_task(self._monitor_connection())
 
     async def _monitor_connection(self) -> None:
@@ -212,23 +210,23 @@ class ConnectionManager:
         try:
             while not self._shutdown_initiated:
                 await asyncio.sleep(5)  # Check every 5 seconds
-                
+
                 if not self.is_connected() and not self._shutdown_initiated:
                     logger.warning("Connection lost - attempting reconnection")
-                    
+
                     try:
                         await self._circuit_breaker.call_with_circuit_breaker(
                             self._client.connect
                         )
                         logger.info("Reconnection successful")
-                        
+
                     except CircuitBreakerError:
                         logger.error("Reconnection blocked by circuit breaker")
                         break
                     except Exception as e:
                         logger.error("Reconnection failed", error=str(e))
                         # Continue monitoring - circuit breaker will handle retry logic
-                        
+
         except asyncio.CancelledError:
             logger.debug("Connection monitoring cancelled")
         except Exception as e:
@@ -237,21 +235,21 @@ class ConnectionManager:
     async def _close_open_positions(self) -> None:
         """
         Close open positions during shutdown.
-        
+
         This is a placeholder for position closure logic.
         Actual implementation would depend on position tracking system.
         """
         try:
             logger.info("Checking for open positions to close")
-            
+
             # TODO: Implement position closure logic
             # This would typically:
             # 1. Get current positions from IBKR
-            # 2. Create market orders to close all positions  
+            # 2. Create market orders to close all positions
             # 3. Monitor order execution
             # 4. Log position closure results
-            
+
             logger.info("Position closure check completed (no positions to close)")
-            
+
         except Exception as e:
             logger.error("Error during position closure", error=str(e))

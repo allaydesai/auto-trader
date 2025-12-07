@@ -1,6 +1,6 @@
 """Tests for schema_commands module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -16,21 +16,15 @@ class TestShowSchema:
 
         mock_schema = {
             "properties": {
-                "plan_id": {
-                    "type": "string",
-                    "description": "Unique plan identifier"
-                },
-                "symbol": {
-                    "type": "string", 
-                    "description": "Trading symbol"
-                }
+                "plan_id": {"type": "string", "description": "Unique plan identifier"},
+                "symbol": {"type": "string", "description": "Trading symbol"},
             },
-            "required": ["plan_id", "symbol"]
+            "required": ["plan_id", "symbol"],
         }
 
-        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan, \
-             patch("auto_trader.cli.schema_commands.display_schema_console") as mock_display:
-            
+        with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan, patch(
+            "auto_trader.cli.schema_commands.display_schema_console"
+        ) as mock_display:
             mock_trade_plan.model_json_schema.return_value = mock_schema
 
             result = runner.invoke(show_schema, ["--format", "console"])
@@ -43,9 +37,7 @@ class TestShowSchema:
         runner = CliRunner()
 
         mock_schema = {
-            "properties": {
-                "plan_id": {"type": "string", "description": "Test"}
-            }
+            "properties": {"plan_id": {"type": "string", "description": "Test"}}
         }
 
         with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
@@ -61,9 +53,7 @@ class TestShowSchema:
         runner = CliRunner()
 
         mock_schema = {
-            "properties": {
-                "plan_id": {"type": "string", "description": "Test"}
-            }
+            "properties": {"plan_id": {"type": "string", "description": "Test"}}
         }
 
         with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
@@ -80,12 +70,9 @@ class TestShowSchema:
 
         mock_schema = {
             "properties": {
-                "plan_id": {
-                    "type": "string",
-                    "description": "Unique plan identifier"
-                }
+                "plan_id": {"type": "string", "description": "Unique plan identifier"}
             },
-            "required": ["plan_id"]
+            "required": ["plan_id"],
         }
 
         with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
@@ -103,11 +90,7 @@ class TestShowSchema:
         """Test showing documentation for a non-existent field."""
         runner = CliRunner()
 
-        mock_schema = {
-            "properties": {
-                "plan_id": {"type": "string"}
-            }
-        }
+        mock_schema = {"properties": {"plan_id": {"type": "string"}}}
 
         with patch("auto_trader.models.trade_plan.TradePlan") as mock_trade_plan:
             mock_trade_plan.model_json_schema.return_value = mock_schema
@@ -121,6 +104,9 @@ class TestShowSchema:
         """Test exception handling in show_schema."""
         runner = CliRunner()
 
-        with patch("auto_trader.models.trade_plan.TradePlan", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.models.trade_plan.TradePlan",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(show_schema)
             assert result.exit_code == 0  # Error handling prevents crash

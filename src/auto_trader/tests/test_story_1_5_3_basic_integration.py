@@ -9,14 +9,11 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
 from click.testing import CliRunner
 
 from auto_trader.cli.management_commands import (
     list_plans_enhanced,
     validate_config,
-    update_plan,
-    archive_plans,
     plan_stats,
 )
 
@@ -58,25 +55,27 @@ class TestStory153BasicIntegration:
                 "parameters": {"threshold": "185.00"},
             },
         }
-        
+
         plan_file = self.plans_dir / f"{plan_id}.yaml"
-        with open(plan_file, 'w') as f:
+        with open(plan_file, "w") as f:
             yaml.dump(plan_data, f, default_flow_style=False)
-        
+
         return plan_file
 
-    @patch('auto_trader.cli.management_commands._get_risk_manager')
-    @patch('auto_trader.cli.command_helpers.create_plans_listing_table')
-    @patch('auto_trader.cli.command_helpers.create_portfolio_summary_panel')
+    @patch("auto_trader.cli.management_commands._get_risk_manager")
+    @patch("auto_trader.cli.command_helpers.create_plans_listing_table")
+    @patch("auto_trader.cli.command_helpers.create_portfolio_summary_panel")
     def test_list_plans_basic_functionality(
         self, mock_panel, mock_table, mock_risk_manager
     ):
         """Test that list_plans_enhanced can load plans without crashing."""
         # Setup risk manager mock with proper portfolio tracker
         mock_rm = MagicMock()
-        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal("2.0")
+        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal(
+            "2.0"
+        )
         mock_rm.portfolio_tracker.MAX_PORTFOLIO_RISK = Decimal("10.0")
-        
+
         # Mock validation result
         mock_validation = MagicMock()
         mock_validation.passed = True
@@ -84,29 +83,29 @@ class TestStory153BasicIntegration:
         mock_validation.position_size_result.risk_amount_percent = Decimal("2.0")
         mock_validation.position_size_result.position_size = 100
         mock_validation.position_size_result.risk_amount_dollars = Decimal("200.0")
-        
+
         mock_rm.validate_trade_plan.return_value = mock_validation
         mock_risk_manager.return_value = mock_rm
-        
+
         mock_panel.return_value = MagicMock()
         mock_table.return_value = MagicMock()
-        
+
         # Create a test plan
         self.create_sample_plan_file("TEST_001")
-        
+
         # Run command
-        result = self.runner.invoke(list_plans_enhanced, [
-            '--plans-dir', str(self.plans_dir)
-        ])
-        
+        result = self.runner.invoke(
+            list_plans_enhanced, ["--plans-dir", str(self.plans_dir)]
+        )
+
         # Should not crash and should load the plan
         assert result.exit_code == 0
-        
+
         # Verify that table creation was called
         mock_table.assert_called_once()
 
-    @patch('auto_trader.cli.management_commands._get_risk_manager') 
-    @patch('auto_trader.cli.management_commands.validate_plans_comprehensive')
+    @patch("auto_trader.cli.management_commands._get_risk_manager")
+    @patch("auto_trader.cli.management_commands.validate_plans_comprehensive")
     def test_validate_config_basic_functionality(
         self, mock_validate, mock_risk_manager
     ):
@@ -130,26 +129,26 @@ class TestStory153BasicIntegration:
                     "business_logic_valid": True,
                     "errors": [],
                     "passed": True,
-                    "error_count": 0
+                    "error_count": 0,
                 },
             },
-            "summary": {}
+            "summary": {},
         }
-        
+
         # Create a test plan
         self.create_sample_plan_file("TEST_001")
-        
+
         # Run command
-        result = self.runner.invoke(validate_config, [
-            '--plans-dir', str(self.plans_dir)
-        ])
-        
+        result = self.runner.invoke(
+            validate_config, ["--plans-dir", str(self.plans_dir)]
+        )
+
         # Should not crash
         assert result.exit_code == 0
-        
+
         # Should show validation results
         assert "VALIDATION RESULTS" in result.output
-        
+
         # Verify validation function was called
         mock_validate.assert_called_once()
 
@@ -159,37 +158,37 @@ class TestStory153BasicIntegration:
         # Create multiple plan files
         self.create_sample_plan_file("PLAN_001")
         self.create_sample_plan_file("PLAN_002")
-        
+
         # Import the loader directly to test the fix
         from auto_trader.models import TradePlanLoader
-        
+
         loader = TradePlanLoader(self.plans_dir)
-        
+
         # Load all plans - this returns a dictionary
         plans_dict = loader.load_all_plans()
         assert isinstance(plans_dict, dict)
         assert len(plans_dict) == 2
-        
+
         # Convert to list (this is what the management commands now do)
         plans_list = list(plans_dict.values())
         assert isinstance(plans_list, list)
         assert len(plans_list) == 2
-        
+
         # Verify we can sort the list (this was failing before)
         plans_list.sort(key=lambda p: p.plan_id)
         assert len(plans_list) == 2
 
-    @patch('auto_trader.cli.management_commands._get_risk_manager')
-    @patch('auto_trader.cli.management_commands.get_portfolio_risk_summary')
-    def test_plan_stats_basic_functionality(
-        self, mock_portfolio, mock_risk_manager
-    ):
+    @patch("auto_trader.cli.management_commands._get_risk_manager")
+    @patch("auto_trader.cli.management_commands.get_portfolio_risk_summary")
+    def test_plan_stats_basic_functionality(self, mock_portfolio, mock_risk_manager):
         """Test that plan_stats can generate statistics without crashing."""
         # Setup risk manager mock with proper portfolio tracker
         mock_rm = MagicMock()
-        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal("4.0")
+        mock_rm.portfolio_tracker.get_current_portfolio_risk.return_value = Decimal(
+            "4.0"
+        )
         mock_rm.portfolio_tracker.MAX_PORTFOLIO_RISK = Decimal("10.0")
-        
+
         # Mock validation result
         mock_validation = MagicMock()
         mock_validation.passed = True
@@ -197,10 +196,10 @@ class TestStory153BasicIntegration:
         mock_validation.position_size_result.risk_amount_percent = Decimal("2.0")
         mock_validation.position_size_result.position_size = 100
         mock_validation.position_size_result.risk_amount_dollars = Decimal("200.0")
-        
+
         mock_rm.validate_trade_plan.return_value = mock_validation
         mock_risk_manager.return_value = mock_rm
-        
+
         mock_portfolio.return_value = {
             "current_risk_percent": Decimal("4.0"),
             "portfolio_limit_percent": Decimal("10.0"),
@@ -211,14 +210,14 @@ class TestStory153BasicIntegration:
             "exceeds_limit": False,
             "near_limit": False,
         }
-        
+
         # Create test plans with different statuses and symbols
         plan_data = [
             ("AAPL_001", "AAPL", "awaiting_entry"),
             ("MSFT_001", "MSFT", "completed"),
             ("GOOGL_001", "GOOGL", "cancelled"),
         ]
-        
+
         for plan_id, symbol, status in plan_data:
             plan_file_data = {
                 "plan_id": plan_id,
@@ -244,40 +243,44 @@ class TestStory153BasicIntegration:
                     "parameters": {"threshold": "105.0"},
                 },
             }
-            
+
             plan_file = self.plans_dir / f"{plan_id}.yaml"
-            with open(plan_file, 'w') as f:
+            with open(plan_file, "w") as f:
                 yaml.dump(plan_file_data, f, default_flow_style=False)
-        
+
         # Run command
-        result = self.runner.invoke(plan_stats, [
-            '--plans-dir', str(self.plans_dir)
-        ])
-        
+        result = self.runner.invoke(plan_stats, ["--plans-dir", str(self.plans_dir)])
+
         # Should not crash
         assert result.exit_code == 0
-        
+
         # Should show statistics
         assert "PLAN STATISTICS" in result.output
-        
+
         # Should show different statuses
         output_text = result.output.lower()
-        assert "awaiting entry" in output_text or "completed" in output_text or "cancelled" in output_text
+        assert (
+            "awaiting entry" in output_text
+            or "completed" in output_text
+            or "cancelled" in output_text
+        )
 
     def test_empty_directory_handling(self):
         """Test that commands handle empty directories gracefully."""
         # Test with empty directory
-        
-        with patch('auto_trader.cli.management_commands._get_risk_manager') as mock_risk_manager:
+
+        with patch(
+            "auto_trader.cli.management_commands._get_risk_manager"
+        ) as mock_risk_manager:
             mock_risk_manager.return_value = MagicMock()
-            
-            result = self.runner.invoke(list_plans_enhanced, [
-                '--plans-dir', str(self.plans_dir)
-            ])
-            
+
+            result = self.runner.invoke(
+                list_plans_enhanced, ["--plans-dir", str(self.plans_dir)]
+            )
+
             # Should not crash
             assert result.exit_code == 0
-            
+
             # Should show appropriate message
             assert "No trade plans found" in result.output
 
@@ -285,14 +288,20 @@ class TestStory153BasicIntegration:
         """Test that commands handle missing directories gracefully."""
         # Test with non-existent directory
         missing_dir = self.temp_path / "nonexistent"
-        
-        result = self.runner.invoke(list_plans_enhanced, [
-            '--plans-dir', str(missing_dir)
-        ])
-        
+
+        result = self.runner.invoke(
+            list_plans_enhanced, ["--plans-dir", str(missing_dir)]
+        )
+
         # Should handle error gracefully
-        assert result.exit_code in [0, 1, 2]  # Either succeeds with message or fails gracefully
-        
+        assert result.exit_code in [
+            0,
+            1,
+            2,
+        ]  # Either succeeds with message or fails gracefully
+
         # Should not crash with unhandled exception
         if result.exception:
-            assert not isinstance(result.exception, AttributeError)  # The original sort() error
+            assert not isinstance(
+                result.exception, AttributeError
+            )  # The original sort() error

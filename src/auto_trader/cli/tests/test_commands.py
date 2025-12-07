@@ -72,7 +72,9 @@ class TestValidateConfigCommand:
             mock_settings_instance = MagicMock()
             mock_settings.return_value = mock_settings_instance
 
-            with patch("auto_trader.cli.config_commands.ConfigLoader") as mock_loader_class:
+            with patch(
+                "auto_trader.cli.config_commands.ConfigLoader"
+            ) as mock_loader_class:
                 mock_loader = MagicMock()
                 mock_loader.validate_configuration.return_value = [
                     "Discord webhook URL is required",
@@ -168,7 +170,9 @@ class TestSetupCommand:
             temp_path = Path(temp_dir)
 
             # Mock the interactive prompts
-            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt, patch(
+            with patch(
+                "auto_trader.cli.config_commands.click.prompt"
+            ) as mock_prompt, patch(
                 "auto_trader.cli.config_commands.click.confirm"
             ) as mock_confirm:
                 mock_prompt.side_effect = [
@@ -219,7 +223,9 @@ class TestSetupCommand:
             (temp_path / ".env").write_text("OLD_CONTENT=true")
             (temp_path / "config.yaml").write_text("old: config")
 
-            with patch("auto_trader.cli.config_commands.click.prompt") as mock_prompt, patch(
+            with patch(
+                "auto_trader.cli.config_commands.click.prompt"
+            ) as mock_prompt, patch(
                 "auto_trader.cli.config_commands.click.confirm"
             ) as mock_confirm:
                 mock_prompt.side_effect = [
@@ -318,7 +324,9 @@ class TestHelperFunctions:
                     7496,
                     2,
                 ]
-                mock_confirm.side_effect = [True]  # debug (simulation_mode is hardcoded to True)
+                mock_confirm.side_effect = [
+                    True
+                ]  # debug (simulation_mode is hardcoded to True)
 
                 create_env_file(env_path)
 

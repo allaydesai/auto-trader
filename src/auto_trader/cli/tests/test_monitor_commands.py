@@ -16,10 +16,13 @@ class TestMonitor:
         """Test monitor with default settings."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.TradePlanLoader") as mock_loader_class, \
-             patch("auto_trader.cli.monitor_commands.Live") as mock_live, \
-             patch("auto_trader.cli.monitor_commands.generate_monitor_layout") as mock_layout:
-
+        with patch(
+            "auto_trader.cli.monitor_commands.TradePlanLoader"
+        ) as mock_loader_class, patch(
+            "auto_trader.cli.monitor_commands.Live"
+        ) as mock_live, patch(
+            "auto_trader.cli.monitor_commands.generate_monitor_layout"
+        ) as mock_layout:
             mock_loader = MagicMock()
             mock_loader_class.return_value = mock_loader
             mock_layout.return_value = MagicMock()
@@ -31,7 +34,10 @@ class TestMonitor:
             mock_live.return_value = mock_live_instance
 
             # Simulate KeyboardInterrupt to exit the loop
-            with patch("auto_trader.cli.monitor_commands.time.sleep", side_effect=KeyboardInterrupt):
+            with patch(
+                "auto_trader.cli.monitor_commands.time.sleep",
+                side_effect=KeyboardInterrupt,
+            ):
                 result = runner.invoke(monitor)
 
             assert result.exit_code == 0
@@ -41,21 +47,29 @@ class TestMonitor:
         runner = CliRunner()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("auto_trader.cli.monitor_commands.TradePlanLoader") as mock_loader_class, \
-                 patch("auto_trader.cli.monitor_commands.Live") as mock_live, \
-                 patch("auto_trader.cli.monitor_commands.generate_monitor_layout") as mock_layout:
-
+            with patch(
+                "auto_trader.cli.monitor_commands.TradePlanLoader"
+            ) as mock_loader_class, patch(
+                "auto_trader.cli.monitor_commands.Live"
+            ) as mock_live, patch(
+                "auto_trader.cli.monitor_commands.generate_monitor_layout"
+            ) as mock_layout:
                 mock_loader = MagicMock()
                 mock_loader_class.return_value = mock_loader
                 mock_layout.return_value = MagicMock()
 
                 # Mock Live context manager
                 mock_live_instance = MagicMock()
-                mock_live_instance.__enter__ = MagicMock(return_value=mock_live_instance)
+                mock_live_instance.__enter__ = MagicMock(
+                    return_value=mock_live_instance
+                )
                 mock_live_instance.__exit__ = MagicMock(return_value=True)
                 mock_live.return_value = mock_live_instance
 
-                with patch("auto_trader.cli.monitor_commands.time.sleep", side_effect=KeyboardInterrupt):
+                with patch(
+                    "auto_trader.cli.monitor_commands.time.sleep",
+                    side_effect=KeyboardInterrupt,
+                ):
                     result = runner.invoke(monitor, ["--plans-dir", temp_dir])
 
                 assert result.exit_code == 0
@@ -65,21 +79,27 @@ class TestMonitor:
         """Test monitor with custom refresh rate."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.TradePlanLoader") as mock_loader_class, \
-             patch("auto_trader.cli.monitor_commands.Live") as mock_live, \
-             patch("auto_trader.cli.monitor_commands.generate_monitor_layout") as mock_layout:
-
+        with patch(
+            "auto_trader.cli.monitor_commands.TradePlanLoader"
+        ) as mock_loader_class, patch(
+            "auto_trader.cli.monitor_commands.Live"
+        ) as mock_live, patch(
+            "auto_trader.cli.monitor_commands.generate_monitor_layout"
+        ) as mock_layout:
             mock_loader = MagicMock()
             mock_loader_class.return_value = mock_loader
             mock_layout.return_value = MagicMock()
 
             # Mock Live context manager
             mock_live_instance = MagicMock()
-            mock_live_instance.__enter__ = MagicMock(return_value=mock_live_instance)  
+            mock_live_instance.__enter__ = MagicMock(return_value=mock_live_instance)
             mock_live_instance.__exit__ = MagicMock(return_value=True)
             mock_live.return_value = mock_live_instance
 
-            with patch("auto_trader.cli.monitor_commands.time.sleep", side_effect=KeyboardInterrupt):
+            with patch(
+                "auto_trader.cli.monitor_commands.time.sleep",
+                side_effect=KeyboardInterrupt,
+            ):
                 result = runner.invoke(monitor, ["--refresh-rate", "10"])
 
             assert result.exit_code == 0
@@ -88,7 +108,10 @@ class TestMonitor:
         """Test exception handling in monitor."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.TradePlanLoader", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.cli.monitor_commands.TradePlanLoader",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(monitor)
             assert result.exit_code == 1  # Error handler calls sys.exit(1)
             assert "Error during live monitor" in result.output
@@ -101,7 +124,9 @@ class TestSummary:
         """Test summary in console format."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_performance_summary") as mock_display:
+        with patch(
+            "auto_trader.cli.monitor_commands.display_performance_summary"
+        ) as mock_display:
             result = runner.invoke(summary, ["--period", "week", "--format", "console"])
 
             assert result.exit_code == 0
@@ -112,7 +137,9 @@ class TestSummary:
         """Test summary in CSV format."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.export_performance_csv") as mock_export:
+        with patch(
+            "auto_trader.cli.monitor_commands.export_performance_csv"
+        ) as mock_export:
             result = runner.invoke(summary, ["--period", "month", "--format", "csv"])
 
             assert result.exit_code == 0
@@ -123,7 +150,9 @@ class TestSummary:
         """Test summary with different time periods."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_performance_summary") as mock_display:
+        with patch(
+            "auto_trader.cli.monitor_commands.display_performance_summary"
+        ):
             # Test day period
             result = runner.invoke(summary, ["--period", "day"])
             assert result.exit_code == 0
@@ -143,7 +172,10 @@ class TestSummary:
         """Test exception handling in summary."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_performance_summary", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.cli.monitor_commands.display_performance_summary",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(summary)
             assert result.exit_code == 1  # Error handler calls sys.exit(1)
             assert "Error during generating summary" in result.output
@@ -156,7 +188,9 @@ class TestHistory:
         """Test history in console format."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_trade_history") as mock_display:
+        with patch(
+            "auto_trader.cli.monitor_commands.display_trade_history"
+        ) as mock_display:
             result = runner.invoke(history, ["--days", "30", "--format", "console"])
 
             assert result.exit_code == 0
@@ -167,7 +201,9 @@ class TestHistory:
         """Test history in CSV format."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.export_trade_history_csv") as mock_export:
+        with patch(
+            "auto_trader.cli.monitor_commands.export_trade_history_csv"
+        ) as mock_export:
             result = runner.invoke(history, ["--days", "7", "--format", "csv"])
 
             assert result.exit_code == 0
@@ -178,7 +214,9 @@ class TestHistory:
         """Test history with symbol filtering."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_trade_history") as mock_display:
+        with patch(
+            "auto_trader.cli.monitor_commands.display_trade_history"
+        ) as mock_display:
             result = runner.invoke(history, ["--symbol", "AAPL", "--days", "14"])
 
             assert result.exit_code == 0
@@ -189,7 +227,9 @@ class TestHistory:
         """Test history with default settings."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_trade_history") as mock_display:
+        with patch(
+            "auto_trader.cli.monitor_commands.display_trade_history"
+        ) as mock_display:
             result = runner.invoke(history)
 
             assert result.exit_code == 0
@@ -200,7 +240,10 @@ class TestHistory:
         """Test exception handling in history."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.monitor_commands.display_trade_history", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.cli.monitor_commands.display_trade_history",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(history)
             assert result.exit_code == 1  # Error handler calls sys.exit(1)
             assert "Error during loading history" in result.output

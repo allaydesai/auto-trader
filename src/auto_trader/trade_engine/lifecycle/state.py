@@ -9,12 +9,13 @@ from auto_trader.models.trade_plan import TradePlan
 
 class StateTransitionError(Exception):
     """Raised when an invalid state transition is attempted."""
+
     pass
 
 
 class TradeLifecycleState:
     """Represents the state of a trade throughout its lifecycle."""
-    
+
     def __init__(
         self,
         plan: TradePlan,
@@ -25,7 +26,7 @@ class TradeLifecycleState:
         created_at: Optional[datetime] = None,
     ):
         """Initialize trade lifecycle state.
-        
+
         Args:
             plan: Associated trade plan
             entry_order_id: ID of entry order
@@ -41,12 +42,12 @@ class TradeLifecycleState:
         self.entry_price = entry_price
         self.created_at = created_at or datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
-        
+
         # Derived properties
         self.is_long = position_quantity > 0
         self.is_short = position_quantity < 0
         self.has_position = position_quantity != 0
-        
+
     def update(
         self,
         entry_order_id: Optional[str] = None,
@@ -55,7 +56,7 @@ class TradeLifecycleState:
         entry_price: Optional[Decimal] = None,
     ) -> None:
         """Update lifecycle state fields.
-        
+
         Args:
             entry_order_id: New entry order ID
             exit_order_id: New exit order ID
@@ -64,21 +65,21 @@ class TradeLifecycleState:
         """
         if entry_order_id is not None:
             self.entry_order_id = entry_order_id
-            
+
         if exit_order_id is not None:
             self.exit_order_id = exit_order_id
-            
+
         if position_quantity is not None:
             self.position_quantity = position_quantity
             self.is_long = position_quantity > 0
             self.is_short = position_quantity < 0
             self.has_position = position_quantity != 0
-            
+
         if entry_price is not None:
             self.entry_price = entry_price
-            
+
         self.updated_at = datetime.now(UTC)
-    
+
     def __repr__(self) -> str:
         """String representation of lifecycle state."""
         return (

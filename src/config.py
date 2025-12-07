@@ -90,7 +90,7 @@ class SystemConfig(BaseModel):
 class UserPreferences(BaseModel):
     """User-specific preferences from user_config.yaml."""
 
-    # Account and Risk Configuration  
+    # Account and Risk Configuration
     account_value: Decimal = Field(
         default=Decimal("10000"),
         ge=1000,
@@ -102,32 +102,31 @@ class UserPreferences(BaseModel):
         description="Default account balance for position sizing calculations",
     )
     default_risk_category: str = Field(
-        default="normal", 
+        default="normal",
         pattern="^(small|normal|large)$",
-        description="Default risk level for new trade plans"
+        description="Default risk level for new trade plans",
     )
-    
+
     # Trading Preferences
     preferred_timeframes: list[str] = Field(
-        default=["15min", "30min"], 
-        description="Default timeframes for execution functions"
+        default=["15min", "30min"],
+        description="Default timeframes for execution functions",
     )
     default_entry_function: str = Field(
-        default="close_above",
-        description="Preferred entry execution function type"
+        default="close_above", description="Preferred entry execution function type"
     )
     default_exit_function: str = Field(
         default="take_profit_stop_loss",
-        description="Preferred exit execution function type"
+        description="Preferred exit execution function type",
     )
-    
+
     # Environment Configuration
     environment: str = Field(
         default="paper",
-        pattern="^(paper|live)$", 
-        description="Trading environment preference"
+        pattern="^(paper|live)$",
+        description="Trading environment preference",
     )
-    
+
     # Legacy Support (maintained for backward compatibility)
     default_account_value: Optional[Decimal] = Field(
         default=None,
@@ -137,15 +136,17 @@ class UserPreferences(BaseModel):
         default_factory=lambda: {"long": "close_above", "short": "close_below"},
         description="DEPRECATED: Use default_entry_function instead",
     )
-    
-    @field_validator('preferred_timeframes')
-    @classmethod 
+
+    @field_validator("preferred_timeframes")
+    @classmethod
     def validate_timeframes(cls, v):
         """Validate timeframe formats."""
-        valid_timeframes = ['1min', '5min', '15min', '30min', '1h', '2h', '4h', '1d']
+        valid_timeframes = ["1min", "5min", "15min", "30min", "1h", "2h", "4h", "1d"]
         for timeframe in v:
             if timeframe not in valid_timeframes:
-                raise ValueError(f"Invalid timeframe '{timeframe}'. Must be one of: {valid_timeframes}")
+                raise ValueError(
+                    f"Invalid timeframe '{timeframe}'. Must be one of: {valid_timeframes}"
+                )
         return v
 
 
@@ -163,7 +164,9 @@ class Settings(BaseSettings):
     )
 
     # System Settings (these can override config.yaml)
-    simulation_mode: Optional[bool] = Field(default=None, description="Override simulation mode from config.yaml")
+    simulation_mode: Optional[bool] = Field(
+        default=None, description="Override simulation mode from config.yaml"
+    )
     debug: bool = Field(default=False, description="Enable debug logging")
 
     # File Paths
@@ -190,7 +193,13 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("logs_dir", "config_file", "user_config_file", "plans_directory", "state_directory")
+    @field_validator(
+        "logs_dir",
+        "config_file",
+        "user_config_file",
+        "plans_directory",
+        "state_directory",
+    )
     @classmethod
     def validate_paths(cls, v: Path) -> Path:
         """Ensure paths are absolute."""
@@ -264,10 +273,7 @@ class ConfigLoader:
             user_preferences = self.load_user_preferences()
 
             # Cross-validation checks
-            if (
-                system_config.risk.min_account_balance
-                > user_preferences.account_value
-            ):
+            if system_config.risk.min_account_balance > user_preferences.account_value:
                 issues.append(
                     f"Minimum account balance ({system_config.risk.min_account_balance}) "
                     f"exceeds account value ({user_preferences.account_value})"

@@ -47,8 +47,12 @@ class ExecutionLogger(LoggerValidationMixin):
         """
         # Validate parameters using mixin
         self._validate_init_parameters(
-            log_dir, log_directory, max_memory_entries, enable_file_logging,
-            max_entries_per_file, max_log_files
+            log_dir,
+            log_directory,
+            max_memory_entries,
+            enable_file_logging,
+            max_entries_per_file,
+            max_log_files,
         )
 
         # Support both parameter names for backward compatibility
@@ -64,7 +68,7 @@ class ExecutionLogger(LoggerValidationMixin):
 
         # Initialize component classes
         self.metrics_calculator = ExecutionMetricsCalculator()
-        
+
         # Initialize file manager if file logging enabled
         self.file_manager = None
         if self.enable_file_logging:
@@ -139,15 +143,15 @@ class ExecutionLogger(LoggerValidationMixin):
         """Validate initialization parameters using mixin methods."""
         # Use log_directory or log_dir (backward compatibility)
         target_log_dir = log_directory or log_dir
-        
+
         if not self.validate_log_directory(target_log_dir):
             raise ValueError(f"Invalid log directory: {target_log_dir}")
-        
+
         if not self.validate_memory_settings(
             max_memory_entries, max_entries_per_file, max_log_files
         ):
             raise ValueError("Invalid memory or file limit settings")
-        
+
         if not self.validate_file_logging_settings(enable_file_logging, target_log_dir):
             raise ValueError("Invalid file logging configuration")
 
@@ -239,11 +243,11 @@ class ExecutionLogger(LoggerValidationMixin):
         logger.error(f"Execution error in {function_name}: {error_msg}")
 
     async def query_logs(
-        self, 
-        filters: Optional[Dict[str, Any]] = None, 
+        self,
+        filters: Optional[Dict[str, Any]] = None,
         limit: int = 100,
         start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None
+        end_time: Optional[datetime] = None,
     ) -> List[ExecutionLogEntry]:
         """Query historical execution logs.
 
@@ -259,7 +263,7 @@ class ExecutionLogger(LoggerValidationMixin):
 
         # Apply filters
         filtered = entries_list
-        
+
         # Apply dictionary filters if provided
         if filters:
             if "symbol" in filters:
@@ -378,7 +382,7 @@ class ExecutionLogger(LoggerValidationMixin):
 
     async def log_execution_decision(self, entry: ExecutionLogEntry) -> None:
         """Log an execution decision entry.
-        
+
         Args:
             entry: Pre-built execution log entry
         """
@@ -399,23 +403,27 @@ class ExecutionLogger(LoggerValidationMixin):
         """Get performance metrics (alias for get_metrics)."""
         return await self.metrics_calculator.get_performance_summary()
 
-    async def get_function_statistics(self, function_name: Optional[str] = None) -> Dict[str, Any]:
+    async def get_function_statistics(
+        self, function_name: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Get statistics for all functions or a specific function."""
         if function_name:
             return await self.get_function_stats(function_name)
-        
+
         # Get stats for all functions
         async with self.lock:
             entries_list = list(self.entries)
-        
+
         return self.metrics_calculator.get_all_function_statistics(entries_list)
 
-    async def get_audit_trail(self, symbol: Optional[str] = None) -> List[ExecutionLogEntry]:
+    async def get_audit_trail(
+        self, symbol: Optional[str] = None
+    ) -> List[ExecutionLogEntry]:
         """Get audit trail for symbol or all symbols."""
         filters = {}
         if symbol:
             filters["symbol"] = symbol
-        
+
         return await self.query_logs(filters, limit=10000)
 
     def _create_context_snapshot(
@@ -468,5 +476,3 @@ class ExecutionLogger(LoggerValidationMixin):
             logger.warning(entry.summary)
         else:
             logger.debug(entry.summary)
-
-

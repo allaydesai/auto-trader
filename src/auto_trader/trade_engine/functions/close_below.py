@@ -20,7 +20,7 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
     This function monitors for price closes below a specified threshold level,
     commonly used for breakdown entries, stop-loss triggers, or support breaks.
     """
-    
+
     # Constants for confidence calculation
     _EXIT_BASE_CONFIDENCE = 0.9
     _ENTRY_BASE_CONFIDENCE = 0.6
@@ -92,13 +92,15 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
             if not self.validate_percentage_parameter(params, "min_distance_percent"):
                 logger.error("Invalid min_distance_percent parameter")
                 return False
-            
+
             # Ensure min_distance is less than max_distance if both are set
             if "max_distance_percent" in params:
                 min_dist = float(params["min_distance_percent"])
                 max_dist = float(params["max_distance_percent"])
                 if min_dist >= max_dist:
-                    logger.error("min_distance_percent must be less than max_distance_percent")
+                    logger.error(
+                        "min_distance_percent must be less than max_distance_percent"
+                    )
                     return False
 
         return True
@@ -129,7 +131,9 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
         threshold = Decimal(str(self.get_parameter("threshold_price")))
         min_volume = self.get_parameter("min_volume", 0)
         confirmation_bars = self.get_parameter("confirmation_bars", 1)
-        action_type = self.get_parameter("action", "EXIT")  # Default to stop-loss behavior
+        action_type = self.get_parameter(
+            "action", "EXIT"
+        )  # Default to stop-loss behavior
         min_distance_pct = self.get_parameter("min_distance_percent", 0)
         max_distance_pct = self.get_parameter("max_distance_percent", 100)
 
@@ -173,14 +177,16 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
             )
 
         # Check distance constraints
-        price_below_pct = float((threshold - current_bar.close_price) / threshold * Decimal("100"))
-        
+        price_below_pct = float(
+            (threshold - current_bar.close_price) / threshold * Decimal("100")
+        )
+
         if price_below_pct < min_distance_pct:
             return ExecutionSignal.no_action(
                 f"Price only {price_below_pct:.2f}% below threshold, "
                 f"minimum required: {min_distance_pct}%"
             )
-        
+
         if price_below_pct > max_distance_pct:
             return ExecutionSignal.no_action(
                 f"Price {price_below_pct:.2f}% below threshold exceeds "
@@ -189,7 +195,7 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
 
         # Calculate confidence based on various factors
         base_confidence = self._calculate_confidence(context, threshold, action_type)
-        
+
         # Apply edge case adjustments
         confidence = base_confidence * confidence_adjustment
 
@@ -213,7 +219,10 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
 
         # Add volume context to reasoning if available
         if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
+            avg_volume = mean(
+                bar.volume
+                for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS :]
+            )
             volume_ratio = current_bar.volume / avg_volume if avg_volume > 0 else 1.0
             reasoning += f" with {volume_ratio:.1f}x average volume"
 
@@ -253,7 +262,11 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
         current_bar = context.current_bar
 
         # Higher base confidence for stop-loss exits (protect capital)
-        base_confidence = self._EXIT_BASE_CONFIDENCE if action_type == "EXIT" else self._ENTRY_BASE_CONFIDENCE
+        base_confidence = (
+            self._EXIT_BASE_CONFIDENCE
+            if action_type == "EXIT"
+            else self._ENTRY_BASE_CONFIDENCE
+        )
 
         # Factor 1: Distance below threshold (boost for entries only)
         distance_boost = 0.0
@@ -264,7 +277,10 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
         # Factor 2: Volume compared to average
         volume_boost = 0.0
         if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
+            avg_volume = mean(
+                bar.volume
+                for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS :]
+            )
             if avg_volume > 0:
                 volume_ratio = current_bar.volume / avg_volume
                 # High volume on breakdown is significant
@@ -272,11 +288,18 @@ class CloseBelowFunction(ExecutionFunctionBase, ValidationMixin):
 
         # Factor 3: Negative momentum penalty for false breaks
         momentum_penalty = 0.0
-        if action_type == "ENTER_SHORT" and len(context.historical_bars) >= self._MOMENTUM_LOOKBACK_BARS:
-            recent_momentum = self.calculate_momentum(context.historical_bars[-self._MOMENTUM_LOOKBACK_BARS:])
+        if (
+            action_type == "ENTER_SHORT"
+            and len(context.historical_bars) >= self._MOMENTUM_LOOKBACK_BARS
+        ):
+            recent_momentum = self.calculate_momentum(
+                context.historical_bars[-self._MOMENTUM_LOOKBACK_BARS :]
+            )
             # If momentum is positive despite break below, reduce confidence
             if recent_momentum > 0:
-                momentum_penalty = min(self._MAX_MOMENTUM_PENALTY, float(recent_momentum) / 100)
+                momentum_penalty = min(
+                    self._MAX_MOMENTUM_PENALTY, float(recent_momentum) / 100
+                )
 
         # Calculate final confidence
         confidence = base_confidence + distance_boost + volume_boost - momentum_penalty

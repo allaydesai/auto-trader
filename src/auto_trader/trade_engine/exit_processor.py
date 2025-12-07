@@ -1,6 +1,6 @@
 """Exit signal processing for open positions (compatibility module).
 
-This module provides backward compatibility while delegating to the 
+This module provides backward compatibility while delegating to the
 modular exit_processor package structure.
 """
 

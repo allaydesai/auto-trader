@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 from auto_trader.cli.plan_utils import (
     show_available_templates,
@@ -23,12 +22,12 @@ class TestShowAvailableTemplates:
         mock_template_manager = MagicMock()
         mock_templates = {
             "close_above": {"name": "close_above", "type": "entry"},
-            "close_below": {"name": "close_below", "type": "entry"}
+            "close_below": {"name": "close_below", "type": "entry"},
         }
         mock_template_manager.list_available_templates.return_value = mock_templates
         mock_template_manager.get_template_documentation.side_effect = [
             {"description": "Enter position when price closes above threshold"},
-            {"description": "Enter position when price closes below threshold"}
+            {"description": "Enter position when price closes below threshold"},
         ]
 
         with patch("auto_trader.cli.plan_utils.console") as mock_console:
@@ -40,10 +39,14 @@ class TestShowAvailableTemplates:
 
             # Verify console calls
             assert mock_console.print.call_count >= 3  # Welcome panel + template list
-            
+
             # Check that template documentation was fetched
-            mock_template_manager.get_template_documentation.assert_any_call("close_above")
-            mock_template_manager.get_template_documentation.assert_any_call("close_below")
+            mock_template_manager.get_template_documentation.assert_any_call(
+                "close_above"
+            )
+            mock_template_manager.get_template_documentation.assert_any_call(
+                "close_below"
+            )
 
     def test_show_available_templates_no_templates(self):
         """Test when no templates are available."""
@@ -60,7 +63,7 @@ class TestShowAvailableTemplates:
             mock_console.print.assert_called_once()
             # Verify error panel was shown (just check that print was called with a Panel)
             call_args = mock_console.print.call_args[0][0]
-            assert hasattr(call_args, 'renderable')  # Rich Panel has this attribute
+            assert hasattr(call_args, "renderable")  # Rich Panel has this attribute
 
     def test_show_available_templates_with_missing_description(self):
         """Test templates with missing descriptions."""
@@ -86,17 +89,16 @@ class TestGetTemplateChoice:
         """Test valid template selection."""
         template_names = ["close_above", "close_below", "trailing_stop"]
 
-        with patch("auto_trader.cli.plan_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.plan_utils.console") as mock_console:
-            
+        with patch("auto_trader.cli.plan_utils.Prompt.ask") as mock_prompt, patch(
+            "auto_trader.cli.plan_utils.console"
+        ) as mock_console:
             mock_prompt.return_value = "2"  # Select second template
 
             result = get_template_choice(template_names)
 
             assert result == "close_below"
             mock_prompt.assert_called_once_with(
-                "\nSelect template",
-                choices=["1", "2", "3"]
+                "\nSelect template", choices=["1", "2", "3"]
             )
             mock_console.print.assert_called_once()
 
@@ -104,26 +106,23 @@ class TestGetTemplateChoice:
         """Test selecting first template."""
         template_names = ["close_above"]
 
-        with patch("auto_trader.cli.plan_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.plan_utils.console") as mock_console:
-            
+        with patch("auto_trader.cli.plan_utils.Prompt.ask") as mock_prompt, patch(
+            "auto_trader.cli.plan_utils.console"
+        ):
             mock_prompt.return_value = "1"
 
             result = get_template_choice(template_names)
 
             assert result == "close_above"
-            mock_prompt.assert_called_once_with(
-                "\nSelect template",
-                choices=["1"]
-            )
+            mock_prompt.assert_called_once_with("\nSelect template", choices=["1"])
 
     def test_get_template_choice_last_template(self):
         """Test selecting last template."""
         template_names = ["template1", "template2", "template3"]
 
-        with patch("auto_trader.cli.plan_utils.Prompt.ask") as mock_prompt, \
-             patch("auto_trader.cli.plan_utils.console") as mock_console:
-            
+        with patch("auto_trader.cli.plan_utils.Prompt.ask") as mock_prompt, patch(
+            "auto_trader.cli.plan_utils.console"
+        ):
             mock_prompt.return_value = "3"
 
             result = get_template_choice(template_names)
@@ -147,7 +146,7 @@ class TestCreatePlanOutputFile:
                 result = create_plan_output_file(plan_data, None)
 
                 # Should create the directory structure
-                expected_file = default_path / "AAPL_20240101_001.yaml"
+                default_path / "AAPL_20240101_001.yaml"
                 assert str(result).endswith("AAPL_20240101_001.yaml")
 
     def test_create_plan_output_file_custom_directory(self):
@@ -156,13 +155,13 @@ class TestCreatePlanOutputFile:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             custom_dir = Path(temp_dir) / "custom_plans"
-            
+
             result = create_plan_output_file(plan_data, custom_dir)
 
             # Should use custom directory
             expected_file = custom_dir / "MSFT_20240101_001.yaml"
             assert result == expected_file
-            
+
             # Directory should be created
             assert custom_dir.exists()
 
@@ -173,7 +172,7 @@ class TestCreatePlanOutputFile:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir) / "existing_plans"
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             result = create_plan_output_file(plan_data, output_dir)
 
             expected_file = output_dir / "GOOGL_20240101_001.yaml"
@@ -199,10 +198,10 @@ class TestShowPlanCreationSuccess:
 
             # Should call console.print once with a Panel
             mock_console.print.assert_called_once()
-            
+
             # Verify the content includes plan details (check that a Panel was printed)
             call_args = mock_console.print.call_args[0][0]
-            assert hasattr(call_args, 'renderable')  # Rich Panel has this attribute
+            assert hasattr(call_args, "renderable")  # Rich Panel has this attribute
             # The actual content verification would require Rich rendering,
             # but we can verify the function was called with proper parameters
 
@@ -221,4 +220,4 @@ class TestShowPlanCreationSuccess:
 
             mock_console.print.assert_called_once()
             call_args = mock_console.print.call_args[0][0]
-            assert hasattr(call_args, 'renderable')  # Rich Panel has this attribute
+            assert hasattr(call_args, "renderable")  # Rich Panel has this attribute

@@ -23,12 +23,10 @@ def sample_entry():
         symbol="AAPL",
         timeframe=Timeframe.ONE_MIN,
         signal=ExecutionSignal(
-            action=ExecutionAction.ENTER_LONG,
-            confidence=0.75,
-            reasoning="Test signal"
+            action=ExecutionAction.ENTER_LONG, confidence=0.75, reasoning="Test signal"
         ),
         duration_ms=15.5,
-        context_snapshot={"test": "data"}
+        context_snapshot={"test": "data"},
     )
 
 
@@ -41,13 +39,11 @@ def error_entry():
         symbol="AAPL",
         timeframe=Timeframe.ONE_MIN,
         signal=ExecutionSignal(
-            action=ExecutionAction.NONE,
-            confidence=0.0,
-            reasoning="Error occurred"
+            action=ExecutionAction.NONE, confidence=0.0, reasoning="Error occurred"
         ),
         duration_ms=0.1,
         context_snapshot={},
-        error="Test error"
+        error="Test error",
     )
 
 
@@ -57,7 +53,7 @@ class TestExecutionMetricsCalculator:
     async def test_initial_state(self, calculator):
         """Test initial metrics state."""
         metrics = await calculator.get_summary()
-        
+
         assert metrics["total_evaluations"] == 0
         assert metrics["successful_evaluations"] == 0
         assert metrics["failed_evaluations"] == 0
@@ -69,7 +65,7 @@ class TestExecutionMetricsCalculator:
     async def test_update_successful_entry(self, calculator, sample_entry):
         """Test updating metrics with successful entry."""
         await calculator.update(sample_entry)
-        
+
         metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 1
         assert metrics["successful_evaluations"] == 1
@@ -82,7 +78,7 @@ class TestExecutionMetricsCalculator:
     async def test_update_error_entry(self, calculator, error_entry):
         """Test updating metrics with error entry."""
         await calculator.update(error_entry)
-        
+
         metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 1
         assert metrics["successful_evaluations"] == 0
@@ -94,10 +90,10 @@ class TestExecutionMetricsCalculator:
         """Test updating with multiple entries."""
         # Add successful entry
         await calculator.update(sample_entry)
-        
+
         # Add error entry
         await calculator.update(error_entry)
-        
+
         metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 2
         assert metrics["successful_evaluations"] == 1
@@ -115,7 +111,7 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("test"),
                 duration_ms=10.0,
-                context_snapshot={}
+                context_snapshot={},
             ),
             ExecutionLogEntry(
                 timestamp=datetime.now(UTC),
@@ -124,7 +120,7 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("test"),
                 duration_ms=20.0,
-                context_snapshot={}
+                context_snapshot={},
             ),
             ExecutionLogEntry(
                 timestamp=datetime.now(UTC),
@@ -133,13 +129,13 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("test"),
                 duration_ms=5.0,
-                context_snapshot={}
-            )
+                context_snapshot={},
+            ),
         ]
-        
+
         for entry in entries:
             await calculator.update(entry)
-        
+
         metrics = await calculator.get_summary()
         assert metrics["max_duration_ms"] == 20.0
         assert metrics["min_duration_ms"] == 5.0
@@ -148,7 +144,7 @@ class TestExecutionMetricsCalculator:
     def test_get_function_statistics_empty(self, calculator):
         """Test function statistics with no entries."""
         stats = calculator.get_function_statistics("nonexistent", [])
-        
+
         assert stats["function"] == "nonexistent"
         assert stats["evaluations"] == 0
         assert stats["signals"] == 0
@@ -169,10 +165,10 @@ class TestExecutionMetricsCalculator:
                 signal=ExecutionSignal(
                     action=ExecutionAction.ENTER_LONG,
                     confidence=0.8,
-                    reasoning="Signal triggered"
+                    reasoning="Signal triggered",
                 ),
                 duration_ms=12.0,
-                context_snapshot={}
+                context_snapshot={},
             ),
             # No action
             ExecutionLogEntry(
@@ -182,7 +178,7 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("No signal"),
                 duration_ms=8.0,
-                context_snapshot={}
+                context_snapshot={},
             ),
             # Error
             ExecutionLogEntry(
@@ -193,18 +189,18 @@ class TestExecutionMetricsCalculator:
                 signal=ExecutionSignal.no_action("Error"),
                 duration_ms=1.0,
                 context_snapshot={},
-                error="Test error"
-            )
+                error="Test error",
+            ),
         ]
-        
+
         stats = calculator.get_function_statistics("test_func", entries)
-        
+
         assert stats["function"] == "test_func"
         assert stats["evaluations"] == 3
         assert stats["signals"] == 1
-        assert stats["signal_rate"] == 1/3
+        assert stats["signal_rate"] == 1 / 3
         assert stats["errors"] == 1
-        assert stats["error_rate"] == 1/3
+        assert stats["error_rate"] == 1 / 3
         assert stats["avg_duration_ms"] == (12.0 + 8.0 + 1.0) / 3
 
     def test_get_all_function_statistics(self, calculator):
@@ -217,7 +213,7 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("test"),
                 duration_ms=10.0,
-                context_snapshot={}
+                context_snapshot={},
             ),
             ExecutionLogEntry(
                 timestamp=datetime.now(UTC),
@@ -226,7 +222,7 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("test"),
                 duration_ms=15.0,
-                context_snapshot={}
+                context_snapshot={},
             ),
             ExecutionLogEntry(
                 timestamp=datetime.now(UTC),
@@ -235,12 +231,12 @@ class TestExecutionMetricsCalculator:
                 timeframe=Timeframe.ONE_MIN,
                 signal=ExecutionSignal.no_action("test"),
                 duration_ms=5.0,
-                context_snapshot={}
-            )
+                context_snapshot={},
+            ),
         ]
-        
+
         stats = calculator.get_all_function_statistics(entries)
-        
+
         assert "func1" in stats
         assert "func2" in stats
         assert stats["func1"]["evaluations"] == 2
@@ -250,80 +246,88 @@ class TestExecutionMetricsCalculator:
         """Test success rate calculation."""
         # Initially 0%
         assert await calculator.calculate_success_rate() == 0.0
-        
+
         # Add successful entry
-        await calculator.update(ExecutionLogEntry(
-            timestamp=datetime.now(UTC),
-            function_name="test",
-            symbol="AAPL",
-            timeframe=Timeframe.ONE_MIN,
-            signal=ExecutionSignal.no_action("test"),
-            duration_ms=10.0,
-            context_snapshot={}
-        ))
-        
+        await calculator.update(
+            ExecutionLogEntry(
+                timestamp=datetime.now(UTC),
+                function_name="test",
+                symbol="AAPL",
+                timeframe=Timeframe.ONE_MIN,
+                signal=ExecutionSignal.no_action("test"),
+                duration_ms=10.0,
+                context_snapshot={},
+            )
+        )
+
         assert await calculator.calculate_success_rate() == 100.0
-        
+
         # Add error entry
-        await calculator.update(ExecutionLogEntry(
-            timestamp=datetime.now(UTC),
-            function_name="test",
-            symbol="AAPL",
-            timeframe=Timeframe.ONE_MIN,
-            signal=ExecutionSignal.no_action("test"),
-            duration_ms=10.0,
-            context_snapshot={},
-            error="Error"
-        ))
-        
+        await calculator.update(
+            ExecutionLogEntry(
+                timestamp=datetime.now(UTC),
+                function_name="test",
+                symbol="AAPL",
+                timeframe=Timeframe.ONE_MIN,
+                signal=ExecutionSignal.no_action("test"),
+                duration_ms=10.0,
+                context_snapshot={},
+                error="Error",
+            )
+        )
+
         assert await calculator.calculate_success_rate() == 50.0
 
     async def test_calculate_signal_rate(self, calculator):
         """Test signal rate calculation."""
         # Initially 0%
         assert await calculator.calculate_signal_rate() == 0.0
-        
+
         # Add entry with signal
-        await calculator.update(ExecutionLogEntry(
-            timestamp=datetime.now(UTC),
-            function_name="test",
-            symbol="AAPL",
-            timeframe=Timeframe.ONE_MIN,
-            signal=ExecutionSignal(
-                action=ExecutionAction.ENTER_LONG,
-                confidence=0.8,
-                reasoning="Signal"
-            ),
-            duration_ms=10.0,
-            context_snapshot={}
-        ))
-        
+        await calculator.update(
+            ExecutionLogEntry(
+                timestamp=datetime.now(UTC),
+                function_name="test",
+                symbol="AAPL",
+                timeframe=Timeframe.ONE_MIN,
+                signal=ExecutionSignal(
+                    action=ExecutionAction.ENTER_LONG,
+                    confidence=0.8,
+                    reasoning="Signal",
+                ),
+                duration_ms=10.0,
+                context_snapshot={},
+            )
+        )
+
         assert await calculator.calculate_signal_rate() == 100.0
-        
+
         # Add entry without signal
-        await calculator.update(ExecutionLogEntry(
-            timestamp=datetime.now(UTC),
-            function_name="test",
-            symbol="AAPL",
-            timeframe=Timeframe.ONE_MIN,
-            signal=ExecutionSignal.no_action("No signal"),
-            duration_ms=10.0,
-            context_snapshot={}
-        ))
-        
+        await calculator.update(
+            ExecutionLogEntry(
+                timestamp=datetime.now(UTC),
+                function_name="test",
+                symbol="AAPL",
+                timeframe=Timeframe.ONE_MIN,
+                signal=ExecutionSignal.no_action("No signal"),
+                duration_ms=10.0,
+                context_snapshot={},
+            )
+        )
+
         assert await calculator.calculate_signal_rate() == 50.0
 
     async def test_reset(self, calculator, sample_entry):
         """Test resetting metrics."""
         await calculator.update(sample_entry)
-        
+
         # Verify metrics are populated
         metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] > 0
-        
+
         # Reset
         await calculator.reset()
-        
+
         # Verify back to initial state
         metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 0
@@ -337,7 +341,7 @@ class TestExecutionMetricsCalculator:
     async def test_concurrency_safety(self, calculator):
         """Test that calculator is concurrency-safe with asyncio."""
         import asyncio
-        
+
         async def add_entries():
             for i in range(100):
                 entry = ExecutionLogEntry(
@@ -347,19 +351,19 @@ class TestExecutionMetricsCalculator:
                     timeframe=Timeframe.ONE_MIN,
                     signal=ExecutionSignal.no_action("test"),
                     duration_ms=10.0,
-                    context_snapshot={}
+                    context_snapshot={},
                 )
                 await calculator.update(entry)
-        
+
         # Start multiple concurrent tasks
         tasks = []
         for _ in range(5):
             task = asyncio.create_task(add_entries())
             tasks.append(task)
-        
+
         # Wait for completion
         await asyncio.gather(*tasks)
-        
+
         # Should have 500 total evaluations
         metrics = await calculator.get_summary()
         assert metrics["total_evaluations"] == 500

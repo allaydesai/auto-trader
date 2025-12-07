@@ -1,6 +1,6 @@
 """Tests for diagnostic_commands module."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -14,11 +14,15 @@ class TestDoctor:
         """Test doctor command with all checks enabled."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration") as mock_config, \
-             patch("auto_trader.cli.diagnostic_commands.check_trade_plans") as mock_plans, \
-             patch("auto_trader.cli.diagnostic_commands.check_permissions") as mock_perms, \
-             patch("auto_trader.cli.diagnostic_commands.display_diagnostic_summary") as mock_summary:
-
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration"
+        ) as mock_config, patch(
+            "auto_trader.cli.diagnostic_commands.check_trade_plans"
+        ) as mock_plans, patch(
+            "auto_trader.cli.diagnostic_commands.check_permissions"
+        ) as mock_perms, patch(
+            "auto_trader.cli.diagnostic_commands.display_diagnostic_summary"
+        ) as mock_summary:
             # Mock diagnostic results
             mock_config.return_value = [{"check": "config", "status": "pass"}]
             mock_plans.return_value = [{"check": "plans", "status": "pass"}]
@@ -41,11 +45,15 @@ class TestDoctor:
         """Test doctor command with only config checks."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration") as mock_config, \
-             patch("auto_trader.cli.diagnostic_commands.check_trade_plans") as mock_plans, \
-             patch("auto_trader.cli.diagnostic_commands.check_permissions") as mock_perms, \
-             patch("auto_trader.cli.diagnostic_commands.display_diagnostic_summary") as mock_summary:
-
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration"
+        ) as mock_config, patch(
+            "auto_trader.cli.diagnostic_commands.check_trade_plans"
+        ) as mock_plans, patch(
+            "auto_trader.cli.diagnostic_commands.check_permissions"
+        ) as mock_perms, patch(
+            "auto_trader.cli.diagnostic_commands.display_diagnostic_summary"
+        ) as mock_summary:
             mock_config.return_value = [{"check": "config", "status": "pass"}]
 
             result = runner.invoke(doctor, ["--config"])
@@ -62,11 +70,15 @@ class TestDoctor:
         """Test doctor command with only plans checks."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration") as mock_config, \
-             patch("auto_trader.cli.diagnostic_commands.check_trade_plans") as mock_plans, \
-             patch("auto_trader.cli.diagnostic_commands.check_permissions") as mock_perms, \
-             patch("auto_trader.cli.diagnostic_commands.display_diagnostic_summary") as mock_summary:
-
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration"
+        ) as mock_config, patch(
+            "auto_trader.cli.diagnostic_commands.check_trade_plans"
+        ) as mock_plans, patch(
+            "auto_trader.cli.diagnostic_commands.check_permissions"
+        ) as mock_perms, patch(
+            "auto_trader.cli.diagnostic_commands.display_diagnostic_summary"
+        ) as mock_summary:
             mock_plans.return_value = [{"check": "plans", "status": "pass"}]
 
             result = runner.invoke(doctor, ["--plans"])
@@ -83,11 +95,15 @@ class TestDoctor:
         """Test doctor command with only permissions checks."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration") as mock_config, \
-             patch("auto_trader.cli.diagnostic_commands.check_trade_plans") as mock_plans, \
-             patch("auto_trader.cli.diagnostic_commands.check_permissions") as mock_perms, \
-             patch("auto_trader.cli.diagnostic_commands.display_diagnostic_summary") as mock_summary:
-
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration"
+        ) as mock_config, patch(
+            "auto_trader.cli.diagnostic_commands.check_trade_plans"
+        ) as mock_plans, patch(
+            "auto_trader.cli.diagnostic_commands.check_permissions"
+        ) as mock_perms, patch(
+            "auto_trader.cli.diagnostic_commands.display_diagnostic_summary"
+        ) as mock_summary:
             mock_perms.return_value = [{"check": "permissions", "status": "pass"}]
 
             result = runner.invoke(doctor, ["--permissions"])
@@ -104,12 +120,17 @@ class TestDoctor:
         """Test doctor command with debug export."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration") as mock_config, \
-             patch("auto_trader.cli.diagnostic_commands.check_trade_plans") as mock_plans, \
-             patch("auto_trader.cli.diagnostic_commands.check_permissions") as mock_perms, \
-             patch("auto_trader.cli.diagnostic_commands.display_diagnostic_summary") as mock_summary, \
-             patch("auto_trader.cli.diagnostic_commands.export_debug_information") as mock_export:
-
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration"
+        ) as mock_config, patch(
+            "auto_trader.cli.diagnostic_commands.check_trade_plans"
+        ) as mock_plans, patch(
+            "auto_trader.cli.diagnostic_commands.check_permissions"
+        ) as mock_perms, patch(
+            "auto_trader.cli.diagnostic_commands.display_diagnostic_summary"
+        ), patch(
+            "auto_trader.cli.diagnostic_commands.export_debug_information"
+        ) as mock_export:
             mock_config.return_value = [{"check": "config", "status": "pass"}]
             mock_plans.return_value = [{"check": "plans", "status": "pass"}]
             mock_perms.return_value = [{"check": "permissions", "status": "pass"}]
@@ -123,11 +144,15 @@ class TestDoctor:
         """Test doctor command with mixed check flags."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration") as mock_config, \
-             patch("auto_trader.cli.diagnostic_commands.check_trade_plans") as mock_plans, \
-             patch("auto_trader.cli.diagnostic_commands.check_permissions") as mock_perms, \
-             patch("auto_trader.cli.diagnostic_commands.display_diagnostic_summary") as mock_summary:
-
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration"
+        ) as mock_config, patch(
+            "auto_trader.cli.diagnostic_commands.check_trade_plans"
+        ) as mock_plans, patch(
+            "auto_trader.cli.diagnostic_commands.check_permissions"
+        ) as mock_perms, patch(
+            "auto_trader.cli.diagnostic_commands.display_diagnostic_summary"
+        ) as mock_summary:
             mock_config.return_value = [{"check": "config", "status": "pass"}]
             mock_plans.return_value = [{"check": "plans", "status": "pass"}]
 
@@ -146,7 +171,10 @@ class TestDoctor:
         """Test exception handling in doctor command."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.diagnostic_commands.check_configuration", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.cli.diagnostic_commands.check_configuration",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(doctor)
             assert result.exit_code == 1  # Error handler calls sys.exit(1)
             assert "Error during diagnostic checks" in result.output

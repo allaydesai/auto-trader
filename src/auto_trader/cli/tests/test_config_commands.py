@@ -32,21 +32,28 @@ class TestValidateConfig:
                 yaml.dump(user_config_data, f)
 
             # Mock dependencies
-            with patch("auto_trader.cli.config_commands.Settings") as mock_settings, \
-                 patch("auto_trader.cli.config_commands.ConfigLoader") as mock_loader_class:
-                
+            with patch(
+                "auto_trader.cli.config_commands.Settings"
+            ) as mock_settings, patch(
+                "auto_trader.cli.config_commands.ConfigLoader"
+            ) as mock_loader_class:
                 mock_settings_instance = MagicMock()
                 mock_settings.return_value = mock_settings_instance
-                
+
                 mock_loader = MagicMock()
                 mock_loader.validate_configuration.return_value = []
                 mock_loader.system_config.trading.simulation_mode = True
                 mock_loader_class.return_value = mock_loader
 
-                result = runner.invoke(validate_config, [
-                    "--config-file", str(config_file),
-                    "--user-config-file", str(user_config_file)
-                ])
+                result = runner.invoke(
+                    validate_config,
+                    [
+                        "--config-file",
+                        str(config_file),
+                        "--user-config-file",
+                        str(user_config_file),
+                    ],
+                )
 
                 assert result.exit_code == 0
                 assert "Configuration validation passed" in result.output
@@ -55,12 +62,12 @@ class TestValidateConfig:
         """Test configuration validation with errors."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.config_commands.Settings") as mock_settings, \
-             patch("auto_trader.cli.config_commands.ConfigLoader") as mock_loader_class:
-            
+        with patch("auto_trader.cli.config_commands.Settings") as mock_settings, patch(
+            "auto_trader.cli.config_commands.ConfigLoader"
+        ) as mock_loader_class:
             mock_settings_instance = MagicMock()
             mock_settings.return_value = mock_settings_instance
-            
+
             mock_loader = MagicMock()
             mock_loader.validate_configuration.return_value = ["Test error"]
             mock_loader_class.return_value = mock_loader
@@ -74,13 +81,14 @@ class TestValidateConfig:
         """Test verbose configuration validation."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.config_commands.Settings") as mock_settings, \
-             patch("auto_trader.cli.config_commands.ConfigLoader") as mock_loader_class, \
-             patch("auto_trader.cli.config_commands.display_config_summary") as mock_display:
-            
+        with patch("auto_trader.cli.config_commands.Settings") as mock_settings, patch(
+            "auto_trader.cli.config_commands.ConfigLoader"
+        ) as mock_loader_class, patch(
+            "auto_trader.cli.config_commands.display_config_summary"
+        ) as mock_display:
             mock_settings_instance = MagicMock()
             mock_settings.return_value = mock_settings_instance
-            
+
             mock_loader = MagicMock()
             mock_loader.validate_configuration.return_value = []
             mock_loader.system_config.trading.simulation_mode = True
@@ -95,7 +103,10 @@ class TestValidateConfig:
         """Test exception handling in validate_config."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.config_commands.Settings", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.cli.config_commands.Settings",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(validate_config)
             assert result.exit_code == 1  # Error handling calls sys.exit(1)
             assert "Error during configuration validation" in result.output
@@ -111,12 +122,19 @@ class TestSetup:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            with patch("auto_trader.cli.config_commands.check_existing_files", return_value=True), \
-                 patch("auto_trader.cli.config_commands.create_env_file") as mock_env, \
-                 patch("auto_trader.cli.config_commands.create_config_file") as mock_config, \
-                 patch("auto_trader.cli.config_commands.create_user_config_file") as mock_user:
-
-                result = runner.invoke(setup, ["--output-dir", str(temp_path), "--force"])
+            with patch(
+                "auto_trader.cli.config_commands.check_existing_files",
+                return_value=True,
+            ), patch(
+                "auto_trader.cli.config_commands.create_env_file"
+            ) as mock_env, patch(
+                "auto_trader.cli.config_commands.create_config_file"
+            ) as mock_config, patch(
+                "auto_trader.cli.config_commands.create_user_config_file"
+            ) as mock_user:
+                result = runner.invoke(
+                    setup, ["--output-dir", str(temp_path), "--force"]
+                )
 
                 assert result.exit_code == 0
                 assert "Setup completed successfully" in result.output
@@ -131,7 +149,10 @@ class TestSetup:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            with patch("auto_trader.cli.config_commands.check_existing_files", return_value=False):
+            with patch(
+                "auto_trader.cli.config_commands.check_existing_files",
+                return_value=False,
+            ):
                 result = runner.invoke(setup, ["--output-dir", str(temp_path)])
 
                 assert result.exit_code == 0
@@ -144,10 +165,16 @@ class TestSetup:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            with patch("auto_trader.cli.config_commands.check_existing_files", return_value=True), \
-                 patch("auto_trader.cli.config_commands.create_env_file", side_effect=OSError("Permission denied")):
-
-                result = runner.invoke(setup, ["--output-dir", str(temp_path), "--force"])
+            with patch(
+                "auto_trader.cli.config_commands.check_existing_files",
+                return_value=True,
+            ), patch(
+                "auto_trader.cli.config_commands.create_env_file",
+                side_effect=OSError("Permission denied"),
+            ):
+                result = runner.invoke(
+                    setup, ["--output-dir", str(temp_path), "--force"]
+                )
 
                 assert result.exit_code == 0
                 # Error handling should prevent crash
@@ -156,7 +183,10 @@ class TestSetup:
         """Test exception handling in setup."""
         runner = CliRunner()
 
-        with patch("auto_trader.cli.config_commands.check_existing_files", side_effect=Exception("Test error")):
+        with patch(
+            "auto_trader.cli.config_commands.check_existing_files",
+            side_effect=Exception("Test error"),
+        ):
             result = runner.invoke(setup)
             assert result.exit_code == 1  # Generic error handler calls sys.exit(1)
             assert "Error during setup wizard" in result.output

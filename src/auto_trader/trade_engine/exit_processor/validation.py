@@ -9,7 +9,7 @@ from auto_trader.trade_engine.order_builders import ExitProcessingResult
 
 class ExitSignalValidator:
     """Validates exit signals before processing."""
-    
+
     @staticmethod
     def validate_exit_signal(
         signal: ExecutionSignal,
@@ -17,12 +17,12 @@ class ExitSignalValidator:
         position: PositionEntry,
     ) -> ExitProcessingResult:
         """Validate exit signal and associated state.
-        
+
         Args:
             signal: Exit signal to validate
             trade_plan: Associated trade plan
             position: Associated position (can be None)
-            
+
         Returns:
             ExitProcessingResult with validation status
         """
@@ -34,7 +34,7 @@ class ExitSignalValidator:
                 error_message=f"Invalid exit action: {signal.action}",
                 plan_id=trade_plan.plan_id,
             )
-        
+
         # Check if position exists
         if not position:
             return ExitProcessingResult(
@@ -43,7 +43,7 @@ class ExitSignalValidator:
                 error_message=f"No position found for plan {trade_plan.plan_id}",
                 plan_id=trade_plan.plan_id,
             )
-        
+
         # Check if position is already closed
         if position.is_closed:
             return ExitProcessingResult(
@@ -53,7 +53,7 @@ class ExitSignalValidator:
                 position_id=position.position_id,
                 plan_id=trade_plan.plan_id,
             )
-        
+
         # Validate trade plan status
         if trade_plan.status != TradePlanStatus.POSITION_OPEN:
             return ExitProcessingResult(
@@ -63,7 +63,7 @@ class ExitSignalValidator:
                 position_id=position.position_id,
                 plan_id=trade_plan.plan_id,
             )
-        
+
         # All validations passed
         return ExitProcessingResult(
             success=True,

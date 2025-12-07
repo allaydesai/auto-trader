@@ -1,8 +1,5 @@
 """Minimal tests for TradeOrchestrator to verify imports work."""
 
-import pytest
-from unittest.mock import Mock
-
 from auto_trader.trade_engine.trade_orchestrator import (
     TradeOrchestrator,
     TradeOrchestrationConfig,
@@ -26,7 +23,7 @@ def test_lifecycle_event_creation():
         old_status=TradePlanStatus.AWAITING_ENTRY,
         new_status=TradePlanStatus.POSITION_OPEN,
     )
-    
+
     assert event.event_type == "test_event"
     assert event.plan_id == "TEST_001"
     assert event.old_status == TradePlanStatus.AWAITING_ENTRY

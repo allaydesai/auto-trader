@@ -188,59 +188,58 @@ class ExecutionFunctionBase(ABC):
 
     def is_candle_close_for_timeframe(self, context: ExecutionContext) -> bool:
         """Check if current bar represents a completed candle for the function's timeframe.
-        
-        For now, this assumes all bars passed to functions are already aggregated 
+
+        For now, this assumes all bars passed to functions are already aggregated
         to the correct timeframe. Future enhancement could add multi-timeframe logic.
-        
+
         Args:
             context: Execution context with current bar
-            
+
         Returns:
             True if this is a valid candle close evaluation
         """
         # Basic validation that bar timeframe matches function timeframe
-        if hasattr(context.current_bar, 'bar_size'):
+        if hasattr(context.current_bar, "bar_size"):
             expected_bar_size = {
                 "ONE_MIN": "1min",
                 "FIVE_MIN": "5min",
-                "FIFTEEN_MIN": "15min", 
+                "FIFTEEN_MIN": "15min",
                 "ONE_HOUR": "1hour",
-                "ONE_DAY": "1day"
+                "ONE_DAY": "1day",
             }.get(self.timeframe.name)
-            
+
             if expected_bar_size and context.current_bar.bar_size != expected_bar_size:
                 logger.warning(
                     f"{self.name}: Bar size mismatch. Expected {expected_bar_size}, "
                     f"got {context.current_bar.bar_size}"
                 )
                 return False
-        
+
         return True
 
     def check_edge_cases(self, context: ExecutionContext) -> tuple[bool, float]:
         """Check for edge cases and calculate confidence adjustment.
-        
+
         Args:
             context: Execution context
-            
+
         Returns:
             Tuple of (should_skip_evaluation, confidence_adjustment)
         """
         try:
             edge_cases = self.edge_detector.detect_all_edge_cases(
-                context.current_bar, 
-                context.historical_bars
+                context.current_bar, context.historical_bars
             )
-            
+
             # Log edge cases if any
             if edge_cases:
                 self.edge_detector.log_edge_cases(edge_cases, context.symbol)
-            
+
             should_skip = self.edge_detector.should_skip_evaluation(edge_cases)
             confidence_adj = self.edge_detector.get_confidence_adjustment(edge_cases)
-            
+
             return should_skip, confidence_adj
-            
+
         except Exception as e:
             logger.error(f"Edge case detection failed for {self.name}: {e}")
             # Fail safe: skip evaluation on edge case detection errors

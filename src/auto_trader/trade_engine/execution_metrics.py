@@ -9,7 +9,7 @@ from auto_trader.models.enums import ExecutionAction
 
 class ExecutionMetricsCalculator:
     """Calculator for execution function performance metrics.
-    
+
     Tracks evaluations, signals, errors, and timing statistics
     for performance monitoring and optimization.
     """
@@ -57,9 +57,7 @@ class ExecutionMetricsCalculator:
             return self.metrics.copy()
 
     def get_function_statistics(
-        self, 
-        function_name: str, 
-        entries: List[ExecutionLogEntry]
+        self, function_name: str, entries: List[ExecutionLogEntry]
     ) -> Dict[str, Any]:
         """Get statistics for a specific function.
 
@@ -104,8 +102,7 @@ class ExecutionMetricsCalculator:
         return await self.get_summary()
 
     def get_all_function_statistics(
-        self, 
-        entries: List[ExecutionLogEntry]
+        self, entries: List[ExecutionLogEntry]
     ) -> Dict[str, Any]:
         """Get statistics for all functions from entries.
 
@@ -144,7 +141,7 @@ class ExecutionMetricsCalculator:
             total = self.metrics["total_evaluations"]
             if total == 0:
                 return 0.0
-            
+
             successful = self.metrics["successful_evaluations"]
             return (successful / total) * 100.0
 
@@ -158,7 +155,7 @@ class ExecutionMetricsCalculator:
             total = self.metrics["total_evaluations"]
             if total == 0:
                 return 0.0
-            
+
             actions = self.metrics["actions_triggered"]
             return (actions / total) * 100.0
 
@@ -196,4 +193,3 @@ class ExecutionMetricsCalculator:
         self.metrics["avg_duration_ms"] = (
             total_duration / self.metrics["total_evaluations"]
         )
-

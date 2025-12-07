@@ -11,10 +11,7 @@ from auto_trader.risk_management import (
     PositionSizeResult,
     RiskValidationResult,
     PortfolioRiskState,
-    PositionRiskEntry,
-    PortfolioRiskExceededError,
     InvalidPositionSizeError,
-    DailyLossLimitExceededError,
 )
 
 
@@ -37,11 +34,13 @@ def mock_position_sizer():
 def mock_portfolio_tracker():
     """Mock portfolio tracker."""
     mock = Mock(spec=PortfolioTracker)
-    mock.get_current_state = AsyncMock(return_value=PortfolioRiskState(
-        positions=[],
-        total_risk_percentage=Decimal("3.0"),
-        account_value=Decimal("100000.00"),
-    ))
+    mock.get_current_state = AsyncMock(
+        return_value=PortfolioRiskState(
+            positions=[],
+            total_risk_percentage=Decimal("3.0"),
+            account_value=Decimal("100000.00"),
+        )
+    )
     return mock
 
 
@@ -79,7 +78,7 @@ class TestOrderRiskValidator:
     ):
         """Test successful order validation."""
         result = await order_risk_validator.validate_order_request(sample_order_request)
-        
+
         assert result.is_valid is True
         assert result.position_size_result is not None
         assert result.position_size_result.position_size == 100
@@ -93,20 +92,22 @@ class TestOrderRiskValidator:
     ):
         """Test validation failure when portfolio risk limit is exceeded."""
         # Set high current risk to trigger limit
-        mock_portfolio_tracker.get_current_state = AsyncMock(return_value=PortfolioRiskState(
-            positions=[],
-            total_risk_percentage=Decimal("9.0"),  # High current risk
-            account_value=Decimal("100000.00"),
-        ))
-        
+        mock_portfolio_tracker.get_current_state = AsyncMock(
+            return_value=PortfolioRiskState(
+                positions=[],
+                total_risk_percentage=Decimal("9.0"),  # High current risk
+                account_value=Decimal("100000.00"),
+            )
+        )
+
         validator = OrderRiskValidator(
             position_sizer=mock_position_sizer,
             portfolio_tracker=mock_portfolio_tracker,
             account_value=Decimal("100000.00"),
         )
-        
+
         result = await validator.validate_order_request(sample_order_request)
-        
+
         assert result.is_valid is False
         assert len(result.errors) > 0
         assert "Portfolio risk limit exceeded" in result.errors[0]
@@ -115,15 +116,15 @@ class TestOrderRiskValidator:
     async def test_daily_loss_limit_validation(
         self, mock_position_sizer, mock_portfolio_tracker, sample_order_request
     ):
-        """Test daily loss limit validation (currently simplified implementation)."""        
+        """Test daily loss limit validation (currently simplified implementation)."""
         validator = OrderRiskValidator(
             position_sizer=mock_position_sizer,
             portfolio_tracker=mock_portfolio_tracker,
             account_value=Decimal("100000.00"),
         )
-        
+
         result = await validator.validate_order_request(sample_order_request)
-        
+
         # With simplified implementation, daily loss limit always passes
         assert result.is_valid is True
 
@@ -133,18 +134,18 @@ class TestOrderRiskValidator:
     ):
         """Test validation failure due to invalid position size calculation."""
         # Make position sizer raise error
-        mock_position_sizer.calculate_position_size.side_effect = InvalidPositionSizeError(
-            "Invalid entry/stop prices"
+        mock_position_sizer.calculate_position_size.side_effect = (
+            InvalidPositionSizeError("Invalid entry/stop prices")
         )
-        
+
         validator = OrderRiskValidator(
             position_sizer=mock_position_sizer,
             portfolio_tracker=mock_portfolio_tracker,
             account_value=Decimal("100000.00"),
         )
-        
+
         result = await validator.validate_order_request(sample_order_request)
-        
+
         assert result.is_valid is False
         assert len(result.errors) > 0
         assert "Invalid entry/stop prices" in result.errors[0]
@@ -157,21 +158,25 @@ class TestOrderRiskValidator:
         # Set very high position size to trigger capital check
         mock_position_sizer.calculate_position_size.return_value = PositionSizeResult(
             position_size=10000,  # Very large position
-            dollar_risk=Decimal("5000.00"),  # Lower dollar risk to avoid portfolio limit
+            dollar_risk=Decimal(
+                "5000.00"
+            ),  # Lower dollar risk to avoid portfolio limit
             validation_status=True,
-            portfolio_risk_percentage=Decimal("5.0"),  # 5% portfolio risk (within 10% limit)
+            portfolio_risk_percentage=Decimal(
+                "5.0"
+            ),  # 5% portfolio risk (within 10% limit)
             risk_category="normal",
             account_value=Decimal("100000.00"),
         )
-        
+
         validator = OrderRiskValidator(
             position_sizer=mock_position_sizer,
             portfolio_tracker=mock_portfolio_tracker,
             account_value=Decimal("100000.00"),  # Not enough for 10000 * $180.50
         )
-        
+
         result = await validator.validate_order_request(sample_order_request)
-        
+
         assert result.is_valid is False
         assert len(result.errors) > 0
         assert "Insufficient capital" in result.errors[0]
@@ -181,7 +186,7 @@ class TestOrderRiskValidator:
     ):
         """Test creating order rejection result."""
         from auto_trader.risk_management import RiskCheck
-        
+
         risk_check = RiskCheck(
             passed=False,
             reason="Test failure",
@@ -190,7 +195,7 @@ class TestOrderRiskValidator:
             total_risk=Decimal("8.0"),
             limit=Decimal("10.0"),
         )
-        
+
         validation_result = RiskValidationResult(
             is_valid=False,
             position_size_result=None,
@@ -198,11 +203,11 @@ class TestOrderRiskValidator:
             errors=["Test error"],
             warnings=[],
         )
-        
+
         order_result = order_risk_validator.create_order_rejection_result(
             sample_order_request, validation_result
         )
-        
+
         assert order_result.success is False
         assert order_result.trade_plan_id == sample_order_request.trade_plan_id
         assert "Risk validation failed" in order_result.error_message
@@ -224,15 +229,15 @@ class TestOrderRiskValidator:
             take_profit_price=Decimal("270.00"),
             risk_category=RiskCategory.LARGE,  # Test LARGE category
         )
-        
+
         validator = OrderRiskValidator(
             position_sizer=mock_position_sizer,
             portfolio_tracker=mock_portfolio_tracker,
             account_value=Decimal("100000.00"),
         )
-        
+
         await validator.validate_order_request(order_request)
-        
+
         # Check that position sizer was called with correct risk category string
         mock_position_sizer.calculate_position_size.assert_called_once()
         args = mock_position_sizer.calculate_position_size.call_args[1]
@@ -244,13 +249,13 @@ class TestOrderRiskValidator:
     ):
         """Test that explicitly set account value takes precedence."""
         explicit_account_value = Decimal("50000.00")
-        
+
         validator = OrderRiskValidator(
             position_sizer=mock_position_sizer,
             portfolio_tracker=mock_portfolio_tracker,
             account_value=explicit_account_value,
         )
-        
+
         account_value = await validator._get_account_value()
         assert account_value == explicit_account_value
 
@@ -264,6 +269,6 @@ class TestOrderRiskValidator:
             portfolio_tracker=mock_portfolio_tracker,
             account_value=None,  # No explicit value
         )
-        
+
         account_value = await validator._get_account_value()
         assert account_value == Decimal("100000.00")  # Default value

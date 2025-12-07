@@ -2,7 +2,7 @@
 Order execution manager for IBKR integration using ib-async.
 
 This module provides the main OrderExecutionManager class which coordinates
-order placement, modification, cancellation, and status tracking with 
+order placement, modification, cancellation, and status tracking with
 risk management integration and comprehensive error handling.
 
 The implementation uses a modular architecture with separate engines for
@@ -20,7 +20,7 @@ from .order_execution_manager import (
 
 __all__ = [
     "OrderExecutionManager",
-    "OrderExecutionError", 
+    "OrderExecutionError",
     "OrderNotFoundError",
     "OrderAlreadyExistsError",
 ]

@@ -1,6 +1,6 @@
 """Trade lifecycle orchestration and management (compatibility module).
 
-This module provides backward compatibility while delegating to the 
+This module provides backward compatibility while delegating to the
 modular orchestration package structure.
 """
 

@@ -10,7 +10,7 @@ from auto_trader.models.trade_plan import TradePlanStatus
 
 class TradeLifecycleEvent:
     """Represents a trade lifecycle transition event."""
-    
+
     def __init__(
         self,
         event_type: str,
@@ -21,11 +21,11 @@ class TradeLifecycleEvent:
         timestamp: Optional[datetime] = None,
     ):
         """Initialize lifecycle event.
-        
+
         Args:
             event_type: Type of event (status_change, entry_signal, exit_signal)
             plan_id: Trade plan ID
-            old_status: Previous status 
+            old_status: Previous status
             new_status: New status
             context: Additional context data
             timestamp: Event timestamp
@@ -39,7 +39,7 @@ class TradeLifecycleEvent:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert event to dictionary for serialization.
-        
+
         Returns:
             Event data as dictionary
         """
@@ -62,7 +62,7 @@ class TradeLifecycleEvent:
 
 class TradeOrchestrationConfig:
     """Configuration for trade orchestrator behavior."""
-    
+
     def __init__(
         self,
         max_concurrent_trades: int = 10,
@@ -94,27 +94,27 @@ class TradeOrchestrationConfig:
         self.enable_lifecycle_logging = enable_lifecycle_logging
         self.event_handler_timeout_seconds = event_handler_timeout_seconds
         self.minimum_confidence_threshold = minimum_confidence_threshold
-        
+
         # Validate configuration
         self._validate_config()
-    
+
     def _validate_config(self) -> None:
         """Validate configuration parameters."""
         if self.max_concurrent_trades <= 0:
             raise ValueError("max_concurrent_trades must be positive")
-        
+
         if self.signal_timeout_seconds <= 0:
             raise ValueError("signal_timeout_seconds must be positive")
-        
+
         if self.state_save_interval_seconds <= 0:
             raise ValueError("state_save_interval_seconds must be positive")
-        
+
         if self.event_handler_timeout_seconds <= 0:
             raise ValueError("event_handler_timeout_seconds must be positive")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary.
-        
+
         Returns:
             Configuration data as dictionary
         """
@@ -127,14 +127,14 @@ class TradeOrchestrationConfig:
             "enable_lifecycle_logging": self.enable_lifecycle_logging,
             "event_handler_timeout_seconds": self.event_handler_timeout_seconds,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TradeOrchestrationConfig":
         """Create configuration from dictionary.
-        
+
         Args:
             data: Configuration data dictionary
-            
+
         Returns:
             TradeOrchestrationConfig instance
         """
@@ -151,10 +151,10 @@ class TradeOrchestrationConfig:
 
 class LifecycleEventManager:
     """Manages lifecycle event handlers and notifications."""
-    
+
     def __init__(self, config: TradeOrchestrationConfig):
         """Initialize event manager.
-        
+
         Args:
             config: Orchestration configuration
         """
@@ -162,73 +162,77 @@ class LifecycleEventManager:
         self.event_handlers: List[Callable[[TradeLifecycleEvent], None]] = []
         self.event_history: List[TradeLifecycleEvent] = []
         self.max_history_size = 1000  # Keep last 1000 events
-    
+
     def add_event_handler(self, handler: Callable[[TradeLifecycleEvent], None]) -> None:
         """Add a lifecycle event handler.
-        
+
         Args:
             handler: Function to call when events occur
         """
         if handler not in self.event_handlers:
             self.event_handlers.append(handler)
             logger.debug(f"Added lifecycle event handler: {handler.__name__}")
-    
-    def remove_event_handler(self, handler: Callable[[TradeLifecycleEvent], None]) -> None:
+
+    def remove_event_handler(
+        self, handler: Callable[[TradeLifecycleEvent], None]
+    ) -> None:
         """Remove a lifecycle event handler.
-        
+
         Args:
             handler: Handler to remove
         """
         if handler in self.event_handlers:
             self.event_handlers.remove(handler)
             logger.debug(f"Removed lifecycle event handler: {handler.__name__}")
-    
+
     def emit_event(self, event: TradeLifecycleEvent) -> None:
         """Emit a lifecycle event to all handlers.
-        
+
         Args:
             event: Event to emit
         """
         # Add to history
         self.event_history.append(event)
-        
+
         # Trim history if needed
         if len(self.event_history) > self.max_history_size:
-            self.event_history = self.event_history[-self.max_history_size:]
-        
+            self.event_history = self.event_history[-self.max_history_size :]
+
         # Log the event if enabled
         if self.config.enable_lifecycle_logging:
             logger.info(f"Lifecycle event: {event}")
-        
+
         # Notify handlers
         for handler in self.event_handlers:
             try:
                 handler(event)
             except Exception as e:
-                logger.error(f"Error in lifecycle event handler {handler.__name__}: {e}")
-    
+                logger.error(
+                    f"Error in lifecycle event handler {handler.__name__}: {e}"
+                )
+
     def get_recent_events(self, count: int = 100) -> List[TradeLifecycleEvent]:
         """Get recent lifecycle events.
-        
+
         Args:
             count: Number of recent events to return
-            
+
         Returns:
             List of recent events
         """
         return self.event_history[-count:]
-    
+
     def get_events_for_plan(self, plan_id: str) -> List[TradeLifecycleEvent]:
         """Get all events for a specific plan.
-        
+
         Args:
             plan_id: Trade plan ID
-            
+
         Returns:
             List of events for the plan
         """
         return [event for event in self.event_history if event.plan_id == plan_id]
-    
+
     def clear_history(self) -> None:
         """Clear event history."""
         self.event_history.clear()

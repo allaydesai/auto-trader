@@ -27,7 +27,7 @@ class TestSettings:
         # Create settings without loading .env file to test true defaults
         settings = Settings(
             _env_file=None,  # Disable .env file loading
-            discord_webhook_url="https://discord.com/api/webhooks/test"
+            discord_webhook_url="https://discord.com/api/webhooks/test",
         )
 
         assert settings.ibkr_host == "127.0.0.1"
@@ -144,7 +144,7 @@ class TestUserPreferences:
         assert prefs.default_entry_function == "close_above"
         assert prefs.default_exit_function == "take_profit_stop_loss"
         assert prefs.environment == "paper"
-        
+
         # Legacy fields (backward compatibility)
         assert prefs.default_account_value is None
         assert prefs.default_execution_functions == {
@@ -182,25 +182,25 @@ class TestUserPreferences:
         # Invalid category
         with pytest.raises(ValueError):
             UserPreferences(default_risk_category="invalid")
-            
+
     def test_timeframe_validation(self) -> None:
         """Test timeframe validation."""
         # Valid timeframes
         valid_timeframes = ["1min", "5min", "15min", "30min", "1h"]
         prefs = UserPreferences(preferred_timeframes=valid_timeframes)
         assert prefs.preferred_timeframes == valid_timeframes
-        
+
         # Invalid timeframe
         with pytest.raises(ValueError, match="Invalid timeframe"):
             UserPreferences(preferred_timeframes=["invalid_timeframe"])
-            
+
     def test_environment_validation(self) -> None:
         """Test environment validation."""
         # Valid environments
         for env in ["paper", "live"]:
             prefs = UserPreferences(environment=env)
             assert prefs.environment == env
-            
+
         # Invalid environment
         with pytest.raises(ValueError):
             UserPreferences(environment="invalid")

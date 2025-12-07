@@ -5,8 +5,8 @@ from typing import Dict, List
 # Risk category configurations
 RISK_CATEGORIES: Dict[str, str] = {
     "small": "Small (1% risk)",
-    "normal": "Normal (2% risk)", 
-    "large": "Large (3% risk)"
+    "normal": "Normal (2% risk)",
+    "large": "Large (3% risk)",
 }
 
 # Risk category choices (just the keys for prompts)

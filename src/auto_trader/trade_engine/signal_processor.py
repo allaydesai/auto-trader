@@ -1,6 +1,6 @@
 """Signal processing for trade lifecycle management (compatibility module).
 
-This module provides backward compatibility while delegating to the 
+This module provides backward compatibility while delegating to the
 modular signal_processing package structure.
 """
 

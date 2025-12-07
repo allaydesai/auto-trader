@@ -1,7 +1,6 @@
 # Test suite for order models
 import pytest
 from decimal import Decimal
-from datetime import datetime, UTC
 from pydantic import ValidationError
 
 from auto_trader.models import (
@@ -15,7 +14,6 @@ from auto_trader.models import (
     OrderSide,
     OrderStatus,
     RiskCategory,
-    TimeInForce,
 )
 
 
@@ -29,9 +27,9 @@ class TestOrder:
             symbol="AAPL",
             side=OrderSide.BUY,
             order_type=OrderType.MARKET,
-            quantity=100
+            quantity=100,
         )
-        
+
         assert order.symbol == "AAPL"
         assert order.side == OrderSide.BUY
         assert order.order_type == OrderType.MARKET
@@ -48,9 +46,9 @@ class TestOrder:
             side=OrderSide.SELL,
             order_type=OrderType.LIMIT,
             quantity=50,
-            price=Decimal("250.75")
+            price=Decimal("250.75"),
         )
-        
+
         assert order.price == Decimal("250.75")
         assert order.order_type == OrderType.LIMIT
 
@@ -62,9 +60,9 @@ class TestOrder:
             side=OrderSide.SELL,
             order_type=OrderType.STOP,
             quantity=200,
-            stop_price=Decimal("400.00")
+            stop_price=Decimal("400.00"),
         )
-        
+
         assert order.stop_price == Decimal("400.00")
         assert order.order_type == OrderType.STOP
 
@@ -76,9 +74,9 @@ class TestOrder:
             side=OrderSide.BUY,
             order_type=OrderType.MARKET,
             quantity=100,
-            filled_quantity=30
+            filled_quantity=30,
         )
-        
+
         assert order.remaining_quantity == 70
 
     def test_order_validation_failures(self):
@@ -89,7 +87,7 @@ class TestOrder:
                 symbol="AAPL",
                 side=OrderSide.BUY,
                 order_type=OrderType.MARKET,
-                quantity=0  # Invalid: must be > 0
+                quantity=0,  # Invalid: must be > 0
             )
 
         with pytest.raises(ValidationError, match="at least 1 character"):
@@ -98,7 +96,7 @@ class TestOrder:
                 symbol="",  # Invalid: empty symbol
                 side=OrderSide.BUY,
                 order_type=OrderType.MARKET,
-                quantity=100
+                quantity=100,
             )
 
 
@@ -115,9 +113,9 @@ class TestOrderRequest:
             entry_price=Decimal("180.50"),
             stop_loss_price=Decimal("178.00"),
             take_profit_price=Decimal("185.00"),
-            risk_category=RiskCategory.NORMAL
+            risk_category=RiskCategory.NORMAL,
         )
-        
+
         assert request.symbol == "AAPL"
         assert request.entry_price == Decimal("180.50")
         assert request.stop_loss_price == Decimal("178.00")
@@ -135,9 +133,9 @@ class TestOrderRequest:
             stop_loss_price=Decimal("240.00"),
             take_profit_price=Decimal("270.00"),
             risk_category=RiskCategory.LARGE,
-            calculated_position_size=50
+            calculated_position_size=50,
         )
-        
+
         assert request.calculated_position_size == 50
         assert request.risk_category == RiskCategory.LARGE
 
@@ -155,9 +153,9 @@ class TestOrderResult:
             symbol="AAPL",
             side=OrderSide.BUY,
             quantity=100,
-            order_type=OrderType.MARKET
+            order_type=OrderType.MARKET,
         )
-        
+
         assert result.success is True
         assert result.order_id == "12345"
         assert result.order_status == OrderStatus.SUBMITTED
@@ -173,9 +171,9 @@ class TestOrderResult:
             symbol="AAPL",
             side=OrderSide.BUY,
             quantity=1000,
-            order_type=OrderType.MARKET
+            order_type=OrderType.MARKET,
         )
-        
+
         assert result.success is False
         assert result.error_message == "Insufficient buying power"
         assert result.error_code == 201
@@ -193,35 +191,35 @@ class TestBracketOrder:
             side=OrderSide.BUY,
             order_type=OrderType.LIMIT,
             quantity=100,
-            price=Decimal("180.50")
+            price=Decimal("180.50"),
         )
-        
+
         stop_loss = Order(
             trade_plan_id="AAPL_20250827_001",
             symbol="AAPL",
             side=OrderSide.SELL,
             order_type=OrderType.STOP,
             quantity=100,
-            stop_price=Decimal("178.00")
+            stop_price=Decimal("178.00"),
         )
-        
+
         take_profit = Order(
             trade_plan_id="AAPL_20250827_001",
             symbol="AAPL",
             side=OrderSide.SELL,
             order_type=OrderType.LIMIT,
             quantity=100,
-            price=Decimal("185.00")
+            price=Decimal("185.00"),
         )
-        
+
         bracket = BracketOrder(
             bracket_id="BRACKET_001",
             trade_plan_id="AAPL_20250827_001",
             parent_order=parent,
             stop_loss_order=stop_loss,
-            take_profit_order=take_profit
+            take_profit_order=take_profit,
         )
-        
+
         assert bracket.bracket_id == "BRACKET_001"
         assert bracket.parent_order.quantity == 100
         assert bracket.stop_loss_order.stop_price == Decimal("178.00")
@@ -239,9 +237,9 @@ class TestOrderEvent:
             trade_plan_id="AAPL_20250827_001",
             event_type="status_change",
             old_status=OrderStatus.SUBMITTED,
-            new_status=OrderStatus.FILLED
+            new_status=OrderStatus.FILLED,
         )
-        
+
         assert event.event_type == "status_change"
         assert event.old_status == OrderStatus.SUBMITTED
         assert event.new_status == OrderStatus.FILLED
@@ -256,9 +254,9 @@ class TestOrderEvent:
             old_status=OrderStatus.SUBMITTED,
             new_status=OrderStatus.FILLED,
             fill_quantity=100,
-            fill_price=Decimal("180.75")
+            fill_price=Decimal("180.75"),
         )
-        
+
         assert event.fill_quantity == 100
         assert event.fill_price == Decimal("180.75")
 
@@ -271,9 +269,9 @@ class TestOrderModification:
         modification = OrderModification(
             order_id="12345",
             new_price=Decimal("181.00"),
-            reason="Market conditions changed"
+            reason="Market conditions changed",
         )
-        
+
         assert modification.order_id == "12345"
         assert modification.new_price == Decimal("181.00")
         assert modification.reason == "Market conditions changed"
@@ -281,10 +279,8 @@ class TestOrderModification:
     def test_create_quantity_modification(self):
         """Test creating an order quantity modification."""
         modification = OrderModification(
-            order_id="12345",
-            new_quantity=150,
-            reason="Increased position size"
+            order_id="12345", new_quantity=150, reason="Increased position size"
         )
-        
+
         assert modification.new_quantity == 150
         assert modification.reason == "Increased position size"

@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator, ConfigD
 
 class TradePlanStatus(str, Enum):
     """Valid states for a trade plan."""
-    
+
     AWAITING_ENTRY = "awaiting_entry"
     POSITION_OPEN = "position_open"
     COMPLETED = "completed"
@@ -23,21 +23,21 @@ class TradePlanStatus(str, Enum):
 
 class RiskCategory(str, Enum):
     """Risk categories with associated percentages."""
-    
-    SMALL = "small"    # 1%
-    NORMAL = "normal"  # 2% 
-    LARGE = "large"    # 3%
+
+    SMALL = "small"  # 1%
+    NORMAL = "normal"  # 2%
+    LARGE = "large"  # 3%
 
 
 class ExecutionFunction(BaseModel):
     """Execution function configuration for trade entry/exit logic."""
-    
+
     model_config = ConfigDict(
         validate_assignment=True,
         str_strip_whitespace=True,
         frozen=True,
     )
-    
+
     function_type: str = Field(
         ...,
         description="Type identifier for execution function",
@@ -57,14 +57,14 @@ class ExecutionFunction(BaseModel):
         default=None,
         description="Last evaluation timestamp (UTC)",
     )
-    
+
     @field_validator("function_type")
     @classmethod
     def validate_function_type(cls, v: str) -> str:
         """Validate function type is supported."""
         supported_functions = {
             "close_above",
-            "close_below", 
+            "close_below",
             "trailing_stop",
             "stop_loss_take_profit",
         }
@@ -78,13 +78,13 @@ class ExecutionFunction(BaseModel):
 
 class TradePlan(BaseModel):
     """Complete trading strategy with validation for a single symbol."""
-    
+
     model_config = ConfigDict(
         validate_assignment=True,
         str_strip_whitespace=True,
         use_enum_values=True,
     )
-    
+
     plan_id: str = Field(
         ...,
         description="Unique identifier for the plan",
@@ -93,7 +93,7 @@ class TradePlan(BaseModel):
         pattern=r"^[A-Z0-9_]+$",
     )
     symbol: str = Field(
-        ..., 
+        ...,
         description="Trading symbol",
         min_length=1,
         max_length=10,
@@ -106,7 +106,7 @@ class TradePlan(BaseModel):
     )
     stop_loss: Decimal = Field(
         ...,
-        description="Stop loss price", 
+        description="Stop loss price",
         gt=0,
         decimal_places=4,
     )
@@ -155,7 +155,7 @@ class TradePlan(BaseModel):
         default=None,
         description="Last update timestamp (UTC)",
     )
-    
+
     @field_validator("symbol")
     @classmethod
     def validate_symbol(cls, v: str) -> str:
@@ -166,7 +166,7 @@ class TradePlan(BaseModel):
                 "Must be 1-10 uppercase letters only (e.g., 'AAPL', 'MSFT')"
             )
         return v
-    
+
     @field_validator("entry_level", "stop_loss", "take_profit")
     @classmethod
     def validate_price_precision(cls, v: Decimal) -> Decimal:
@@ -179,7 +179,7 @@ class TradePlan(BaseModel):
                 "Maximum 4 decimal places allowed (e.g., 123.4567)"
             )
         return v
-    
+
     @model_validator(mode="after")
     def validate_price_relationships(self) -> TradePlan:
         """Validate price level relationships make sense."""
@@ -189,10 +189,10 @@ class TradePlan(BaseModel):
                 f"entry_level ({self.entry_level}) cannot equal stop_loss "
                 f"({self.stop_loss}). This creates zero-risk trades."
             )
-        
+
         # Determine if this is a long or short position based on take_profit vs entry
         is_long_position = self.take_profit > self.entry_level
-        
+
         if is_long_position:
             # Long position: stop_loss < entry_level < take_profit
             if not (self.stop_loss < self.entry_level < self.take_profit):
@@ -211,10 +211,10 @@ class TradePlan(BaseModel):
                     f"Got: target={self.take_profit}, entry={self.entry_level}, "
                     f"stop={self.stop_loss}"
                 )
-        
+
         return self
-    
-    @model_validator(mode="after") 
+
+    @model_validator(mode="after")
     def validate_plan_id_format(self) -> TradePlan:
         """Validate plan_id follows expected format."""
         if not re.match(r"^[A-Z0-9_]+$", self.plan_id):
@@ -228,10 +228,10 @@ class TradePlan(BaseModel):
 
 class TradePlanValidationError(Exception):
     """Custom exception for trade plan validation errors."""
-    
+
     def __init__(
-        self, 
-        message: str, 
+        self,
+        message: str,
         field: Optional[str] = None,
         line_number: Optional[int] = None,
         suggestion: Optional[str] = None,
@@ -239,10 +239,10 @@ class TradePlanValidationError(Exception):
         """Initialize validation error with context."""
         self.message = message
         self.field = field
-        self.line_number = line_number 
+        self.line_number = line_number
         self.suggestion = suggestion
         super().__init__(message)
-    
+
     def __str__(self) -> str:
         """Format error message with context."""
         parts = []
@@ -250,44 +250,44 @@ class TradePlanValidationError(Exception):
             parts.append(f"Line {self.line_number}")
         if self.field:
             parts.append(f"Field '{self.field}'")
-        
+
         error_msg = self.message
         if parts:
             error_msg = f"{' - '.join(parts)}: {error_msg}"
-            
+
         if self.suggestion:
             error_msg += f"\nFix: {self.suggestion}"
-            
+
         return error_msg
 
 
 class ValidationResult(BaseModel):
     """Result of trade plan validation."""
-    
+
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-    
+
     is_valid: bool = Field(..., description="Whether validation passed")
     errors: list[TradePlanValidationError] = Field(
         default_factory=list,
         description="List of validation errors",
     )
     plan_id: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="Plan ID if validation succeeded",
     )
-    
+
     @property
     def error_count(self) -> int:
         """Number of validation errors."""
         return len(self.errors)
-    
+
     def get_error_summary(self) -> str:
         """Get formatted summary of all errors."""
         if not self.errors:
             return "No validation errors"
-            
+
         lines = [f"Found {self.error_count} validation error(s):"]
         for i, error in enumerate(self.errors, 1):
             lines.append(f"{i}. {error}")
-        
+
         return "\n".join(lines)

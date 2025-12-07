@@ -4,7 +4,7 @@ import pytest
 import asyncio
 import json
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from decimal import Decimal
 
@@ -64,15 +64,15 @@ class TestOrderStateManager:
     def test_initialization(self, temp_state_dir):
         """Test state manager initialization."""
         manager = OrderStateManager(temp_state_dir, max_backups=3, backup_interval=60)
-        
+
         assert manager.state_dir == temp_state_dir
         assert manager.max_backups == 3
         assert manager.backup_interval == 60
-        
+
         # Check directories were created
         assert manager.state_dir.exists()
         assert manager.backup_dir.exists()
-        
+
         # Check file paths
         assert manager.state_file == temp_state_dir / "order_state.json"
         assert manager.backup_dir == temp_state_dir / "backups"
@@ -82,18 +82,18 @@ class TestOrderStateManager:
         """Test saving and loading order state."""
         # Save state
         await state_manager.save_state(sample_orders)
-        
+
         # Verify state file exists
         assert state_manager.state_file.exists()
-        
+
         # Load state
         loaded_orders = await state_manager.load_state()
-        
+
         # Verify loaded orders match saved orders
         assert len(loaded_orders) == 2
         assert "SIM_001" in loaded_orders
         assert "SIM_002" in loaded_orders
-        
+
         # Verify order details
         loaded_order_1 = loaded_orders["SIM_001"]
         assert loaded_order_1.order_id == "SIM_001"
@@ -106,7 +106,7 @@ class TestOrderStateManager:
     async def test_save_empty_orders(self, state_manager):
         """Test saving empty order dictionary."""
         await state_manager.save_state({})
-        
+
         loaded_orders = await state_manager.load_state()
         assert loaded_orders == {}
 
@@ -120,11 +120,12 @@ class TestOrderStateManager:
     @pytest.mark.asyncio
     async def test_save_with_serialization_error(self, state_manager):
         """Test handling serialization errors for invalid orders."""
+
         # Create a mock order that will fail serialization
         class BadOrder(Order):
             def model_dump(self):
                 raise ValueError("Serialization error")
-        
+
         # Create mixed valid/invalid orders
         orders = {
             "GOOD_001": Order(
@@ -138,7 +139,7 @@ class TestOrderStateManager:
             ),
             "BAD_001": BadOrder(
                 order_id="BAD_001",
-                trade_plan_id="TEST_002", 
+                trade_plan_id="TEST_002",
                 symbol="TSLA",
                 side=OrderSide.SELL,
                 order_type=OrderType.LIMIT,
@@ -146,10 +147,10 @@ class TestOrderStateManager:
                 status=OrderStatus.PENDING,
             ),
         }
-        
+
         # Should save successfully (skipping bad order)
         await state_manager.save_state(orders)
-        
+
         # Load should only contain good order
         loaded_orders = await state_manager.load_state()
         assert len(loaded_orders) == 1
@@ -161,20 +162,20 @@ class TestOrderStateManager:
         """Test manual backup creation."""
         # Save initial state
         await state_manager.save_state(sample_orders)
-        
+
         # Create backup
         backup_path = await state_manager.create_backup("test_backup")
-        
+
         # Verify backup file exists
         assert backup_path
         backup_file = Path(backup_path)
         assert backup_file.exists()
         assert "test_backup" in backup_file.name
-        
+
         # Verify backup contains same data
-        with open(backup_file, 'r') as f:
+        with open(backup_file, "r") as f:
             backup_data = json.load(f)
-        
+
         snapshot = OrderStateSnapshot(**backup_data)
         assert len(snapshot.active_orders) == 2
 
@@ -183,7 +184,7 @@ class TestOrderStateManager:
         """Test automatic cleanup of old backup files."""
         # Save initial state
         await state_manager.save_state(sample_orders)
-        
+
         # Create more backups than max_backups (5)
         backup_paths = []
         for i in range(7):
@@ -191,20 +192,22 @@ class TestOrderStateManager:
             backup_paths.append(backup_path)
             # Small delay to ensure different timestamps
             await asyncio.sleep(0.01)
-        
+
         # Check that only max_backups (5) files remain
         backup_files = list(state_manager.backup_dir.glob("order_state_*.json"))
-        assert len(backup_files) == 5, f"Expected 5 backup files, found {len(backup_files)}"
-        
+        assert (
+            len(backup_files) == 5
+        ), f"Expected 5 backup files, found {len(backup_files)}"
+
         # The cleanup should have removed the oldest files
         # Since we created 7 backups and limit is 5, the 2 oldest should be removed
         backup_names = [f.name for f in backup_files]
-        
+
         # Verify that we have backups from the expected range
         # Since we keep 5 backups and created 7, we should have the most recent 5
         expected_backup_count = 5
         assert len(backup_files) == expected_backup_count
-        
+
         # Verify that at least one of the more recent backups exists
         # Since cleanup removes oldest first, newer backups should remain
         backup_indices = []
@@ -213,47 +216,53 @@ class TestOrderStateManager:
                 if f"backup_{i}" in name:
                     backup_indices.append(i)
                     break
-        
+
         # The remaining backups should be from the more recent ones
-        assert len(backup_indices) == 5, f"Expected 5 backup indices, found {backup_indices}"
+        assert (
+            len(backup_indices) == 5
+        ), f"Expected 5 backup indices, found {backup_indices}"
         # The maximum index should be >= 2 since we keep the 5 most recent out of 7
-        assert max(backup_indices) >= 2, f"Expected at least backup_2 or higher, found max: {max(backup_indices)}"
+        assert (
+            max(backup_indices) >= 2
+        ), f"Expected at least backup_2 or higher, found max: {max(backup_indices)}"
 
     @pytest.mark.asyncio
-    async def test_load_from_backup_when_main_corrupted(self, state_manager, sample_orders):
+    async def test_load_from_backup_when_main_corrupted(
+        self, state_manager, sample_orders
+    ):
         """Test loading from backup when main state file is corrupted."""
         # Save valid state
         await state_manager.save_state(sample_orders)
-        
+
         # Create backup
         await state_manager.create_backup("good_backup")
-        
+
         # Corrupt main state file
-        with open(state_manager.state_file, 'w') as f:
+        with open(state_manager.state_file, "w") as f:
             f.write("invalid json content")
-        
+
         # Load should fall back to backup
         loaded_orders = await state_manager.load_state()
-        
+
         # Should successfully load from backup
         assert len(loaded_orders) == 2
         assert "SIM_001" in loaded_orders
 
-    @pytest.mark.asyncio 
+    @pytest.mark.asyncio
     async def test_periodic_backup(self, state_manager, sample_orders):
         """Test periodic backup functionality."""
         # Save initial state
         await state_manager.save_state(sample_orders)
-        
+
         # Start periodic backup
         await state_manager.start_periodic_backup()
-        
+
         # Wait longer than backup interval
         await asyncio.sleep(1.2)
-        
+
         # Stop periodic backup
         await state_manager.stop_periodic_backup()
-        
+
         # Check that periodic backup was created
         backup_files = list(state_manager.backup_dir.glob("*periodic*"))
         assert len(backup_files) >= 1
@@ -264,13 +273,13 @@ class TestOrderStateManager:
         # Save initial state
         await state_manager.save_state(sample_orders)
         assert state_manager.state_file.exists()
-        
+
         # Clear state
         await state_manager.clear_state()
-        
+
         # State file should be removed
         assert not state_manager.state_file.exists()
-        
+
         # Load should return empty
         loaded_orders = await state_manager.load_state()
         assert loaded_orders == {}
@@ -280,10 +289,10 @@ class TestOrderStateManager:
         """Test that saves are atomic (temp file -> rename)."""
         # Ensure temp file doesn't exist initially
         assert not state_manager.temp_file.exists()
-        
+
         # Save state
         await state_manager.save_state(sample_orders)
-        
+
         # Temp file should be cleaned up after successful save
         assert not state_manager.temp_file.exists()
         assert state_manager.state_file.exists()
@@ -291,7 +300,7 @@ class TestOrderStateManager:
     def test_order_state_snapshot_model(self):
         """Test OrderStateSnapshot pydantic model."""
         timestamp = datetime.now(timezone.utc)
-        
+
         snapshot = OrderStateSnapshot(
             timestamp=timestamp,
             active_orders={
@@ -303,11 +312,11 @@ class TestOrderStateManager:
             },
             metadata={"reason": "test"},
         )
-        
+
         assert snapshot.timestamp == timestamp
         assert len(snapshot.active_orders) == 1
         assert snapshot.metadata["reason"] == "test"
-        
+
         # Test serialization
         data = snapshot.model_dump()
         assert "timestamp" in data
@@ -340,14 +349,14 @@ class TestOrderStateManager:
             },
             "metadata": {},
         }
-        
+
         # Write invalid data to state file
-        with open(state_manager.state_file, 'w') as f:
+        with open(state_manager.state_file, "w") as f:
             json.dump(snapshot_data, f)
-        
+
         # Load should skip invalid orders and continue with valid ones
         loaded_orders = await state_manager.load_state()
-        
+
         assert len(loaded_orders) == 1  # Only valid order loaded
         assert "GOOD_001" in loaded_orders
         assert "BAD_001" not in loaded_orders
@@ -357,6 +366,6 @@ class TestOrderStateManager:
         """Test creating backup when no state file exists."""
         # Try to create backup without state file
         backup_path = await state_manager.create_backup("no_state")
-        
+
         # Should return empty string and log warning
         assert backup_path == ""

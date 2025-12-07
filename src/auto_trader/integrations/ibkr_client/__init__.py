@@ -3,7 +3,7 @@
 from .circuit_breaker import CircuitBreaker, CircuitBreakerError, CircuitState
 from .client import (
     ConnectionState,
-    ConnectionStatus, 
+    ConnectionStatus,
     IBKRClient,
     IBKRConnectionError,
     IBKRError,
@@ -21,14 +21,14 @@ from .state_manager import OrderStateManager, OrderStateSnapshot
 
 __all__ = [
     "CircuitBreaker",
-    "CircuitBreakerError", 
+    "CircuitBreakerError",
     "CircuitState",
     "ConnectionManager",
     "ConnectionState",
     "ConnectionStatus",
     "IBKRClient",
     "IBKRConnectionError",
-    "IBKRError", 
+    "IBKRError",
     "IBKRAuthenticationError",
     "IBKRTimeoutError",
     "OrderExecutionManager",

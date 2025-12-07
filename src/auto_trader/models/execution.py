@@ -235,10 +235,12 @@ class ExecutionFunctionConfig(BaseModel):
 def _rebuild_models():
     """Rebuild models with forward references."""
     try:
-        from auto_trader.models.market_data import BarData
+        from auto_trader.models.market_data import BarData  # noqa: F401
+
         BarCloseEvent.model_rebuild()
     except ImportError:
         # BarData not available yet, will be rebuilt later
         pass
+
 
 _rebuild_models()

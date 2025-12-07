@@ -55,7 +55,7 @@ class ExecutionFunctionRegistry:
                 )
 
             self._functions[function_type] = function_class
-            
+
         logger.info(
             f"Registered execution function: {function_type} -> "
             f"{function_class.__name__}"
@@ -88,7 +88,9 @@ class ExecutionFunctionRegistry:
 
             return False
 
-    async def create_function(self, config: ExecutionFunctionConfig) -> ExecutionFunctionBase:
+    async def create_function(
+        self, config: ExecutionFunctionConfig
+    ) -> ExecutionFunctionBase:
         """Create and configure an execution function instance.
 
         Args:
@@ -256,8 +258,6 @@ class ExecutionFunctionRegistry:
             f"registered_types={self.list_registered_types()}, "
             f"instances={self.list_instances()})"
         )
-
-
 
 
 # Global registry instance (module-level singleton - naturally thread-safe)
