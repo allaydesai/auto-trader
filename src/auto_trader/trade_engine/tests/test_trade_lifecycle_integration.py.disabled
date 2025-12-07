@@ -1,0 +1,706 @@
+"""Integration tests for complete trade lifecycle management."""
+
+import pytest
+import asyncio
+import tempfile
+import shutil
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from datetime import datetime, UTC, timedelta
+from decimal import Decimal
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+
+from auto_trader.models.trade_plan import TradePlan, TradePlanStatus, RiskCategory, ExecutionFunction
+from auto_trader.models.market_data import BarData
+from auto_trader.models.execution import ExecutionSignal, ExecutionContext
+from auto_trader.models.enums import ExecutionAction, OrderSide, OrderStatus, OrderType, Timeframe
+from auto_trader.models.order import Order, OrderResult, OrderRequest
+from auto_trader.trade_engine.trade_orchestrator import TradeOrchestrator
+from auto_trader.trade_engine.lifecycle_manager import TradeLifecycleManager
+from auto_trader.trade_engine.signal_processor import SignalProcessor, SignalProcessorConfig
+from auto_trader.trade_engine.position_state_manager import PositionStateManager
+from auto_trader.trade_engine.exit_processor import ExitProcessor
+from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
+from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
+
+
+class MarketDataSimulator:
+    """Simulates realistic market data for testing."""
+    
+    def __init__(self):
+        self.callbacks = []
+        self.running = False
+        
+    def add_callback(self, callback):
+        """Add callback for market data updates."""
+        self.callbacks.append(callback)
+        
+    async def simulate_price_movement(
+        self,
+        symbol: str,
+        start_price: Decimal,
+        timeframe: str = "15min",
+        duration_minutes: int = 30,
+        price_change: Decimal = Decimal("0.50")
+    ) -> List[BarData]:
+        """Simulate realistic price movement."""
+        bars = []
+        current_time = datetime.now(UTC)
+        current_price = start_price
+        
+        timeframe_minutes = 15 if timeframe == "15min" else 5
+        num_bars = duration_minutes // timeframe_minutes
+        price_increment = price_change / num_bars
+        
+        for i in range(num_bars):
+            bar_time = current_time + timedelta(minutes=i * timeframe_minutes)
+            
+            # Create realistic OHLC
+            open_price = current_price
+            high_price = current_price + (price_increment * Decimal("0.3"))
+            low_price = current_price - (price_increment * Decimal("0.2"))
+            close_price = current_price + price_increment
+            
+            bar = BarData(
+                symbol=symbol,
+                timeframe=timeframe,
+                timestamp=bar_time,
+                open_price=open_price,
+                high_price=high_price,
+                low_price=low_price,
+                close_price=close_price,
+                volume=1000,
+                is_complete=True
+            )
+            
+            bars.append(bar)
+            current_price = close_price
+            
+            # Notify callbacks
+            for callback in self.callbacks:
+                await callback(bar)
+                await asyncio.sleep(0.01)  # Small delay for realism
+                
+        return bars
+
+
+class OrderFillSimulator:
+    """Simulates order execution with realistic delays and fills."""
+    
+    def __init__(self):
+        self.pending_orders = {}
+        self.fill_delay = 0.1  # 100ms delay
+        
+    async def simulate_order_fill(
+        self,
+        order_request: OrderRequest,
+        fill_price: Optional[Decimal] = None
+    ) -> OrderResult:
+        """Simulate order execution with delay."""
+        await asyncio.sleep(self.fill_delay)
+        
+        fill_price = fill_price or order_request.price
+        
+        return OrderResult(
+            success=True,
+            order_id=f"ORDER_{len(self.pending_orders) + 1:06d}",
+            trade_plan_id=order_request.trade_plan_id,
+            order_status=OrderStatus.FILLED,
+            symbol=order_request.symbol,
+            side=order_request.side,
+            quantity=order_request.quantity,
+            order_type=order_request.order_type,
+            filled_quantity=order_request.quantity,
+            average_fill_price=fill_price,
+            timestamp=datetime.now(UTC)
+        )
+
+
+class MockRiskManager:
+    """Mock risk manager for integration testing."""
+    
+    def __init__(self):
+        self.account_balance = Decimal("100000.00")
+        self.daily_loss_limit = Decimal("2000.00")
+        self.current_daily_loss = Decimal("0.00")
+        self.positions = {}
+        
+    async def validate_trade_request(self, trade_plan: TradePlan) -> Dict[str, Any]:
+        """Validate trade request."""
+        return {
+            "passed": True,
+            "checks": ["portfolio_limit", "position_size", "daily_loss"],
+            "details": "All risk checks passed"
+        }
+        
+    async def calculate_position_size(
+        self,
+        account_balance: Decimal,
+        risk_percent: float,
+        entry_price: Decimal,
+        stop_price: Decimal
+    ) -> int:
+        """Calculate position size."""
+        risk_amount = account_balance * Decimal(str(risk_percent / 100))
+        price_diff = abs(entry_price - stop_price)
+        if price_diff == 0:
+            return 100  # Default size
+        return int(risk_amount / price_diff)
+        
+    async def add_position(self, position_data: Dict[str, Any]) -> None:
+        """Add position to risk registry."""
+        self.positions[position_data["plan_id"]] = position_data
+        
+    async def remove_position(self, plan_id: str) -> None:
+        """Remove position from risk registry."""
+        self.positions.pop(plan_id, None)
+
+
+@pytest.fixture
+def temp_state_dir():
+    """Create temporary directory for state persistence testing."""
+    temp_dir = tempfile.mkdtemp()
+    yield Path(temp_dir)
+    shutil.rmtree(temp_dir)
+
+
+@pytest.fixture
+def market_data_simulator():
+    """Create market data simulator."""
+    return MarketDataSimulator()
+
+
+@pytest.fixture
+def order_fill_simulator():
+    """Create order fill simulator."""
+    return OrderFillSimulator()
+
+
+@pytest.fixture
+def mock_risk_manager():
+    """Create mock risk manager."""
+    return MockRiskManager()
+
+
+@pytest.fixture
+async def execution_function_registry():
+    """Create execution function registry."""
+    registry = ExecutionFunctionRegistry()
+    await registry.clear_all()
+    
+    # Register test functions
+    from auto_trader.trade_engine.functions import CloseAboveFunction, CloseBelowFunction
+    
+    await registry.register("close_above", CloseAboveFunction)
+    await registry.register("close_below", CloseBelowFunction)
+    
+    return registry
+
+
+@pytest.fixture
+async def mock_order_execution_manager():
+    """Create mock order execution manager."""
+    manager = AsyncMock()
+    manager.place_bracket_order = AsyncMock()
+    manager.cancel_orders_for_symbol = AsyncMock()
+    manager.get_order_status = AsyncMock(return_value=OrderStatus.FILLED)
+    return manager
+
+
+@pytest.fixture
+async def position_state_manager(temp_state_dir):
+    """Create position state manager."""
+    return PositionStateManager(state_file_path=temp_state_dir / "positions.json")
+
+
+@pytest.fixture
+async def signal_processor(mock_risk_manager, mock_order_execution_manager):
+    """Create signal processor."""
+    config = SignalProcessorConfig(
+        enable_duplicate_detection=True,
+        minimum_confidence_threshold=0.7,
+        enable_signal_filtering=True
+    )
+    
+    processor = SignalProcessor(
+        execution_adapter=ExecutionOrderAdapter(mock_order_execution_manager),
+        risk_manager=mock_risk_manager,
+        config=config
+    )
+    
+    return processor
+
+
+@pytest.fixture
+async def exit_processor(position_state_manager, mock_order_execution_manager, mock_risk_manager):
+    """Create exit processor."""
+    return ExitProcessor(
+        position_manager=position_state_manager,
+        order_manager=mock_order_execution_manager,
+        risk_manager=mock_risk_manager
+    )
+
+
+@pytest.fixture
+async def lifecycle_manager():
+    """Create lifecycle manager."""
+    return TradeLifecycleManager()
+
+
+@pytest.fixture
+async def trade_orchestrator(
+    execution_function_registry,
+    mock_order_execution_manager,
+    mock_risk_manager,
+    temp_state_dir
+):
+    """Create fully configured trade orchestrator."""
+    # Create TradePlanLoader
+    from auto_trader.models.plan_loader import TradePlanLoader
+    trade_plan_loader = TradePlanLoader(plans_directory=temp_state_dir / "plans")
+    
+    # Create orchestrator with correct parameters
+    orchestrator = TradeOrchestrator(
+        trade_plan_loader=trade_plan_loader,
+        function_registry=execution_function_registry,
+        order_execution_manager=mock_order_execution_manager,
+        risk_manager=mock_risk_manager
+    )
+    
+    return orchestrator
+
+
+@pytest.fixture
+def sample_trade_plan():
+    """Create sample trade plan for testing."""
+    return TradePlan(
+        plan_id="INTEGRATION_TEST_001",
+        symbol="AAPL",
+        entry_level=Decimal("180.00"),
+        stop_loss=Decimal("178.00"),
+        take_profit=Decimal("185.00"),
+        risk_category=RiskCategory.NORMAL,
+        entry_function=ExecutionFunction(
+            function_type="close_above",
+            timeframe="15min",
+            parameters={"threshold": "180.00"}
+        ),
+        exit_function=ExecutionFunction(
+            function_type="stop_loss_take_profit",
+            timeframe="15min", 
+            parameters={"stop_loss": "178.00", "take_profit": "185.00"}
+        ),
+        status=TradePlanStatus.AWAITING_ENTRY
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestTradeLifecycleIntegration:
+    """Integration tests for complete trade lifecycle."""
+    
+    async def test_complete_trade_lifecycle_entry_to_exit(
+        self,
+        trade_orchestrator,
+        sample_trade_plan,
+        market_data_simulator,
+        order_fill_simulator,
+        mock_order_execution_manager
+    ):
+        """Test complete trade lifecycle from entry signal to exit."""
+        # Setup order execution mock
+        mock_order_execution_manager.place_bracket_order.side_effect = [
+            await order_fill_simulator.simulate_order_fill(
+                OrderRequest(
+                    trade_plan_id="LIFECYCLE_TEST_001",
+                    symbol="AAPL",
+                    side=OrderSide.BUY,
+                    order_type=OrderType.MARKET,
+                    entry_price=Decimal("180.50"),
+                    stop_loss_price=Decimal("178.00"),
+                    take_profit_price=Decimal("185.00"),
+                    risk_category=RiskCategory.NORMAL
+                ),
+                fill_price=Decimal("180.50")
+            )
+        ]
+        
+        # Load trade plan
+        await trade_orchestrator.add_trade_plan(sample_trade_plan)
+        
+        # Start orchestrator
+        await trade_orchestrator.start()
+        
+        # Simulate market data that triggers entry
+        bars = await market_data_simulator.simulate_price_movement(
+            symbol="AAPL",
+            start_price=Decimal("179.50"),
+            timeframe="15min",
+            duration_minutes=30,
+            price_change=Decimal("1.50")  # Will cross 180.00 threshold
+        )
+        
+        # Process each bar through orchestrator
+        for bar in bars:
+            await trade_orchestrator.process_market_data(bar)
+            await asyncio.sleep(0.01)  # Small delay for processing
+        
+        # Verify entry was triggered
+        assert mock_order_execution_manager.place_bracket_order.called
+        
+        # Verify position was created
+        position = await trade_orchestrator.position_manager.get_position_by_plan_id(
+            sample_trade_plan.plan_id
+        )
+        assert position is not None
+        assert position.symbol == "AAPL"
+        assert position.quantity == 100
+        
+        # Verify trade plan status updated
+        updated_plan = await trade_orchestrator.get_trade_plan(sample_trade_plan.plan_id)
+        assert updated_plan.status == TradePlanStatus.POSITION_OPEN
+        
+        # Simulate price movement that triggers exit (take profit)
+        exit_bars = await market_data_simulator.simulate_price_movement(
+            symbol="AAPL",
+            start_price=Decimal("184.50"),
+            timeframe="15min", 
+            duration_minutes=15,
+            price_change=Decimal("1.00")  # Will cross 185.00 take profit
+        )
+        
+        # Process exit bars
+        for bar in exit_bars:
+            await trade_orchestrator.process_market_data(bar)
+            await asyncio.sleep(0.01)
+            
+        # Verify exit was processed
+        # Position should be cleaned up
+        final_position = await trade_orchestrator.position_manager.get_position_by_plan_id(
+            sample_trade_plan.plan_id
+        )
+        # Position should still exist but be marked as closed or cleaned up based on implementation
+        
+        # Verify final trade plan status
+        final_plan = await trade_orchestrator.get_trade_plan(sample_trade_plan.plan_id)
+        assert final_plan.status in [TradePlanStatus.COMPLETED, TradePlanStatus.POSITION_CLOSED]
+        
+        await trade_orchestrator.stop()
+    
+    async def test_multiple_concurrent_trade_plans(
+        self,
+        trade_orchestrator,
+        market_data_simulator,
+        order_fill_simulator,
+        mock_order_execution_manager
+    ):
+        """Test multiple trade plans executing concurrently."""
+        # Create multiple trade plans for different symbols
+        trade_plans = [
+            TradePlan(
+                plan_id=f"CONCURRENT_TEST_{i:03d}",
+                symbol=symbol,
+                entry_level=Decimal("100.00"),
+                stop_loss=Decimal("98.00"),
+                take_profit=Decimal("105.00"),
+                risk_category=RiskCategory.NORMAL,
+                entry_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="15min",
+                    parameters={"threshold": "100.00"}
+                ),
+                exit_function=ExecutionFunction(
+                    function_type="stop_loss_take_profit", 
+                    timeframe="15min",
+                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                ),
+                status=TradePlanStatus.AWAITING_ENTRY
+            )
+            for i, symbol in enumerate(["AAPL", "GOOGL", "MSFT", "TSLA", "AMZN"])
+        ]
+        
+        # Setup order execution mocks
+        mock_order_execution_manager.place_bracket_order.side_effect = [
+            await order_fill_simulator.simulate_order_fill(
+                OrderRequest(
+                    symbol=plan.symbol,
+                    quantity=100,
+                    side=OrderSide.BUY,
+                    price=Decimal("100.50")
+                )
+            )
+            for plan in trade_plans
+        ]
+        
+        # Load all trade plans
+        for plan in trade_plans:
+            await trade_orchestrator.add_trade_plan(plan)
+            
+        await trade_orchestrator.start()
+        
+        # Simulate market data for all symbols simultaneously
+        tasks = []
+        for plan in trade_plans:
+            task = market_data_simulator.simulate_price_movement(
+                symbol=plan.symbol,
+                start_price=Decimal("99.50"),
+                timeframe="15min",
+                duration_minutes=30,
+                price_change=Decimal("2.00")
+            )
+            tasks.append(task)
+            
+        # Run all simulations concurrently
+        all_bars = await asyncio.gather(*tasks)
+        
+        # Process all bars through orchestrator
+        for symbol_bars in all_bars:
+            for bar in symbol_bars:
+                await trade_orchestrator.process_market_data(bar)
+                
+        # Verify all orders were placed
+        assert mock_order_execution_manager.place_bracket_order.call_count == 5
+        
+        # Verify all positions were created
+        for plan in trade_plans:
+            position = await trade_orchestrator.position_manager.get_position_by_plan_id(
+                plan.plan_id
+            )
+            assert position is not None
+            assert position.symbol == plan.symbol
+            
+        await trade_orchestrator.stop()
+    
+    async def test_state_persistence_and_recovery(
+        self,
+        trade_orchestrator,
+        sample_trade_plan,
+        temp_state_dir,
+        market_data_simulator
+    ):
+        """Test state persistence and recovery across simulated restarts."""
+        # Load trade plan and start orchestrator
+        await trade_orchestrator.add_trade_plan(sample_trade_plan)
+        await trade_orchestrator.start()
+        
+        # Simulate some market data
+        bars = await market_data_simulator.simulate_price_movement(
+            symbol="AAPL",
+            start_price=Decimal("179.00"),
+            timeframe="15min",
+            duration_minutes=15,
+            price_change=Decimal("0.50")
+        )
+        
+        for bar in bars:
+            await trade_orchestrator.process_market_data(bar)
+            
+        # Stop orchestrator (simulating shutdown)
+        await trade_orchestrator.stop()
+        
+        # Create new orchestrator instance (simulating restart)
+        new_orchestrator = TradeOrchestrator(
+            function_registry=trade_orchestrator.function_registry,
+            signal_processor=trade_orchestrator.signal_processor,
+            position_manager=trade_orchestrator.position_manager,
+            exit_processor=trade_orchestrator.exit_processor,
+            lifecycle_manager=trade_orchestrator.lifecycle_manager,
+            state_dir=temp_state_dir
+        )
+        
+        # Start new orchestrator
+        await new_orchestrator.start()
+        
+        # Verify state was recovered
+        recovered_plan = await new_orchestrator.get_trade_plan(sample_trade_plan.plan_id)
+        assert recovered_plan is not None
+        assert recovered_plan.plan_id == sample_trade_plan.plan_id
+        assert recovered_plan.symbol == sample_trade_plan.symbol
+        
+        await new_orchestrator.stop()
+    
+    async def test_risk_validation_integration(
+        self,
+        trade_orchestrator,
+        sample_trade_plan,
+        market_data_simulator,
+        mock_risk_manager
+    ):
+        """Test integration with risk management system."""
+        # Configure risk manager to reject trades
+        async def failing_risk_validation(trade_plan):
+            return {
+                "passed": False,
+                "checks": ["daily_loss_limit"],
+                "details": "Daily loss limit exceeded"
+            }
+            
+        mock_risk_manager.validate_trade_request = failing_risk_validation
+        
+        # Load trade plan
+        await trade_orchestrator.add_trade_plan(sample_trade_plan)
+        await trade_orchestrator.start()
+        
+        # Simulate market data that would normally trigger entry
+        bars = await market_data_simulator.simulate_price_movement(
+            symbol="AAPL",
+            start_price=Decimal("179.50"),
+            timeframe="15min",
+            duration_minutes=30,
+            price_change=Decimal("1.50")
+        )
+        
+        for bar in bars:
+            await trade_orchestrator.process_market_data(bar)
+            
+        # Verify no position was created due to risk rejection
+        position = await trade_orchestrator.position_manager.get_position_by_plan_id(
+            sample_trade_plan.plan_id
+        )
+        assert position is None
+        
+        # Trade plan should remain in awaiting entry status
+        plan_status = await trade_orchestrator.get_trade_plan(sample_trade_plan.plan_id)
+        assert plan_status.status == TradePlanStatus.AWAITING_ENTRY
+        
+        await trade_orchestrator.stop()
+    
+    async def test_performance_latency_requirements(
+        self,
+        trade_orchestrator,
+        sample_trade_plan,
+        market_data_simulator
+    ):
+        """Test that signal-to-order latency is <1 second."""
+        await trade_orchestrator.add_trade_plan(sample_trade_plan)
+        await trade_orchestrator.start()
+        
+        # Create bar that will trigger entry signal
+        trigger_bar = BarData(
+            symbol="AAPL",
+            timeframe="15min",
+            timestamp=datetime.now(UTC),
+            open_price=Decimal("179.80"),
+            high_price=Decimal("180.20"),
+            low_price=Decimal("179.70"),
+            close_price=Decimal("180.10"),  # Crosses threshold
+            volume=1000,
+            is_complete=True
+        )
+        
+        # Measure processing time
+        start_time = datetime.now(UTC)
+        await trade_orchestrator.process_market_data(trigger_bar)
+        end_time = datetime.now(UTC)
+        
+        processing_time = (end_time - start_time).total_seconds()
+        
+        # Verify latency requirement
+        assert processing_time < 1.0, f"Processing took {processing_time:.3f}s, exceeds 1s limit"
+        
+        await trade_orchestrator.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestTradeLifecycleErrorScenarios:
+    """Integration tests for error scenarios and edge cases."""
+    
+    async def test_partial_fill_handling(
+        self,
+        trade_orchestrator,
+        sample_trade_plan,
+        market_data_simulator,
+        mock_order_execution_manager
+    ):
+        """Test handling of partial order fills."""
+        # Setup partial fill scenario
+        partial_fill = OrderResult(
+            success=True,
+            order_id="PARTIAL_001",
+            symbol="AAPL",
+            quantity=50,  # Only half filled
+            side=OrderSide.BUY,
+            fill_price=Decimal("180.50"),
+            status=OrderStatus.PARTIALLY_FILLED,
+            timestamp=datetime.now(UTC),
+            remaining_quantity=50
+        )
+        
+        mock_order_execution_manager.place_bracket_order.return_value = partial_fill
+        
+        await trade_orchestrator.add_trade_plan(sample_trade_plan)
+        await trade_orchestrator.start()
+        
+        # Trigger entry signal
+        bars = await market_data_simulator.simulate_price_movement(
+            symbol="AAPL",
+            start_price=Decimal("179.50"),
+            timeframe="15min",
+            duration_minutes=30,
+            price_change=Decimal("1.50")
+        )
+        
+        for bar in bars:
+            await trade_orchestrator.process_market_data(bar)
+            
+        # Verify partial fill was handled appropriately
+        position = await trade_orchestrator.position_manager.get_position_by_plan_id(
+            sample_trade_plan.plan_id
+        )
+        
+        # Position should reflect partial fill
+        if position:
+            assert position.quantity == 50  # Partial quantity
+            
+        await trade_orchestrator.stop()
+    
+    async def test_order_rejection_recovery(
+        self,
+        trade_orchestrator,
+        sample_trade_plan,
+        market_data_simulator,
+        mock_order_execution_manager
+    ):
+        """Test recovery from order rejections."""
+        # Setup order rejection
+        rejected_order = OrderResult(
+            success=False,
+            order_id="REJECTED_001",
+            symbol="AAPL",
+            quantity=0,
+            side=OrderSide.BUY,
+            fill_price=Decimal("0.00"),
+            status=OrderStatus.REJECTED,
+            timestamp=datetime.now(UTC),
+            error_message="Insufficient buying power"
+        )
+        
+        mock_order_execution_manager.place_bracket_order.return_value = rejected_order
+        
+        await trade_orchestrator.add_trade_plan(sample_trade_plan)
+        await trade_orchestrator.start()
+        
+        # Trigger entry signal
+        bars = await market_data_simulator.simulate_price_movement(
+            symbol="AAPL", 
+            start_price=Decimal("179.50"),
+            timeframe="15min",
+            duration_minutes=30,
+            price_change=Decimal("1.50")
+        )
+        
+        for bar in bars:
+            await trade_orchestrator.process_market_data(bar)
+            
+        # Verify no position was created
+        position = await trade_orchestrator.position_manager.get_position_by_plan_id(
+            sample_trade_plan.plan_id
+        )
+        assert position is None
+        
+        # Trade plan should remain active for retry
+        plan = await trade_orchestrator.get_trade_plan(sample_trade_plan.plan_id)
+        assert plan.status == TradePlanStatus.AWAITING_ENTRY
+        
+        await trade_orchestrator.stop()

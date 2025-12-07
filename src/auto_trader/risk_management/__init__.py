@@ -24,7 +24,7 @@ __all__ = [
     "PositionSizer",
     "OrderRiskValidator",
     "PositionSizeResult",
-    "RiskCheck", 
+    "RiskCheck",
     "PositionRiskEntry",
     "PortfolioRiskState",
     "RiskValidationResult",

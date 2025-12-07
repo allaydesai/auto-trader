@@ -73,18 +73,44 @@ entry_function:
     # Typically same as entry_level, but can be different for buffer
     threshold: 0.00
 
-# Exit execution function (REQUIRED)
-# Defines when to exit the trade
-exit_function:
-  # Standard stop-loss/take-profit exit function
-  function_type: "stop_loss_take_profit"
-  
-  # Faster timeframe for exit monitoring
-  # Recommendation: Use 1min for quick exit execution
-  timeframe: "1min"
-  
-  # No additional parameters needed for stop_loss_take_profit
-  parameters: {}
+# Exit strategy configuration (REQUIRED)
+# Defines when to exit the trade using two independent functions
+
+# Stop loss exit function (REQUIRED)
+# For SHORT positions: triggers when price closes ABOVE stop_loss level
+stop_loss_function:
+  # Exit mechanism: close_above function (for short protection)
+  # Exits trade when candle CLOSES above stop loss price
+  function_type: "close_above"
+
+  # Timeframe for stop loss monitoring (REQUIRED)
+  # Faster timeframes = quicker stop loss execution
+  # 💡 RECOMMENDED: 1min for rapid stop-loss execution
+  timeframe: "1min"  # 📝 UPDATE THIS: Your stop loss monitoring timeframe
+
+  # Stop loss parameters
+  parameters:
+    # Threshold should match your stop_loss price above
+    # Trade exits when {timeframe} candle closes ABOVE this level
+    threshold: 0.00  # 📝 UPDATE THIS: Same as stop_loss value
+
+# Take profit exit function (REQUIRED)
+# For SHORT positions: triggers when price closes BELOW take_profit level
+take_profit_function:
+  # Exit mechanism: close_below function (for short profit)
+  # Exits trade when candle CLOSES below take profit price
+  function_type: "close_below"
+
+  # Timeframe for take profit monitoring (REQUIRED)
+  # Can use different timeframe than stop loss for optimal exits
+  # 💡 RECOMMENDED: 1min or 5min depending on strategy
+  timeframe: "1min"  # 📝 UPDATE THIS: Your take profit monitoring timeframe
+
+  # Take profit parameters
+  parameters:
+    # Threshold should match your take_profit price above
+    # Trade exits when {timeframe} candle closes BELOW this level
+    threshold: 0.00  # 📝 UPDATE THIS: Same as take_profit value
 
 # Initial status (OPTIONAL)
 # Valid values: awaiting_entry, position_open, completed, cancelled, error
@@ -103,10 +129,16 @@ exit_function:
 #   timeframe: "15min"
 #   parameters:
 #     threshold: 180.50
-# exit_function:
-#   function_type: "stop_loss_take_profit"
+# stop_loss_function:
+#   function_type: "close_above"  # For short: exit when closes ABOVE stop
 #   timeframe: "1min"
-#   parameters: {}
+#   parameters:
+#     threshold: 182.00
+# take_profit_function:
+#   function_type: "close_below"  # For short: exit when closes BELOW target
+#   timeframe: "1min"
+#   parameters:
+#     threshold: 175.00
 
 # Common Use Cases:
 # 1. Breakdown trades: Enter short when support breaks

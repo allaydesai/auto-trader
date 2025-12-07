@@ -20,7 +20,7 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
     This function monitors for price closes above a specified threshold level,
     commonly used for breakout entries or resistance level breaks.
     """
-    
+
     # Constants for confidence calculation
     _BASE_CONFIDENCE = 0.6
     _MAX_DISTANCE_BOOST = 0.1
@@ -48,6 +48,10 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
         Returns:
             True if valid
         """
+        # Accept both 'threshold' and 'threshold_price' for backward compatibility
+        if "threshold" in params and "threshold_price" not in params:
+            params["threshold_price"] = params["threshold"]
+
         # Check required threshold_price
         if not self.validate_price_parameter(params, "threshold_price"):
             logger.error("Invalid or missing threshold_price parameter")
@@ -78,13 +82,15 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
             if not self.validate_percentage_parameter(params, "min_distance_percent"):
                 logger.error("Invalid min_distance_percent parameter")
                 return False
-            
+
             # Ensure min_distance is less than max_distance if both are set
             if "max_distance_percent" in params:
                 min_dist = float(params["min_distance_percent"])
                 max_dist = float(params["max_distance_percent"])
                 if min_dist >= max_dist:
-                    logger.error("min_distance_percent must be less than max_distance_percent")
+                    logger.error(
+                        "min_distance_percent must be less than max_distance_percent"
+                    )
                     return False
 
         return True
@@ -156,14 +162,16 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
             )
 
         # Check distance constraints
-        price_above_pct = float((current_bar.close_price - threshold) / threshold * Decimal("100"))
-        
+        price_above_pct = float(
+            (current_bar.close_price - threshold) / threshold * Decimal("100")
+        )
+
         if price_above_pct < min_distance_pct:
             return ExecutionSignal.no_action(
                 f"Price only {price_above_pct:.2f}% above threshold, "
                 f"minimum required: {min_distance_pct}%"
             )
-        
+
         if price_above_pct > max_distance_pct:
             return ExecutionSignal.no_action(
                 f"Price {price_above_pct:.2f}% above threshold exceeds "
@@ -172,7 +180,7 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
 
         # Calculate confidence based on various factors
         base_confidence = self._calculate_confidence(context, threshold)
-        
+
         # Apply edge case adjustments
         confidence = base_confidence * confidence_adjustment
 
@@ -187,7 +195,10 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
 
         # Add volume context to reasoning if available
         if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
+            avg_volume = mean(
+                bar.volume
+                for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS :]
+            )
             volume_ratio = current_bar.volume / avg_volume if avg_volume > 0 else 1.0
             reasoning += f" with {volume_ratio:.1f}x average volume"
 
@@ -225,7 +236,10 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
         # Factor 2: Volume compared to average
         volume_boost = 0.0
         if len(context.historical_bars) >= self._VOLUME_LOOKBACK_BARS:
-            avg_volume = mean(bar.volume for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS:])
+            avg_volume = mean(
+                bar.volume
+                for bar in context.historical_bars[-self._VOLUME_LOOKBACK_BARS :]
+            )
             if avg_volume > 0:
                 volume_ratio = current_bar.volume / avg_volume
                 volume_boost = min(self._MAX_VOLUME_BOOST, (volume_ratio - 1) * 0.1)
@@ -233,9 +247,13 @@ class CloseAboveFunction(ExecutionFunctionBase, ValidationMixin):
         # Factor 3: Momentum leading up to break
         momentum_boost = 0.0
         if len(context.historical_bars) >= self._MOMENTUM_LOOKBACK_BARS:
-            recent_momentum = self.calculate_momentum(context.historical_bars[-self._MOMENTUM_LOOKBACK_BARS:])
+            recent_momentum = self.calculate_momentum(
+                context.historical_bars[-self._MOMENTUM_LOOKBACK_BARS :]
+            )
             if recent_momentum > 0:
-                momentum_boost = min(self._MAX_MOMENTUM_BOOST, float(recent_momentum) / 100)
+                momentum_boost = min(
+                    self._MAX_MOMENTUM_BOOST, float(recent_momentum) / 100
+                )
 
         # Calculate final confidence
         confidence = base_confidence + distance_boost + volume_boost + momentum_boost

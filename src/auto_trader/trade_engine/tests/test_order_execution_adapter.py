@@ -5,39 +5,49 @@ from unittest.mock import Mock, AsyncMock
 from datetime import datetime, UTC
 from decimal import Decimal
 
-from auto_trader.models.execution import ExecutionSignal, ExecutionContext, PositionState
+from auto_trader.models.execution import (
+    ExecutionSignal,
+    ExecutionContext,
+    PositionState,
+)
 from auto_trader.models.enums import ExecutionAction, Timeframe, OrderSide
 from auto_trader.models.trade_plan import RiskCategory
-from auto_trader.models.order import OrderRequest, OrderResult
+from auto_trader.models.order import OrderResult
 from auto_trader.models.market_data import BarData
 from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
-from auto_trader.integrations.ibkr_client.order_execution_manager import OrderExecutionManager
+from auto_trader.integrations.ibkr_client.order_execution_manager import (
+    OrderExecutionManager,
+)
 
 
 @pytest.fixture
 def mock_order_execution_manager():
     """Create mock order execution manager."""
     manager = Mock(spec=OrderExecutionManager)
-    manager.place_market_order = AsyncMock(return_value=OrderResult(
-        success=True,
-        order_id="TEST123",
-        trade_plan_id="test_plan",
-        order_status="Submitted",
-        symbol="AAPL",
-        side="BUY",
-        quantity=100,
-        order_type="MKT",
-    ))
-    manager.place_stop_order = AsyncMock(return_value=OrderResult(
-        success=True,
-        order_id="STOP123",
-        trade_plan_id="test_plan",
-        order_status="Submitted",
-        symbol="AAPL",
-        side="SELL",
-        quantity=100,
-        order_type="STP",
-    ))
+    manager.place_market_order = AsyncMock(
+        return_value=OrderResult(
+            success=True,
+            order_id="TEST123",
+            trade_plan_id="test_plan",
+            order_status="Submitted",
+            symbol="AAPL",
+            side="BUY",
+            quantity=100,
+            order_type="MKT",
+        )
+    )
+    manager.place_stop_order = AsyncMock(
+        return_value=OrderResult(
+            success=True,
+            order_id="STOP123",
+            trade_plan_id="test_plan",
+            order_status="Submitted",
+            symbol="AAPL",
+            side="SELL",
+            quantity=100,
+            order_type="STP",
+        )
+    )
     return manager
 
 
@@ -112,7 +122,7 @@ class TestExecutionOrderAdapter:
             reasoning="Strong bullish signal",
             metadata={"close_price": 181.50},
         )
-        
+
         signal_data = {
             "function_name": "close_above_test",
             "symbol": "AAPL",
@@ -121,18 +131,20 @@ class TestExecutionOrderAdapter:
             "context": sample_context,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         assert result is not None
         assert result.success is True
         assert result.order_id == "TEST123"
-        
+
         # Should have placed market order
         order_adapter.order_execution_manager.place_market_order.assert_called_once()
-        
+
         # Check order request
-        call_args = order_adapter.order_execution_manager.place_market_order.call_args[0][0]
+        call_args = order_adapter.order_execution_manager.place_market_order.call_args[
+            0
+        ][0]
         assert call_args.symbol == "AAPL"
         assert call_args.side == OrderSide.BUY
         assert call_args.order_type == "MKT"
@@ -147,7 +159,7 @@ class TestExecutionOrderAdapter:
             reasoning="Bearish signal",
             metadata={"close_price": 181.50},
         )
-        
+
         signal_data = {
             "function_name": "close_below_test",
             "symbol": "AAPL",
@@ -156,23 +168,27 @@ class TestExecutionOrderAdapter:
             "context": sample_context,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         assert result is not None
         assert result.success is True
-        
+
         # Should have placed market order
         order_adapter.order_execution_manager.place_market_order.assert_called_once()
-        
+
         # Check order request
-        call_args = order_adapter.order_execution_manager.place_market_order.call_args[0][0]
+        call_args = order_adapter.order_execution_manager.place_market_order.call_args[
+            0
+        ][0]
         assert call_args.symbol == "AAPL"
         assert call_args.side == OrderSide.SELL
         assert call_args.risk_category == RiskCategory.NORMAL  # Medium confidence
 
     @pytest.mark.asyncio
-    async def test_handle_exit_signal_with_position(self, order_adapter, sample_context, sample_position):
+    async def test_handle_exit_signal_with_position(
+        self, order_adapter, sample_context, sample_position
+    ):
         """Test handling of exit signal with open position."""
         # Update context with position
         context_with_position = ExecutionContext(
@@ -185,13 +201,13 @@ class TestExecutionOrderAdapter:
             account_balance=sample_context.account_balance,
             timestamp=sample_context.timestamp,
         )
-        
+
         signal = ExecutionSignal(
             action=ExecutionAction.EXIT,
             confidence=1.0,
             reasoning="Stop loss triggered",
         )
-        
+
         signal_data = {
             "function_name": "trailing_stop_test",
             "symbol": "AAPL",
@@ -200,17 +216,19 @@ class TestExecutionOrderAdapter:
             "context": context_with_position,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         assert result is not None
         assert result.success is True
-        
+
         # Should have placed market order
         order_adapter.order_execution_manager.place_market_order.assert_called_once()
-        
+
         # Check order request - should be opposite side of position
-        call_args = order_adapter.order_execution_manager.place_market_order.call_args[0][0]
+        call_args = order_adapter.order_execution_manager.place_market_order.call_args[
+            0
+        ][0]
         assert call_args.symbol == "AAPL"
         assert call_args.side == OrderSide.SELL  # Opposite of long position
         assert call_args.calculated_position_size == 100  # Same as position size
@@ -223,7 +241,7 @@ class TestExecutionOrderAdapter:
             confidence=1.0,
             reasoning="Stop loss triggered",
         )
-        
+
         signal_data = {
             "function_name": "trailing_stop_test",
             "symbol": "AAPL",
@@ -232,15 +250,17 @@ class TestExecutionOrderAdapter:
             "context": sample_context,  # No position
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         # Should return None (no order placed)
         assert result is None
         order_adapter.order_execution_manager.place_market_order.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_modify_stop_signal(self, order_adapter, sample_context, sample_position):
+    async def test_handle_modify_stop_signal(
+        self, order_adapter, sample_context, sample_position
+    ):
         """Test handling of modify stop signal."""
         context_with_position = ExecutionContext(
             symbol=sample_context.symbol,
@@ -252,14 +272,14 @@ class TestExecutionOrderAdapter:
             account_balance=sample_context.account_balance,
             timestamp=sample_context.timestamp,
         )
-        
+
         signal = ExecutionSignal(
             action=ExecutionAction.MODIFY_STOP,
             confidence=1.0,
             reasoning="Trailing stop adjustment",
             metadata={"new_stop_level": 179.50},
         )
-        
+
         signal_data = {
             "function_name": "trailing_stop_test",
             "symbol": "AAPL",
@@ -268,17 +288,19 @@ class TestExecutionOrderAdapter:
             "context": context_with_position,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         assert result is not None
         assert result.success is True
-        
+
         # Should have placed stop order
         order_adapter.order_execution_manager.place_stop_order.assert_called_once()
-        
+
         # Check order request
-        call_args = order_adapter.order_execution_manager.place_stop_order.call_args[0][0]
+        call_args = order_adapter.order_execution_manager.place_stop_order.call_args[0][
+            0
+        ]
         assert call_args.symbol == "AAPL"
         assert call_args.side == OrderSide.SELL  # Opposite of long position
         assert call_args.stop_loss_price == Decimal("179.50")
@@ -291,7 +313,7 @@ class TestExecutionOrderAdapter:
             confidence=0.3,
             reasoning="No clear signal",
         )
-        
+
         signal_data = {
             "function_name": "test_function",
             "symbol": "AAPL",
@@ -300,9 +322,9 @@ class TestExecutionOrderAdapter:
             "context": sample_context,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         # Should return None (no order placed)
         assert result is None
         order_adapter.order_execution_manager.place_market_order.assert_not_called()
@@ -312,19 +334,21 @@ class TestExecutionOrderAdapter:
         # High confidence
         risk_cat = order_adapter._map_confidence_to_risk_category(0.9)
         assert risk_cat == RiskCategory.LARGE
-        
+
         # Medium confidence
         risk_cat = order_adapter._map_confidence_to_risk_category(0.7)
         assert risk_cat == RiskCategory.NORMAL
-        
+
         # Low confidence
         risk_cat = order_adapter._map_confidence_to_risk_category(0.4)
         assert risk_cat == RiskCategory.SMALL
 
     def test_generate_execution_id(self, order_adapter, sample_context):
         """Test execution ID generation."""
-        execution_id = order_adapter._generate_execution_id("test_function", sample_context)
-        
+        execution_id = order_adapter._generate_execution_id(
+            "test_function", sample_context
+        )
+
         assert "test_function" in execution_id
         assert "AAPL" in execution_id
         assert "1min" in execution_id
@@ -340,7 +364,7 @@ class TestExecutionOrderAdapter:
             reasoning="Test signal",
             metadata={"close_price": 181.50},
         )
-        
+
         signal_data = {
             "function_name": "test_function",
             "symbol": "AAPL",
@@ -349,29 +373,33 @@ class TestExecutionOrderAdapter:
             "context": sample_context,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         assert result.success is True
-        
+
         # Should track the order
         execution_orders = order_adapter.get_execution_orders()
         assert len(execution_orders) == 1
         assert "TEST123" in execution_orders.values()
 
     @pytest.mark.asyncio
-    async def test_error_handling(self, order_adapter, sample_context, mock_order_execution_manager):
+    async def test_error_handling(
+        self, order_adapter, sample_context, mock_order_execution_manager
+    ):
         """Test error handling during order placement."""
         # Mock order manager to raise exception
-        mock_order_execution_manager.place_market_order.side_effect = Exception("Test error")
-        
+        mock_order_execution_manager.place_market_order.side_effect = Exception(
+            "Test error"
+        )
+
         signal = ExecutionSignal(
             action=ExecutionAction.ENTER_LONG,
             confidence=0.8,
             reasoning="Test signal",
             metadata={"close_price": 181.50},
         )
-        
+
         signal_data = {
             "function_name": "test_function",
             "symbol": "AAPL",
@@ -380,9 +408,9 @@ class TestExecutionOrderAdapter:
             "context": sample_context,
             "timestamp": datetime.now(UTC),
         }
-        
+
         result = await order_adapter.handle_execution_signal(signal_data)
-        
+
         # Should return error result
         assert result is not None
         assert result.success is False
@@ -392,9 +420,9 @@ class TestExecutionOrderAdapter:
         """Test statistics gathering."""
         # Add some tracked order
         order_adapter.execution_orders["test_id"] = "order_123"
-        
+
         stats = order_adapter.get_stats()
-        
+
         assert "tracked_orders" in stats
         assert "default_risk_category" in stats
         assert "config" in stats

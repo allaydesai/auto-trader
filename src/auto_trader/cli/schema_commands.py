@@ -16,18 +16,24 @@ logger = get_logger("cli", "cli")
 
 
 @click.command()
-@click.option("--format", "output_format", default="console", type=click.Choice(["console", "json", "yaml"]), help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    default="console",
+    type=click.Choice(["console", "json", "yaml"]),
+    help="Output format",
+)
 @click.option("--field", help="Show documentation for specific field")
 def show_schema(output_format: str, field: Optional[str]) -> None:
     """Show trade plan schema documentation with examples."""
     logger.info("Schema documentation requested")
-    
+
     try:
         from ..models.trade_plan import TradePlan
-        
+
         # Get model schema information
         schema = TradePlan.model_json_schema()
-        
+
         if field:
             # Show specific field documentation
             if field in schema.get("properties", {}):
@@ -51,12 +57,14 @@ def show_schema(output_format: str, field: Optional[str]) -> None:
                 display_schema_console(schema)
             elif output_format == "json":
                 import json
+
                 console.print(json.dumps(schema, indent=2))
             elif output_format == "yaml":
                 import yaml
+
                 console.print(yaml.dump(schema, default_flow_style=False))
-                
+
         logger.info("Schema documentation completed", field=field, format=output_format)
-        
+
     except Exception as e:
         handle_generic_error("schema documentation", e)

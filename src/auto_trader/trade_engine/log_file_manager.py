@@ -10,7 +10,7 @@ from auto_trader.models.execution import ExecutionLogEntry
 
 class LogFileManager:
     """Manages log file operations for execution logger.
-    
+
     Handles file writing, rotation, and path management
     to keep execution history organized and manageable.
     """
@@ -32,7 +32,7 @@ class LogFileManager:
         self.max_entries_per_file = max_entries_per_file
         self.max_log_files = max_log_files
         self.current_file_entries = 0
-        
+
         # Initialize current log file
         self.current_log_file = self.get_current_log_path()
 
@@ -56,7 +56,7 @@ class LogFileManager:
                 json_data = entry.model_dump_json()
                 f.write(json_data + "\n")
                 self.current_file_entries += 1
-                
+
             return True
 
         except Exception as e:
@@ -78,7 +78,7 @@ class LogFileManager:
 
         # Rotate daily
         current_date = datetime.now().strftime("%Y%m%d")
-        
+
         try:
             # Extract date from filename (format: execution_YYYYMMDD.jsonl)
             file_date = self.current_log_file.stem.split("_")[1]
@@ -99,7 +99,7 @@ class LogFileManager:
             self.current_log_file = self.get_current_log_path()
 
         logger.info(f"Rotated to new log file: {self.current_log_file}")
-        
+
         # Clean up old files if needed
         self._cleanup_old_files()
 
@@ -143,13 +143,13 @@ class LogFileManager:
     def _cleanup_old_files(self) -> None:
         """Remove old log files if exceeding max_log_files limit."""
         log_files = self.get_log_files()
-        
+
         if len(log_files) <= self.max_log_files:
             return
 
         # Remove oldest files
-        files_to_remove = log_files[:-self.max_log_files]
-        
+        files_to_remove = log_files[: -self.max_log_files]
+
         for file_path in files_to_remove:
             try:
                 file_path.unlink()

@@ -116,7 +116,7 @@ def setup(output_dir: Path, force: bool) -> None:
         env_file = output_dir / ".env"
         config_file = output_dir / "config.yaml"
         user_config_file = output_dir / "user_config.yaml"
-        
+
         try:
             create_env_file(env_file)
             create_config_file(config_file)

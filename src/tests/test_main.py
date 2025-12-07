@@ -217,7 +217,7 @@ class TestMainFunction:
             mock_app.shutdown = AsyncMock()
             mock_app._running = False
             # Create shutdown event that doesn't trigger warnings
-            mock_app._shutdown_event = Mock(spec=['is_set', 'wait'])
+            mock_app._shutdown_event = Mock(spec=["is_set", "wait"])
             mock_app._shutdown_event.is_set.return_value = False
             mock_app._shutdown_event.wait = AsyncMock()
             mock_app_class.return_value = mock_app

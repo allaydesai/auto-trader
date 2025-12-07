@@ -5,8 +5,8 @@ from typing import Dict, List
 # Risk category configurations
 RISK_CATEGORIES: Dict[str, str] = {
     "small": "Small (1% risk)",
-    "normal": "Normal (2% risk)", 
-    "large": "Large (3% risk)"
+    "normal": "Normal (2% risk)",
+    "large": "Large (3% risk)",
 }
 
 # Risk category choices (just the keys for prompts)
@@ -26,11 +26,11 @@ DEFAULT_TIMEFRAME: str = "15min"
 
 # Execution function types
 ENTRY_FUNCTION_TYPES: List[str] = ["close_above", "close_below"]
-EXIT_FUNCTION_TYPES: List[str] = ["stop_loss_take_profit", "trailing_stop"]
+EXIT_FUNCTION_TYPES: List[str] = ["close_above", "close_below", "trailing_stop"]
 
 # Default execution function types
 DEFAULT_ENTRY_FUNCTION_TYPE: str = "close_above"
-DEFAULT_EXIT_FUNCTION_TYPE: str = "stop_loss_take_profit"
+DEFAULT_EXIT_FUNCTION_TYPE: str = "close_below"
 
 # Plan ID generation limits
 MAX_PLANS_PER_DAY_PER_SYMBOL: int = 999

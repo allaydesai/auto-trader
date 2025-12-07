@@ -6,13 +6,11 @@ from datetime import datetime, UTC
 
 from auto_trader.models.execution import (
     ExecutionContext,
-    ExecutionSignal,
     ExecutionFunctionConfig,
     PositionState,
 )
 from auto_trader.models.enums import ExecutionAction, Timeframe
 from auto_trader.models.market_data import BarData
-from auto_trader.trade_engine.execution_functions import ExecutionFunctionBase
 from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
 from auto_trader.trade_engine.functions import (
     CloseAboveFunction,

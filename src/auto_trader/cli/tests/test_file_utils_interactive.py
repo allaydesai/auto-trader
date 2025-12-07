@@ -1,11 +1,8 @@
 """Integration tests for file_utils interactive functions."""
 
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from decimal import Decimal
 
-import pytest
 
 from auto_trader.cli.file_utils import (
     get_plan_data_interactive,
@@ -34,7 +31,7 @@ class TestGetPlanDataInteractive:
             "AAPL_20240101_001",  # plan_id (default)
             "normal",  # risk_category (default)
         ]
-        
+
         mock_click_prompt.side_effect = [
             "150.50",  # entry_level
             "148.00",  # stop_loss
@@ -73,7 +70,7 @@ class TestGetPlanDataInteractive:
             "TSLA_CUSTOM_001",  # custom plan_id
             "large",  # large risk category
         ]
-        
+
         mock_click_prompt.side_effect = [
             "250.75",  # entry_level
             "240.00",  # stop_loss
@@ -107,7 +104,7 @@ class TestGetPlanDataInteractive:
             "MSFT_20240101_001",
             "small",
         ]
-        
+
         mock_click_prompt.side_effect = ["100.00", "95.00", "110.00", "100.50"]
 
         result = get_plan_data_interactive()
@@ -126,13 +123,13 @@ class TestGetPlanDataInteractive:
         mock_datetime.now.return_value.strftime.return_value = "20240101"
 
         mock_prompt_ask.side_effect = ["GOOGL", "GOOGL_20240101_001", "normal"]
-        
+
         # Test various decimal formats
         mock_click_prompt.side_effect = [
             "2500.1234",  # 4 decimal places
-            "2490.50",    # 2 decimal places
-            "2550.0",     # 1 decimal place
-            "2501.123",   # 3 decimal places
+            "2490.50",  # 2 decimal places
+            "2550.0",  # 1 decimal place
+            "2501.123",  # 3 decimal places
         ]
 
         result = get_plan_data_interactive()
@@ -159,7 +156,7 @@ class TestGetPlanDataInteractive:
                 f"TEST_{risk_category}_001",
                 risk_category,
             ]
-            
+
             mock_click_prompt.side_effect = ["100.00", "95.00", "105.00", "100.00"]
 
             result = get_plan_data_interactive()
@@ -180,14 +177,14 @@ class TestGetPlanDataInteractive:
             "AMZN_20241225_001",  # Should get suggested plan ID
             "normal",
         ]
-        
+
         mock_click_prompt.side_effect = ["3000.00", "2950.00", "3100.00", "3000.00"]
 
         result = get_plan_data_interactive()
 
         # Verify suggested plan ID format was used
         assert result["plan_id"] == "AMZN_20241225_001"
-        
+
         # Verify Prompt.ask was called with the suggested default
         plan_id_call = mock_prompt_ask.call_args_list[1]
         assert plan_id_call[0] == ("Plan ID",)
@@ -206,7 +203,7 @@ class TestExportFunctions:
         mock_console.print.assert_any_call(
             "[green]✓ Performance summary exported to performance_summary_daily_20240101.csv[/green]"
         )
-        
+
         # Should print placeholder note
         mock_console.print.assert_any_call(
             "[yellow]Note: This is a placeholder. Real implementation would create actual CSV file.[/yellow]"
@@ -239,7 +236,7 @@ class TestExportFunctions:
         mock_console.print.assert_any_call(
             "[green]✓ Trade history exported to trade_history_30days.csv[/green]"
         )
-        
+
         mock_console.print.assert_any_call(
             "[yellow]Note: This is a placeholder. Real implementation would create actual CSV file.[/yellow]"
         )
@@ -292,7 +289,7 @@ class TestFileUtilsIntegration:
             "SPY_SWING_001",  # Custom plan ID
             "large",  # High risk for swing trade
         ]
-        
+
         mock_click_prompt.side_effect = [
             "420.50",  # entry at key resistance
             "410.00",  # stop below support
@@ -305,8 +302,13 @@ class TestFileUtilsIntegration:
 
         # Verify complete result structure
         expected_keys = [
-            "plan_id", "symbol", "entry_level", "stop_loss", 
-            "take_profit", "risk_category", "threshold"
+            "plan_id",
+            "symbol",
+            "entry_level",
+            "stop_loss",
+            "take_profit",
+            "risk_category",
+            "threshold",
         ]
         assert all(key in result for key in expected_keys)
 
@@ -314,7 +316,7 @@ class TestFileUtilsIntegration:
         assert result["symbol"] == "SPY"
         assert result["plan_id"] == "SPY_SWING_001"
         assert result["risk_category"] == "large"
-        
+
         # Verify price levels make sense
         assert result["entry_level"] == Decimal("420.50")
         assert result["stop_loss"] < result["entry_level"]  # Stop below entry
@@ -331,6 +333,6 @@ class TestFileUtilsIntegration:
         # These should not raise exceptions
         export_performance_csv("", "")
         export_performance_csv("custom_period", "20240229")  # Leap year
-        
+
         export_trade_history_csv("", 0)
         export_trade_history_csv("VERY_LONG_SYMBOL_NAME", 9999)

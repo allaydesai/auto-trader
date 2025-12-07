@@ -21,7 +21,7 @@ class LoggerValidationMixin:
         """
         if log_dir is None:
             return True  # Allow None for default behavior
-        
+
         if not isinstance(log_dir, Path):
             try:
                 Path(log_dir)
@@ -29,14 +29,12 @@ class LoggerValidationMixin:
             except (TypeError, ValueError):
                 logger.error(f"Invalid log directory type: {type(log_dir)}")
                 return False
-        
+
         return True
 
     @staticmethod
     def validate_memory_settings(
-        max_memory_entries: int,
-        max_entries_per_file: int,
-        max_log_files: int
+        max_memory_entries: int, max_entries_per_file: int, max_log_files: int
     ) -> bool:
         """Validate memory and file limit settings.
 
@@ -71,8 +69,7 @@ class LoggerValidationMixin:
 
     @staticmethod
     def validate_file_logging_settings(
-        enable_file_logging: bool,
-        log_dir: Optional[Path]
+        enable_file_logging: bool, log_dir: Optional[Path]
     ) -> bool:
         """Validate file logging configuration.
 
@@ -84,7 +81,9 @@ class LoggerValidationMixin:
             True if configuration is valid
         """
         if not isinstance(enable_file_logging, bool):
-            logger.error(f"Invalid enable_file_logging type: {type(enable_file_logging)}")
+            logger.error(
+                f"Invalid enable_file_logging type: {type(enable_file_logging)}"
+            )
             return False
 
         if enable_file_logging and log_dir is None:
@@ -105,14 +104,14 @@ class LoggerValidationMixin:
         """
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Test write permission by creating a temporary file
             test_file = log_dir / ".write_test"
             test_file.touch()
             test_file.unlink()
-            
+
             return True
-            
+
         except (OSError, PermissionError) as e:
             logger.error(f"Cannot access log directory {log_dir}: {e}")
             return False

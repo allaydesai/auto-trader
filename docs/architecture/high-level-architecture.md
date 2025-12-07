@@ -36,49 +36,61 @@ Auto-Trader is a monolithic Python application designed for automated trade exec
 
 ```mermaid
 graph TB
-    subgraph "Configuration Layer"
-        YAML[Trade Plans<br/>YAML Files]
-        ENV[Environment<br/>Variables]
-        CONFIG[config.yaml<br/>System Settings]
+    subgraph "Authoring & Config"
+        CLI["CLI & Wizard"]
+        Mgmt["Management Commands"]
+        Settings["Settings & ConfigLoader"]
+        Templates["Plan Templates"]
     end
 
-    subgraph "Auto-Trader Core"
-        MAIN[Main Process<br/>Orchestrator]
-        LOADER[Trade Plan<br/>Loader]
-        CLI[Interactive CLI<br/>Wizard]
-        ENGINE[Execution<br/>Engine]
-        RISK[Enhanced Risk<br/>Manager]
-        STATE[State<br/>Manager]
+    subgraph "Plan Lifecycle Services"
+        Plans["YAML Trade Plans"]
+        Loader["TradePlanLoader"]
+        Validator["ValidationEngine"]
+        Watcher["Async FileWatcher"]
+    end
+
+    subgraph "Runtime Core"
+        App["AutoTraderApp"]
+        Trading["TradingApplication"]
+        Orchestrator["Trade Orchestrator"]
+        Signals["Signal Processing + Execution Functions"]
+        Risk["Risk Manager"]
+        Orders["Order Execution Adapter\n+ Circuit Breaker"]
+    end
+
+    subgraph "State & Observability"
+        State["PositionStateManager\n(JSON)"]
+        History["TradeHistory Writer\n(CSV)"]
+        Logs["Structured Logs"]
+        Discord["DiscordNotifier"]
     end
 
     subgraph "External Integrations"
-        IBKR[IBKR API<br/>ib-async]
-        DISCORD[Discord<br/>Webhooks]
+        IBKR["IBKR API"]
     end
 
-    subgraph "Data Persistence"
-        JSON[Position State<br/>JSON]
-        CSV[Trade History<br/>CSV]
-        LOGS[Rotating<br/>Log Files]
-    end
-
-    YAML --> LOADER
-    CLI --> YAML
-    ENV --> MAIN
-    CONFIG --> MAIN
-    
-    LOADER --> ENGINE
-    CLI --> RISK
-    ENGINE --> RISK
-    RISK --> IBKR
-    
-    IBKR -.->|Market Data| ENGINE
-    IBKR -.->|Order Status| STATE
-    
-    ENGINE --> DISCORD
-    STATE --> JSON
-    ENGINE --> CSV
-    MAIN --> LOGS
+    CLI --> Templates
+    Mgmt --> Plans
+    Templates --> Plans
+    Plans --> Loader
+    Settings --> App
+    Watcher --> Loader
+    Loader --> Validator
+    Validator --> Loader
+    Loader --> Trading
+    App --> Watcher
+    App --> Trading
+    Trading --> Orchestrator
+    Orchestrator --> Signals
+    Signals --> Risk
+    Risk --> Orders
+    Orders --> IBKR
+    IBKR -.-> Trading
+    Trading --> State
+    Trading --> History
+    App --> Logs
+    Trading --> Discord
 ```
 
 ## Architectural and Design Patterns

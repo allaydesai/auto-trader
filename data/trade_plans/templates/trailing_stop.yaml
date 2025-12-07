@@ -60,16 +60,19 @@ entry_function:
     # For close_below: enters when price closes below this level
     threshold: 0.00
 
-# Exit execution function (REQUIRED)
-# Trailing stop function for dynamic exit management
-exit_function:
+# Exit strategy configuration (REQUIRED)
+# Defines exit using trailing stop for stop loss and standard close for take profit
+
+# Stop loss exit function (REQUIRED)
+# Uses trailing stop for dynamic stop loss management
+stop_loss_function:
   # Trailing stop function type
   function_type: "trailing_stop"
-  
+
   # Timeframe for trailing stop evaluation
   # Recommendation: Use 1min or 5min for responsive trailing
-  timeframe: "5min"
-  
+  timeframe: "5min"  # 📝 UPDATE THIS: Your trailing stop timeframe
+
   # Trailing stop parameters
   parameters:
     # Trail percentage (REQUIRED)
@@ -77,19 +80,36 @@ exit_function:
     # Example: 2.0 means stop trails 2% behind best price
     # For LONG: stop trails 2% below highest price since entry
     # For SHORT: stop trails 2% above lowest price since entry
-    trail_percent: 2.0
-    
+    trail_percent: 2.0  # 📝 UPDATE THIS: Your trail percentage
+
     # Minimum trail distance (OPTIONAL)
     # Minimum dollar amount to trail behind
     # Prevents stops from getting too close during low volatility
     # Example: 1.00 means stop stays at least $1.00 away
-    min_trail_distance: 1.00
-    
+    min_trail_distance: 1.00  # 📝 UPDATE THIS: Minimum trail distance
+
     # Activation threshold (OPTIONAL)
     # Profit percentage before trailing starts
     # Example: 1.5 means start trailing after 1.5% profit
     # Protects against immediate whipsaws at entry
-    activation_threshold: 1.0
+    activation_threshold: 1.0  # 📝 UPDATE THIS: Activation threshold
+
+# Take profit exit function (REQUIRED)
+# Standard take profit using close_above
+take_profit_function:
+  # Exit mechanism: close_above function
+  # Exits trade when candle CLOSES above take profit price
+  function_type: "close_above"
+
+  # Timeframe for take profit monitoring (REQUIRED)
+  # 💡 RECOMMENDED: 1min or 5min for take profit
+  timeframe: "1min"  # 📝 UPDATE THIS: Your take profit monitoring timeframe
+
+  # Take profit parameters
+  parameters:
+    # Threshold should match your take_profit price above
+    # Trade exits when {timeframe} candle closes ABOVE this level
+    threshold: 0.00  # 📝 UPDATE THIS: Same as take_profit value
 
 # Initial status (OPTIONAL)
 # Valid values: awaiting_entry, position_open, completed, cancelled, error
@@ -108,13 +128,18 @@ exit_function:
 #   timeframe: "15min"
 #   parameters:
 #     threshold: 180.50
-# exit_function:
+# stop_loss_function:
 #   function_type: "trailing_stop"
 #   timeframe: "5min"
 #   parameters:
 #     trail_percent: 2.0        # Trail 2% behind best price
 #     min_trail_distance: 1.00  # Minimum $1 trail distance
 #     activation_threshold: 1.0 # Start trailing after 1% profit
+# take_profit_function:
+#   function_type: "close_above"
+#   timeframe: "1min"
+#   parameters:
+#     threshold: 200.00
 
 # Trailing Stop Behavior Explanation:
 # 1. Position enters at 180.50, initial stop at 178.00

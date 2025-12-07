@@ -7,7 +7,10 @@ from unittest.mock import patch, MagicMock
 
 from click.testing import CliRunner
 
-from auto_trader.cli.risk_commands import calculate_position_size, portfolio_risk_summary
+from auto_trader.cli.risk_commands import (
+    calculate_position_size,
+    portfolio_risk_summary,
+)
 from auto_trader.risk_management import (
     PositionSizeResult,
     RiskCheck,
@@ -43,20 +46,32 @@ class TestCalculatePositionSize:
             limit=Decimal("10.0"),
         )
 
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager = MagicMock()
-            mock_risk_manager.position_sizer.calculate_position_size.return_value = mock_result
+            mock_risk_manager.position_sizer.calculate_position_size.return_value = (
+                mock_result
+            )
             mock_risk_manager.check_portfolio_risk_limit.return_value = mock_risk_check
             mock_risk_manager.position_sizer.get_risk_percentage.return_value = 2.0
             mock_risk_manager_class.return_value = mock_risk_manager
 
-            result = self.runner.invoke(calculate_position_size, [
-                "--symbol", "AAPL",
-                "--entry", "180.50",
-                "--stop", "178.00",
-                "--risk", "normal",
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                calculate_position_size,
+                [
+                    "--symbol",
+                    "AAPL",
+                    "--entry",
+                    "180.50",
+                    "--stop",
+                    "178.00",
+                    "--risk",
+                    "normal",
+                    "--account-value",
+                    "10000",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "Position Size Calculated" in result.output
@@ -85,20 +100,32 @@ class TestCalculatePositionSize:
             limit=Decimal("10.0"),
         )
 
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager = MagicMock()
-            mock_risk_manager.position_sizer.calculate_position_size.return_value = mock_result
+            mock_risk_manager.position_sizer.calculate_position_size.return_value = (
+                mock_result
+            )
             mock_risk_manager.check_portfolio_risk_limit.return_value = mock_risk_check
             mock_risk_manager.position_sizer.get_risk_percentage.return_value = 2.0
             mock_risk_manager_class.return_value = mock_risk_manager
 
-            result = self.runner.invoke(calculate_position_size, [
-                "--symbol", "AAPL",
-                "--entry", "180.50",
-                "--stop", "178.00",
-                "--risk", "normal",
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                calculate_position_size,
+                [
+                    "--symbol",
+                    "AAPL",
+                    "--entry",
+                    "180.50",
+                    "--stop",
+                    "178.00",
+                    "--risk",
+                    "normal",
+                    "--account-value",
+                    "10000",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "Trade Blocked - Portfolio Risk Exceeded" in result.output
@@ -106,20 +133,30 @@ class TestCalculatePositionSize:
 
     def test_calculate_position_size_invalid_calculation(self):
         """Test position size calculation with invalid parameters."""
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager = MagicMock()
-            mock_risk_manager.position_sizer.calculate_position_size.side_effect = InvalidPositionSizeError(
-                "Entry price cannot equal stop loss price"
+            mock_risk_manager.position_sizer.calculate_position_size.side_effect = (
+                InvalidPositionSizeError("Entry price cannot equal stop loss price")
             )
             mock_risk_manager_class.return_value = mock_risk_manager
 
-            result = self.runner.invoke(calculate_position_size, [
-                "--symbol", "AAPL",
-                "--entry", "180.00",
-                "--stop", "180.00",  # Same as entry
-                "--risk", "normal",
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                calculate_position_size,
+                [
+                    "--symbol",
+                    "AAPL",
+                    "--entry",
+                    "180.00",
+                    "--stop",
+                    "180.00",  # Same as entry
+                    "--risk",
+                    "normal",
+                    "--account-value",
+                    "10000",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "Calculation Failed" in result.output
@@ -127,11 +164,16 @@ class TestCalculatePositionSize:
 
     def test_calculate_position_size_missing_required_params(self):
         """Test command with missing required parameters."""
-        result = self.runner.invoke(calculate_position_size, [
-            "--symbol", "AAPL",
-            "--entry", "180.50"
-            # Missing --stop parameter
-        ])
+        result = self.runner.invoke(
+            calculate_position_size,
+            [
+                "--symbol",
+                "AAPL",
+                "--entry",
+                "180.50",
+                # Missing --stop parameter
+            ],
+        )
 
         assert result.exit_code != 0
         assert "Missing option" in result.output
@@ -158,21 +200,34 @@ class TestCalculatePositionSize:
         with tempfile.NamedTemporaryFile(suffix=".json") as temp_file:
             temp_path = Path(temp_file.name)
 
-            with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+            with patch(
+                "auto_trader.cli.risk_commands.RiskManager"
+            ) as mock_risk_manager_class:
                 mock_risk_manager = MagicMock()
                 mock_risk_manager.position_sizer.calculate_position_size.return_value = mock_result
-                mock_risk_manager.check_portfolio_risk_limit.return_value = mock_risk_check
+                mock_risk_manager.check_portfolio_risk_limit.return_value = (
+                    mock_risk_check
+                )
                 mock_risk_manager.position_sizer.get_risk_percentage.return_value = 2.0
                 mock_risk_manager_class.return_value = mock_risk_manager
 
-                result = self.runner.invoke(calculate_position_size, [
-                    "--symbol", "AAPL",
-                    "--entry", "180.50",
-                    "--stop", "178.00",
-                    "--risk", "normal",
-                    "--account-value", "10000",
-                    "--state-file", str(temp_path)
-                ])
+                result = self.runner.invoke(
+                    calculate_position_size,
+                    [
+                        "--symbol",
+                        "AAPL",
+                        "--entry",
+                        "180.50",
+                        "--stop",
+                        "178.00",
+                        "--risk",
+                        "normal",
+                        "--account-value",
+                        "10000",
+                        "--state-file",
+                        str(temp_path),
+                    ],
+                )
 
                 assert result.exit_code == 0
                 # Verify state file was passed to RiskManager
@@ -205,14 +260,16 @@ class TestPortfolioRiskSummary:
             "positions": [],
         }
 
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager = MagicMock()
             mock_risk_manager.get_portfolio_summary.return_value = mock_summary
             mock_risk_manager_class.return_value = mock_risk_manager
 
-            result = self.runner.invoke(portfolio_risk_summary, [
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                portfolio_risk_summary, ["--account-value", "10000"]
+            )
 
             assert result.exit_code == 0
             assert "Portfolio Risk Summary" in result.output
@@ -251,14 +308,16 @@ class TestPortfolioRiskSummary:
             ],
         }
 
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager = MagicMock()
             mock_risk_manager.get_portfolio_summary.return_value = mock_summary
             mock_risk_manager_class.return_value = mock_risk_manager
 
-            result = self.runner.invoke(portfolio_risk_summary, [
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                portfolio_risk_summary, ["--account-value", "10000"]
+            )
 
             assert result.exit_code == 0
             assert "Portfolio Risk Summary" in result.output
@@ -292,14 +351,16 @@ class TestPortfolioRiskSummary:
             ],
         }
 
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager = MagicMock()
             mock_risk_manager.get_portfolio_summary.return_value = mock_summary
             mock_risk_manager_class.return_value = mock_risk_manager
 
-            result = self.runner.invoke(portfolio_risk_summary, [
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                portfolio_risk_summary, ["--account-value", "10000"]
+            )
 
             assert result.exit_code == 0
             assert "Portfolio risk is high (9.0%)" in result.output
@@ -324,15 +385,17 @@ class TestPortfolioRiskSummary:
         with tempfile.NamedTemporaryFile(suffix=".json") as temp_file:
             temp_path = Path(temp_file.name)
 
-            with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+            with patch(
+                "auto_trader.cli.risk_commands.RiskManager"
+            ) as mock_risk_manager_class:
                 mock_risk_manager = MagicMock()
                 mock_risk_manager.get_portfolio_summary.return_value = mock_summary
                 mock_risk_manager_class.return_value = mock_risk_manager
 
-                result = self.runner.invoke(portfolio_risk_summary, [
-                    "--account-value", "10000",
-                    "--state-file", str(temp_path)
-                ])
+                result = self.runner.invoke(
+                    portfolio_risk_summary,
+                    ["--account-value", "10000", "--state-file", str(temp_path)],
+                )
 
                 assert result.exit_code == 0
                 # Verify state file was passed to RiskManager
@@ -350,28 +413,40 @@ class TestErrorHandling:
 
     def test_calculate_position_size_generic_error(self):
         """Test generic error handling in calculate-position-size."""
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager_class.side_effect = Exception("Unexpected error")
 
-            result = self.runner.invoke(calculate_position_size, [
-                "--symbol", "AAPL",
-                "--entry", "180.50",
-                "--stop", "178.00",
-                "--risk", "normal",
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                calculate_position_size,
+                [
+                    "--symbol",
+                    "AAPL",
+                    "--entry",
+                    "180.50",
+                    "--stop",
+                    "178.00",
+                    "--risk",
+                    "normal",
+                    "--account-value",
+                    "10000",
+                ],
+            )
 
             assert result.exit_code == 1
             # Should handle error gracefully and exit with error code
 
     def test_portfolio_risk_summary_generic_error(self):
         """Test generic error handling in portfolio-risk-summary."""
-        with patch("auto_trader.cli.risk_commands.RiskManager") as mock_risk_manager_class:
+        with patch(
+            "auto_trader.cli.risk_commands.RiskManager"
+        ) as mock_risk_manager_class:
             mock_risk_manager_class.side_effect = Exception("Unexpected error")
 
-            result = self.runner.invoke(portfolio_risk_summary, [
-                "--account-value", "10000"
-            ])
+            result = self.runner.invoke(
+                portfolio_risk_summary, ["--account-value", "10000"]
+            )
 
             assert result.exit_code == 1
             # Should handle error gracefully and exit with error code

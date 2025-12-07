@@ -15,7 +15,7 @@ class TestHelpSystem:
         result = runner.invoke(help_system)
 
         assert result.exit_code == 0
-        
+
         # Verify all main sections are present
         assert "Auto-Trader Help System" in result.output
         assert "Configuration Commands:" in result.output

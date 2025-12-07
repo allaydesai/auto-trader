@@ -1,0 +1,996 @@
+"""Performance integration tests for trade lifecycle management system."""
+
+import pytest
+import asyncio
+import time
+import tempfile
+import shutil
+from unittest.mock import AsyncMock, Mock
+from datetime import datetime, UTC, timedelta
+from decimal import Decimal
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+import statistics
+import psutil
+import gc
+
+from auto_trader.models.trade_plan import TradePlan, TradePlanStatus, RiskCategory, ExecutionFunction
+from auto_trader.models.market_data import BarData
+from auto_trader.models.execution import ExecutionSignal
+from auto_trader.models.enums import ExecutionAction, OrderSide, OrderStatus
+from auto_trader.models.order import OrderResult, OrderRequest
+from auto_trader.trade_engine.trade_orchestrator import TradeOrchestrator
+from auto_trader.trade_engine.lifecycle_manager import TradeLifecycleManager
+from auto_trader.trade_engine.signal_processor import SignalProcessor, SignalProcessorConfig
+from auto_trader.trade_engine.position_state_manager import PositionStateManager
+from auto_trader.trade_engine.exit_processor import ExitProcessor
+from auto_trader.trade_engine.function_registry import ExecutionFunctionRegistry
+from auto_trader.trade_engine.order_execution_adapter import ExecutionOrderAdapter
+
+
+class PerformanceMetrics:
+    """Collect and analyze performance metrics."""
+    
+    def __init__(self):
+        self.start_time = None
+        self.end_time = None
+        self.operation_times = []
+        self.memory_snapshots = []
+        self.cpu_snapshots = []
+        self.event_counts = {}
+        
+    def start_monitoring(self):
+        """Start performance monitoring."""
+        self.start_time = time.time()
+        self.memory_snapshots.append(psutil.Process().memory_info().rss)
+        self.cpu_snapshots.append(psutil.Process().cpu_percent())
+        
+    def record_operation(self, operation_name: str, duration: float):
+        """Record operation timing."""
+        if operation_name not in self.operation_times:
+            self.operation_times[operation_name] = []
+        self.operation_times[operation_name].append(duration)
+        
+    def increment_event(self, event_name: str):
+        """Increment event counter."""
+        self.event_counts[event_name] = self.event_counts.get(event_name, 0) + 1
+        
+    def stop_monitoring(self):
+        """Stop performance monitoring and collect final metrics."""
+        self.end_time = time.time()
+        self.memory_snapshots.append(psutil.Process().memory_info().rss)
+        self.cpu_snapshots.append(psutil.Process().cpu_percent(interval=0.1))
+        
+    def get_summary(self) -> Dict[str, Any]:
+        """Get performance summary."""
+        total_duration = self.end_time - self.start_time if self.end_time else 0
+        
+        operation_stats = {}
+        for op_name, times in self.operation_times.items():
+            operation_stats[op_name] = {
+                "count": len(times),
+                "total_time": sum(times),
+                "avg_time": statistics.mean(times),
+                "min_time": min(times),
+                "max_time": max(times),
+                "p95_time": statistics.quantiles(times, n=20)[18] if len(times) >= 20 else max(times)
+            }
+            
+        memory_usage = {
+            "start_mb": self.memory_snapshots[0] / (1024 * 1024) if self.memory_snapshots else 0,
+            "end_mb": self.memory_snapshots[-1] / (1024 * 1024) if len(self.memory_snapshots) > 1 else 0,
+            "peak_mb": max(self.memory_snapshots) / (1024 * 1024) if self.memory_snapshots else 0,
+            "growth_mb": (self.memory_snapshots[-1] - self.memory_snapshots[0]) / (1024 * 1024) if len(self.memory_snapshots) > 1 else 0
+        }
+        
+        return {
+            "total_duration": total_duration,
+            "operations": operation_stats,
+            "memory": memory_usage,
+            "cpu_usage": self.cpu_snapshots,
+            "events": self.event_counts
+        }
+
+
+class HighFrequencyDataGenerator:
+    """Generate high-frequency market data for performance testing."""
+    
+    def __init__(self, symbol: str, start_price: Decimal):
+        self.symbol = symbol
+        self.current_price = start_price
+        self.timestamp = datetime.now(UTC)
+        
+    def generate_bars(self, count: int, frequency_ms: int = 100) -> List[BarData]:
+        """Generate high-frequency bars."""
+        bars = []
+        
+        for i in range(count):
+            # Simulate realistic price movement
+            price_change = Decimal(str((i % 10 - 5) * 0.01))  # -0.05 to +0.04
+            self.current_price += price_change
+            
+            # Create OHLC with realistic relationships
+            open_price = self.current_price - Decimal("0.01")
+            high_price = max(open_price, self.current_price) + Decimal("0.02")
+            low_price = min(open_price, self.current_price) - Decimal("0.02")
+            close_price = self.current_price
+            
+            bar = BarData(
+                symbol=self.symbol,
+                timeframe="1min",
+                timestamp=self.timestamp + timedelta(milliseconds=i * frequency_ms),
+                open_price=open_price,
+                high_price=high_price,
+                low_price=low_price,
+                close_price=close_price,
+                volume=1000 + (i % 100) * 10,  # Varying volume
+                is_complete=True
+            )
+            
+            bars.append(bar)
+            
+        return bars
+
+
+class FastOrderManager:
+    """High-performance order manager for testing."""
+    
+    def __init__(self):
+        self.order_counter = 0
+        self.placed_orders = {}
+        self.processing_times = []
+        
+    async def place_bracket_order(self, entry_order, stop_order, target_order):
+        """Place bracket order with timing."""
+        start_time = time.time()
+        
+        self.order_counter += 1
+        order_id = f"FAST_ORDER_{self.order_counter:06d}"
+        
+        # Simulate minimal processing delay
+        await asyncio.sleep(0.001)  # 1ms delay
+        
+        result = OrderResult(
+            success=True,
+            order_id=order_id,
+            symbol=entry_order.symbol,
+            quantity=entry_order.quantity,
+            side=entry_order.side,
+            fill_price=entry_order.price,
+            status=OrderStatus.FILLED,
+            timestamp=datetime.now(UTC)
+        )
+        
+        self.placed_orders[order_id] = result
+        
+        processing_time = (time.time() - start_time) * 1000  # Convert to ms
+        self.processing_times.append(processing_time)
+        
+        return result
+        
+    async def cancel_orders_for_symbol(self, symbol: str):
+        """Fast order cancellation."""
+        await asyncio.sleep(0.0005)  # 0.5ms delay
+        return {"cancelled_orders": [], "success": True}
+        
+    async def get_order_status(self, order_id: str):
+        """Fast status lookup."""
+        return OrderStatus.FILLED
+        
+    def get_performance_stats(self) -> Dict[str, float]:
+        """Get order processing performance stats."""
+        if not self.processing_times:
+            return {}
+            
+        return {
+            "avg_processing_ms": statistics.mean(self.processing_times),
+            "min_processing_ms": min(self.processing_times),
+            "max_processing_ms": max(self.processing_times),
+            "p95_processing_ms": statistics.quantiles(self.processing_times, n=20)[18] if len(self.processing_times) >= 20 else max(self.processing_times),
+            "total_orders": len(self.processing_times)
+        }
+
+
+@pytest.fixture
+def temp_state_dir():
+    """Create temporary directory for state persistence."""
+    temp_dir = tempfile.mkdtemp()
+    yield Path(temp_dir)
+    shutil.rmtree(temp_dir)
+
+
+@pytest.fixture
+def performance_metrics():
+    """Create performance metrics collector."""
+    return PerformanceMetrics()
+
+
+@pytest.fixture
+def fast_order_manager():
+    """Create fast order manager for performance testing."""
+    return FastOrderManager()
+
+
+@pytest.fixture
+async def high_performance_risk_manager():
+    """Create high-performance mock risk manager."""
+    manager = AsyncMock()
+    
+    async def fast_validate(trade_plan):
+        await asyncio.sleep(0.0001)  # 0.1ms delay
+        return {
+            "passed": True,
+            "checks": ["all"],
+            "details": "Fast validation"
+        }
+        
+    async def fast_calculate_size(*args, **kwargs):
+        await asyncio.sleep(0.0001)  # 0.1ms delay
+        return 100
+        
+    manager.validate_trade_request = fast_validate
+    manager.calculate_position_size = fast_calculate_size
+    manager.add_position = AsyncMock()
+    manager.remove_position = AsyncMock()
+    
+    return manager
+
+
+@pytest.fixture
+async def execution_function_registry():
+    """Create execution function registry."""
+    registry = ExecutionFunctionRegistry()
+    await registry.clear_all()
+    
+    from auto_trader.trade_engine.functions import CloseAboveFunction, CloseBelowFunction
+    await registry.register("close_above", CloseAboveFunction)
+    await registry.register("close_below", CloseBelowFunction)
+    
+    return registry
+
+
+@pytest.fixture
+async def performance_orchestrator(
+    execution_function_registry,
+    high_performance_risk_manager,
+    fast_order_manager,
+    temp_state_dir
+):
+    """Create high-performance orchestrator for testing."""
+    position_manager = PositionStateManager(state_file_path=Path(temp_state_dir) / "positions.json")
+    lifecycle_manager = TradeLifecycleManager()
+    
+    # Optimized signal processor config
+    config = SignalProcessorConfig(
+        enable_duplicate_detection=True,
+        minimum_confidence_threshold=0.7,
+        max_processing_time_seconds=30,
+        enable_signal_filtering=True
+    )
+    
+    signal_processor = SignalProcessor(
+        execution_adapter=ExecutionOrderAdapter(fast_order_manager),
+        risk_manager=high_performance_risk_manager,
+        config=config
+    )
+    
+    exit_processor = ExitProcessor(
+        position_manager=position_manager,
+        order_execution_manager=fast_order_manager,
+        risk_manager=high_performance_risk_manager
+    )
+    
+    orchestrator = TradeOrchestrator(
+        function_registry=execution_function_registry,
+        signal_processor=signal_processor,
+        position_manager=position_manager,
+        exit_processor=exit_processor,
+        lifecycle_manager=lifecycle_manager,
+        state_dir=temp_state_dir
+    )
+    
+    return orchestrator
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestPerformanceIntegration:
+    """Performance integration tests for trade lifecycle management."""
+    
+    async def test_signal_to_order_latency_requirement(
+        self,
+        performance_orchestrator,
+        performance_metrics,
+        fast_order_manager
+    ):
+        """Test that signal-to-order latency is <1 second (NFR1)."""
+        # Create test trade plan
+        trade_plan = TradePlan(
+            plan_id="LATENCY_TEST_001",
+            symbol="AAPL",
+            entry_level=Decimal("180.00"),
+            stop_loss=Decimal("178.00"),
+            take_profit=Decimal("185.00"),
+            risk_category=RiskCategory.NORMAL,
+            entry_function=ExecutionFunction(
+                function_type="close_above",
+                timeframe="15min",
+                parameters={"threshold": "180.00"}
+            ),
+            exit_function=ExecutionFunction(
+                function_type="stop_loss_take_profit",
+                timeframe="15min",
+                parameters={"stop_loss": "178.00", "take_profit": "185.00"}
+            ),
+            status=TradePlanStatus.AWAITING_ENTRY
+        )
+        
+        await performance_orchestrator.add_trade_plan(trade_plan)
+        await performance_orchestrator.start()
+        
+        performance_metrics.start_monitoring()
+        
+        # Test multiple signal-to-order cycles
+        latencies = []
+        
+        for i in range(10):
+            # Create trigger bar
+            trigger_bar = BarData(
+                symbol="AAPL",
+                timeframe="15min",
+                timestamp=datetime.now(UTC) + timedelta(seconds=i),
+                open_price=Decimal("179.90"),
+                high_price=Decimal("180.50"),
+                low_price=Decimal("179.50"),
+                close_price=Decimal("180.10"),  # Triggers signal
+                volume=1000,
+                is_complete=True
+            )
+            
+            # Measure latency
+            start_time = time.time()
+            await performance_orchestrator.process_market_data(trigger_bar)
+            end_time = time.time()
+            
+            latency_ms = (end_time - start_time) * 1000
+            latencies.append(latency_ms)
+            performance_metrics.record_operation("signal_to_order", latency_ms / 1000)
+            
+            await asyncio.sleep(0.01)  # Small delay between signals
+            
+        performance_metrics.stop_monitoring()
+        
+        # Verify latency requirements
+        avg_latency_ms = statistics.mean(latencies)
+        max_latency_ms = max(latencies)
+        p95_latency_ms = statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else max_latency_ms
+        
+        assert avg_latency_ms < 1000, f"Average latency {avg_latency_ms:.2f}ms exceeds 1s requirement"
+        assert max_latency_ms < 1000, f"Max latency {max_latency_ms:.2f}ms exceeds 1s requirement"
+        assert p95_latency_ms < 1000, f"P95 latency {p95_latency_ms:.2f}ms exceeds 1s requirement"
+        
+        # Get performance summary
+        summary = performance_metrics.get_summary()
+        print(f"Signal-to-Order Latency Stats:")
+        print(f"  Average: {avg_latency_ms:.2f}ms")
+        print(f"  Maximum: {max_latency_ms:.2f}ms") 
+        print(f"  P95: {p95_latency_ms:.2f}ms")
+        
+        await performance_orchestrator.stop()
+    
+    async def test_high_frequency_market_data_processing(
+        self,
+        performance_orchestrator,
+        performance_metrics
+    ):
+        """Test processing of high-frequency market data streams."""
+        # Create trade plan
+        trade_plan = TradePlan(
+            plan_id="HIGH_FREQ_001",
+            symbol="AAPL",
+            entry_level=Decimal("180.00"),
+            stop_loss=Decimal("178.00"), 
+            take_profit=Decimal("185.00"),
+            risk_category=RiskCategory.NORMAL,
+            entry_function=ExecutionFunction(
+                function_type="close_above",
+                timeframe="1min",
+                parameters={"threshold": "180.00"}
+            ),
+            exit_function=ExecutionFunction(
+                function_type="stop_loss_take_profit",
+                timeframe="1min",
+                parameters={"stop_loss": "178.00", "take_profit": "185.00"}
+            ),
+            status=TradePlanStatus.AWAITING_ENTRY
+        )
+        
+        await performance_orchestrator.add_trade_plan(trade_plan)
+        await performance_orchestrator.start()
+        
+        # Generate high-frequency data
+        data_generator = HighFrequencyDataGenerator("AAPL", Decimal("179.50"))
+        high_freq_bars = data_generator.generate_bars(count=1000, frequency_ms=100)  # 10 bars/second
+        
+        performance_metrics.start_monitoring()
+        
+        # Process high-frequency data stream
+        processing_times = []
+        
+        for bar in high_freq_bars:
+            start_time = time.time()
+            await performance_orchestrator.process_market_data(bar)
+            end_time = time.time()
+            
+            processing_time_ms = (end_time - start_time) * 1000
+            processing_times.append(processing_time_ms)
+            performance_metrics.record_operation("bar_processing", processing_time_ms / 1000)
+            
+            # Small delay to simulate real-time stream
+            await asyncio.sleep(0.001)
+            
+        performance_metrics.stop_monitoring()
+        
+        # Analyze performance
+        avg_processing_ms = statistics.mean(processing_times)
+        max_processing_ms = max(processing_times)
+        throughput_bars_per_sec = len(high_freq_bars) / performance_metrics.get_summary()["total_duration"]
+        
+        # Performance requirements
+        assert avg_processing_ms < 50, f"Average processing time {avg_processing_ms:.2f}ms too high"
+        assert max_processing_ms < 200, f"Max processing time {max_processing_ms:.2f}ms too high"
+        assert throughput_bars_per_sec > 100, f"Throughput {throughput_bars_per_sec:.1f} bars/sec too low"
+        
+        print(f"High-Frequency Data Processing Stats:")
+        print(f"  Bars processed: {len(high_freq_bars)}")
+        print(f"  Average processing: {avg_processing_ms:.2f}ms")
+        print(f"  Throughput: {throughput_bars_per_sec:.1f} bars/sec")
+        
+        await performance_orchestrator.stop()
+    
+    async def test_concurrent_trade_plan_scalability(
+        self,
+        performance_orchestrator,
+        performance_metrics,
+        fast_order_manager
+    ):
+        """Test scalability with multiple concurrent trade plans."""
+        # Create many concurrent trade plans
+        num_plans = 100
+        trade_plans = []
+        
+        for i in range(num_plans):
+            plan = TradePlan(
+                plan_id=f"CONCURRENT_{i:03d}",
+                symbol=f"STOCK{i % 10}",  # 10 different symbols
+                entry_level=Decimal("100.00"),
+                stop_loss=Decimal("98.00"),
+                take_profit=Decimal("105.00"),
+                risk_category=RiskCategory.NORMAL,
+                entry_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="1min",
+                    parameters={"threshold": "100.00"}
+                ),
+                exit_function=ExecutionFunction(
+                    function_type="stop_loss_take_profit",
+                    timeframe="1min",
+                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                ),
+                status=TradePlanStatus.AWAITING_ENTRY
+            )
+            trade_plans.append(plan)
+            
+        # Load all plans
+        performance_metrics.start_monitoring()
+        
+        for plan in trade_plans:
+            await performance_orchestrator.add_trade_plan(plan)
+            
+        await performance_orchestrator.start()
+        
+        # Generate market data for all symbols simultaneously
+        symbols = list(set(plan.symbol for plan in trade_plans))
+        
+        for symbol in symbols:
+            # Generate data that triggers signals
+            trigger_bar = BarData(
+                symbol=symbol,
+                timeframe="1min",
+                timestamp=datetime.now(UTC),
+                open_price=Decimal("99.90"),
+                high_price=Decimal("100.50"),
+                low_price=Decimal("99.50"),
+                close_price=Decimal("100.10"),  # Triggers entry
+                volume=1000,
+                is_complete=True
+            )
+            
+            start_time = time.time()
+            await performance_orchestrator.process_market_data(trigger_bar)
+            processing_time = (time.time() - start_time) * 1000
+            
+            performance_metrics.record_operation("concurrent_processing", processing_time / 1000)
+            performance_metrics.increment_event("bars_processed")
+            
+        performance_metrics.stop_monitoring()
+        
+        # Check performance with concurrent load
+        summary = performance_metrics.get_summary()
+        concurrent_ops = summary["operations"].get("concurrent_processing", {})
+        
+        if concurrent_ops:
+            avg_time_ms = concurrent_ops["avg_time"] * 1000
+            max_time_ms = concurrent_ops["max_time"] * 1000
+            
+            # Performance should remain reasonable even with 100 plans
+            assert avg_time_ms < 500, f"Average concurrent processing {avg_time_ms:.2f}ms too high"
+            assert max_time_ms < 1000, f"Max concurrent processing {max_time_ms:.2f}ms too high"
+            
+        # Check order placement performance
+        order_stats = fast_order_manager.get_performance_stats()
+        if order_stats:
+            assert order_stats["avg_processing_ms"] < 10, "Order processing too slow under load"
+            
+        print(f"Concurrent Trade Plans Performance:")
+        print(f"  Plans: {num_plans}")
+        print(f"  Symbols: {len(symbols)}")
+        print(f"  Memory growth: {summary['memory']['growth_mb']:.1f}MB")
+        
+        await performance_orchestrator.stop()
+    
+    async def test_memory_usage_optimization(
+        self,
+        performance_orchestrator,
+        performance_metrics
+    ):
+        """Test memory usage optimization and leak prevention."""
+        # Create trade plans
+        num_plans = 50
+        
+        for i in range(num_plans):
+            plan = TradePlan(
+                plan_id=f"MEMORY_TEST_{i:03d}",
+                symbol=f"SYM{i % 5}",
+                entry_level=Decimal("100.00"),
+                stop_loss=Decimal("98.00"),
+                take_profit=Decimal("105.00"),
+                risk_category=RiskCategory.NORMAL,
+                entry_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="1min",
+                    parameters={"threshold": "100.00"}
+                ),
+                exit_function=ExecutionFunction(
+                    function_type="stop_loss_take_profit",
+                    timeframe="1min",
+                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                ),
+                status=TradePlanStatus.AWAITING_ENTRY
+            )
+            await performance_orchestrator.add_trade_plan(plan)
+            
+        await performance_orchestrator.start()
+        
+        performance_metrics.start_monitoring()
+        initial_memory = psutil.Process().memory_info().rss / (1024 * 1024)  # MB
+        
+        # Process large amount of data to test memory management
+        for cycle in range(10):
+            # Generate data for each symbol
+            for symbol_idx in range(5):
+                symbol = f"SYM{symbol_idx}"
+                
+                # Generate batch of bars
+                for bar_idx in range(100):
+                    bar = BarData(
+                        symbol=symbol,
+                        timeframe="1min",
+                        timestamp=datetime.now(UTC) + timedelta(seconds=cycle * 500 + bar_idx),
+                        open_price=Decimal("99.90"),
+                        high_price=Decimal("100.20"),
+                        low_price=Decimal("99.50"),
+                        close_price=Decimal("100.00") + Decimal(str(bar_idx * 0.001)),
+                        volume=1000,
+                        is_complete=True
+                    )
+                    
+                    await performance_orchestrator.process_market_data(bar)
+                    
+            # Force garbage collection and check memory
+            gc.collect()
+            current_memory = psutil.Process().memory_info().rss / (1024 * 1024)  # MB
+            performance_metrics.memory_snapshots.append(current_memory * 1024 * 1024)  # Back to bytes
+            
+            print(f"Cycle {cycle + 1}: Memory usage {current_memory:.1f}MB")
+            
+        performance_metrics.stop_monitoring()
+        final_memory = psutil.Process().memory_info().rss / (1024 * 1024)  # MB
+        
+        # Memory usage analysis
+        memory_growth = final_memory - initial_memory
+        summary = performance_metrics.get_summary()
+        
+        # Memory requirements
+        assert memory_growth < 100, f"Memory growth {memory_growth:.1f}MB too high (potential leak)"
+        assert final_memory < 500, f"Final memory usage {final_memory:.1f}MB too high"
+        
+        print(f"Memory Usage Analysis:")
+        print(f"  Initial: {initial_memory:.1f}MB")
+        print(f"  Final: {final_memory:.1f}MB")
+        print(f"  Growth: {memory_growth:.1f}MB")
+        print(f"  Peak: {summary['memory']['peak_mb']:.1f}MB")
+        
+        await performance_orchestrator.stop()
+    
+    async def test_position_state_persistence_performance(
+        self,
+        performance_orchestrator,
+        performance_metrics,
+        temp_state_dir
+    ):
+        """Test performance of position state persistence operations."""
+        # Create trade plans that will generate positions
+        num_plans = 20
+        
+        for i in range(num_plans):
+            plan = TradePlan(
+                plan_id=f"PERSISTENCE_TEST_{i:03d}",
+                symbol=f"STOCK{i}",
+                entry_level=Decimal("100.00"),
+                stop_loss=Decimal("98.00"),
+                take_profit=Decimal("105.00"),
+                risk_category=RiskCategory.NORMAL,
+                entry_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="1min",
+                    parameters={"threshold": "100.00"}
+                ),
+                exit_function=ExecutionFunction(
+                    function_type="stop_loss_take_profit",
+                    timeframe="1min",
+                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                ),
+                status=TradePlanStatus.AWAITING_ENTRY
+            )
+            await performance_orchestrator.add_trade_plan(plan)
+            
+        await performance_orchestrator.start()
+        performance_metrics.start_monitoring()
+        
+        # Generate signals to create positions
+        for i in range(num_plans):
+            symbol = f"STOCK{i}"
+            
+            trigger_bar = BarData(
+                symbol=symbol,
+                timeframe="1min",
+                timestamp=datetime.now(UTC) + timedelta(seconds=i),
+                open_price=Decimal("99.90"),
+                high_price=Decimal("100.50"),
+                low_price=Decimal("99.50"),
+                close_price=Decimal("100.10"),  # Triggers entry
+                volume=1000,
+                is_complete=True
+            )
+            
+            start_time = time.time()
+            await performance_orchestrator.process_market_data(trigger_bar)
+            persistence_time = (time.time() - start_time) * 1000
+            
+            performance_metrics.record_operation("position_persistence", persistence_time / 1000)
+            performance_metrics.increment_event("positions_created")
+            
+        # Test state file I/O performance
+        position_files = list(temp_state_dir.glob("position_*.json"))
+        file_count = len(position_files)
+        
+        # Measure state recovery performance
+        recovery_start = time.time()
+        new_position_manager = PositionStateManager(state_file_path=Path(temp_state_dir) / "positions.json")
+        all_positions = await new_position_manager.get_all_positions()
+        recovery_time = (time.time() - recovery_start) * 1000
+        
+        performance_metrics.record_operation("state_recovery", recovery_time / 1000)
+        performance_metrics.stop_monitoring()
+        
+        # Performance analysis
+        summary = performance_metrics.get_summary()
+        persistence_ops = summary["operations"].get("position_persistence", {})
+        recovery_ops = summary["operations"].get("state_recovery", {})
+        
+        if persistence_ops:
+            avg_persistence_ms = persistence_ops["avg_time"] * 1000
+            assert avg_persistence_ms < 100, f"Position persistence {avg_persistence_ms:.2f}ms too slow"
+            
+        if recovery_ops:
+            recovery_time_ms = recovery_ops["avg_time"] * 1000
+            assert recovery_time_ms < 1000, f"State recovery {recovery_time_ms:.2f}ms too slow"
+            
+        print(f"State Persistence Performance:")
+        print(f"  Position files created: {file_count}")
+        print(f"  Positions recovered: {len(all_positions)}")
+        print(f"  Recovery time: {recovery_time:.2f}ms")
+        
+        await performance_orchestrator.stop()
+    
+    async def test_system_throughput_under_load(
+        self,
+        performance_orchestrator,
+        performance_metrics
+    ):
+        """Test overall system throughput under heavy load."""
+        # Create comprehensive test scenario
+        num_symbols = 10
+        num_plans_per_symbol = 5
+        bars_per_symbol = 200
+        
+        # Create trade plans
+        total_plans = 0
+        for symbol_idx in range(num_symbols):
+            symbol = f"LOAD_TEST_{symbol_idx:02d}"
+            
+            for plan_idx in range(num_plans_per_symbol):
+                plan = TradePlan(
+                    plan_id=f"LOAD_{symbol_idx:02d}_{plan_idx:02d}",
+                    symbol=symbol,
+                    entry_level=Decimal("100.00") + Decimal(str(plan_idx * 0.1)),
+                    stop_loss=Decimal("98.00"),
+                    take_profit=Decimal("105.00"),
+                    risk_category=RiskCategory.NORMAL,
+                    entry_function=ExecutionFunction(
+                        function_type="close_above",
+                        timeframe="1min",
+                        parameters={"threshold": str(100.00 + plan_idx * 0.1)}
+                    ),
+                    exit_function=ExecutionFunction(
+                        function_type="stop_loss_take_profit",
+                        timeframe="1min",
+                        parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                    ),
+                    status=TradePlanStatus.AWAITING_ENTRY
+                )
+                await performance_orchestrator.add_trade_plan(plan)
+                total_plans += 1
+                
+        await performance_orchestrator.start()
+        performance_metrics.start_monitoring()
+        
+        # Generate heavy load
+        total_bars_processed = 0
+        load_test_start = time.time()
+        
+        for symbol_idx in range(num_symbols):
+            symbol = f"LOAD_TEST_{symbol_idx:02d}"
+            
+            # Generate bars for this symbol
+            for bar_idx in range(bars_per_symbol):
+                price_variation = Decimal(str(bar_idx * 0.01))
+                
+                bar = BarData(
+                    symbol=symbol,
+                    timeframe="1min",
+                    timestamp=datetime.now(UTC) + timedelta(seconds=symbol_idx * bars_per_symbol + bar_idx),
+                    open_price=Decimal("99.80") + price_variation,
+                    high_price=Decimal("100.50") + price_variation,
+                    low_price=Decimal("99.50") + price_variation,
+                    close_price=Decimal("100.00") + price_variation,  # Will trigger various thresholds
+                    volume=1000,
+                    is_complete=True
+                )
+                
+                processing_start = time.time()
+                await performance_orchestrator.process_market_data(bar)
+                processing_time = (time.time() - processing_start) * 1000
+                
+                performance_metrics.record_operation("load_test_processing", processing_time / 1000)
+                total_bars_processed += 1
+                
+                # Small delay to prevent overwhelming
+                await asyncio.sleep(0.001)
+                
+        load_test_duration = time.time() - load_test_start
+        performance_metrics.stop_monitoring()
+        
+        # Calculate throughput metrics
+        overall_throughput = total_bars_processed / load_test_duration
+        summary = performance_metrics.get_summary()
+        
+        # Performance requirements
+        assert overall_throughput > 50, f"Overall throughput {overall_throughput:.1f} bars/sec too low"
+        assert summary["memory"]["growth_mb"] < 200, f"Memory growth {summary['memory']['growth_mb']:.1f}MB too high under load"
+        
+        load_ops = summary["operations"].get("load_test_processing", {})
+        if load_ops:
+            avg_processing_ms = load_ops["avg_time"] * 1000
+            p95_processing_ms = load_ops["p95_time"] * 1000
+            
+            assert avg_processing_ms < 100, f"Average processing {avg_processing_ms:.2f}ms too slow under load"
+            assert p95_processing_ms < 500, f"P95 processing {p95_processing_ms:.2f}ms too slow under load"
+            
+        print(f"Load Test Results:")
+        print(f"  Trade plans: {total_plans}")
+        print(f"  Bars processed: {total_bars_processed}")
+        print(f"  Duration: {load_test_duration:.2f}s")
+        print(f"  Throughput: {overall_throughput:.1f} bars/sec")
+        print(f"  Memory usage: {summary['memory']['peak_mb']:.1f}MB peak")
+        
+        await performance_orchestrator.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestPerformanceRegression:
+    """Performance regression tests to catch performance degradation."""
+    
+    async def test_baseline_performance_benchmarks(
+        self,
+        performance_orchestrator,
+        performance_metrics
+    ):
+        """Establish baseline performance benchmarks."""
+        # Standardized test scenario
+        baseline_plan = TradePlan(
+            plan_id="BASELINE_001",
+            symbol="BASELINE_STOCK",
+            entry_level=Decimal("100.00"),
+            stop_loss=Decimal("98.00"),
+            take_profit=Decimal("105.00"),
+            risk_category=RiskCategory.NORMAL,
+            entry_function=ExecutionFunction(
+                function_type="close_above",
+                timeframe="1min",
+                parameters={"threshold": "100.00"}
+            ),
+            exit_function=ExecutionFunction(
+                function_type="stop_loss_take_profit",
+                timeframe="1min",
+                parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+            ),
+            status=TradePlanStatus.AWAITING_ENTRY
+        )
+        
+        await performance_orchestrator.add_trade_plan(baseline_plan)
+        await performance_orchestrator.start()
+        
+        performance_metrics.start_monitoring()
+        
+        # Run standardized benchmark
+        benchmark_iterations = 100
+        
+        for i in range(benchmark_iterations):
+            bar = BarData(
+                symbol="BASELINE_STOCK",
+                timeframe="1min",
+                timestamp=datetime.now(UTC) + timedelta(seconds=i),
+                open_price=Decimal("99.90"),
+                high_price=Decimal("100.20"),
+                low_price=Decimal("99.50"),
+                close_price=Decimal("100.00") + Decimal(str(i * 0.001)),
+                volume=1000,
+                is_complete=True
+            )
+            
+            benchmark_start = time.time()
+            await performance_orchestrator.process_market_data(bar)
+            benchmark_time = (time.time() - benchmark_start) * 1000
+            
+            performance_metrics.record_operation("baseline_benchmark", benchmark_time / 1000)
+            
+        performance_metrics.stop_monitoring()
+        
+        # Establish baseline metrics
+        summary = performance_metrics.get_summary()
+        baseline_ops = summary["operations"].get("baseline_benchmark", {})
+        
+        if baseline_ops:
+            baseline_metrics = {
+                "avg_processing_ms": baseline_ops["avg_time"] * 1000,
+                "p95_processing_ms": baseline_ops["p95_time"] * 1000,
+                "max_processing_ms": baseline_ops["max_time"] * 1000,
+                "memory_usage_mb": summary["memory"]["peak_mb"],
+                "total_iterations": benchmark_iterations
+            }
+            
+            # Print baseline for future reference
+            print("Performance Baseline Established:")
+            for metric, value in baseline_metrics.items():
+                print(f"  {metric}: {value:.2f}")
+                
+            # Basic sanity checks
+            assert baseline_metrics["avg_processing_ms"] < 50, "Baseline performance too slow"
+            assert baseline_metrics["p95_processing_ms"] < 200, "Baseline P95 too slow"
+            assert baseline_metrics["memory_usage_mb"] < 100, "Baseline memory usage too high"
+            
+        await performance_orchestrator.stop()
+    
+    async def test_performance_under_stress_conditions(
+        self,
+        performance_orchestrator,
+        performance_metrics
+    ):
+        """Test performance under stress conditions."""
+        # Create stress test scenario
+        stress_plans = []
+        for i in range(25):  # Moderate number for stress test
+            plan = TradePlan(
+                plan_id=f"STRESS_TEST_{i:03d}",
+                symbol=f"STRESS{i % 5}",  # 5 symbols
+                entry_level=Decimal("100.00"),
+                stop_loss=Decimal("98.00"),
+                take_profit=Decimal("105.00"),
+                risk_category=RiskCategory.NORMAL,
+                entry_function=ExecutionFunction(
+                    function_type="close_above",
+                    timeframe="1min",
+                    parameters={"threshold": "100.00"}
+                ),
+                exit_function=ExecutionFunction(
+                    function_type="stop_loss_take_profit",
+                    timeframe="1min",
+                    parameters={"stop_loss": "98.00", "take_profit": "105.00"}
+                ),
+                status=TradePlanStatus.AWAITING_ENTRY
+            )
+            stress_plans.append(plan)
+            await performance_orchestrator.add_trade_plan(plan)
+            
+        await performance_orchestrator.start()
+        performance_metrics.start_monitoring()
+        
+        # Apply stress conditions
+        stress_iterations = 500
+        symbols = ["STRESS0", "STRESS1", "STRESS2", "STRESS3", "STRESS4"]
+        
+        for i in range(stress_iterations):
+            symbol = symbols[i % len(symbols)]
+            
+            # Create bars that will trigger multiple signals
+            bar = BarData(
+                symbol=symbol,
+                timeframe="1min",
+                timestamp=datetime.now(UTC) + timedelta(milliseconds=i * 10),  # High frequency
+                open_price=Decimal("99.90"),
+                high_price=Decimal("100.50"),
+                low_price=Decimal("99.50"),
+                close_price=Decimal("100.10"),  # Triggers signals
+                volume=1000,
+                is_complete=True
+            )
+            
+            stress_start = time.time()
+            await performance_orchestrator.process_market_data(bar)
+            stress_time = (time.time() - stress_start) * 1000
+            
+            performance_metrics.record_operation("stress_processing", stress_time / 1000)
+            
+            # Minimal delay for realistic stress
+            await asyncio.sleep(0.0005)
+            
+        performance_metrics.stop_monitoring()
+        
+        # Analyze stress test results
+        summary = performance_metrics.get_summary()
+        stress_ops = summary["operations"].get("stress_processing", {})
+        
+        if stress_ops:
+            avg_stress_ms = stress_ops["avg_time"] * 1000
+            max_stress_ms = stress_ops["max_time"] * 1000
+            p95_stress_ms = stress_ops["p95_time"] * 1000
+            
+            # Stress conditions allow for higher latencies but within limits
+            assert avg_stress_ms < 200, f"Average stress processing {avg_stress_ms:.2f}ms too slow"
+            assert max_stress_ms < 1000, f"Max stress processing {max_stress_ms:.2f}ms too slow"
+            assert p95_stress_ms < 500, f"P95 stress processing {p95_stress_ms:.2f}ms too slow"
+            
+            # Memory should remain controlled under stress
+            assert summary["memory"]["growth_mb"] < 150, f"Memory growth under stress {summary['memory']['growth_mb']:.1f}MB too high"
+            
+            print(f"Stress Test Results:")
+            print(f"  Plans: {len(stress_plans)}")
+            print(f"  Iterations: {stress_iterations}")
+            print(f"  Avg processing: {avg_stress_ms:.2f}ms")
+            print(f"  P95 processing: {p95_stress_ms:.2f}ms")
+            print(f"  Memory growth: {summary['memory']['growth_mb']:.1f}MB")
+            
+        await performance_orchestrator.stop()

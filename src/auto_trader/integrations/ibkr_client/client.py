@@ -13,6 +13,7 @@ from config import ConfigLoader, Settings
 
 class ConnectionState(Enum):
     """Connection state enumeration."""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -23,6 +24,7 @@ class ConnectionState(Enum):
 
 class ConnectionStatus(BaseModel):
     """Connection status information."""
+
     state: ConnectionState
     last_connected: Optional[datetime] = None
     reconnect_attempts: int = 0
@@ -33,28 +35,32 @@ class ConnectionStatus(BaseModel):
 
 class IBKRError(Exception):
     """Base exception for IBKR-related errors."""
+
     pass
 
 
 class IBKRConnectionError(IBKRError):
     """Connection establishment or maintenance failed."""
+
     pass
 
 
 class IBKRAuthenticationError(IBKRError):
     """Authentication or authorization failed."""
+
     pass
 
 
 class IBKRTimeoutError(IBKRError):
     """Operation timed out."""
+
     pass
 
 
 class IBKRClient:
     """
     IBKR client with ib-async integration and connection management.
-    
+
     Provides reliable connection to Interactive Brokers with automatic
     reconnection, circuit breaker protection, and comprehensive logging.
     """
@@ -62,7 +68,7 @@ class IBKRClient:
     def __init__(self, settings: Optional[Settings] = None):
         """
         Initialize IBKR client.
-        
+
         Args:
             settings: Optional settings instance, creates new if None
         """
@@ -71,7 +77,7 @@ class IBKRClient:
         self._ib = IB()
         self._connection_status = ConnectionStatus(state=ConnectionState.DISCONNECTED)
         self._connection_start_time: Optional[float] = None
-        
+
         # Register event handlers
         self._ib.connectedEvent += self._on_connected
         self._ib.disconnectedEvent += self._on_disconnected
@@ -80,7 +86,7 @@ class IBKRClient:
     async def connect(self) -> None:
         """
         Establish IBKR connection with configuration validation.
-        
+
         Raises:
             IBKRConnectionError: If connection fails
             IBKRTimeoutError: If connection times out
@@ -93,10 +99,10 @@ class IBKRClient:
         host = self._settings.ibkr_host
         port = self._settings.ibkr_port
         client_id = self._settings.ibkr_client_id
-        
+
         # Timeout comes from config (no env var for this)
         timeout = self._config_loader.system_config.ibkr.timeout
-        
+
         self._connection_status.state = ConnectionState.CONNECTING
         self._connection_start_time = datetime.now().timestamp()
 
@@ -106,14 +112,11 @@ class IBKRClient:
                 host=host,
                 port=port,
                 client_id=client_id,
-                timeout=timeout
+                timeout=timeout,
             )
 
             await self._ib.connectAsync(
-                host=host,
-                port=port,
-                clientId=client_id,
-                timeout=timeout
+                host=host, port=port, clientId=client_id, timeout=timeout
             )
 
             # Get account information and detect paper trading
@@ -132,13 +135,13 @@ class IBKRClient:
             logger.info(
                 "IBKR connection established",
                 account_type="paper" if is_paper else "live",
-                connection_time=f"{connection_time:.2f}s"
+                connection_time=f"{connection_time:.2f}s",
             )
 
         except Exception as e:
             self._connection_status.state = ConnectionState.DISCONNECTED
             logger.error("IBKR connection failed", error=str(e))
-            
+
             if "timeout" in str(e).lower():
                 raise IBKRTimeoutError(f"Connection timeout: {e}")
             elif "authentication" in str(e).lower():
@@ -165,25 +168,37 @@ class IBKRClient:
     def is_connected(self) -> bool:
         """
         Connection status for health checks.
-        
+
         Returns:
             True if connected to IBKR
         """
-        return self._ib.isConnected() and self._connection_status.state == ConnectionState.CONNECTED
+        return (
+            self._ib.isConnected()
+            and self._connection_status.state == ConnectionState.CONNECTED
+        )
 
     def get_connection_status(self) -> ConnectionStatus:
         """
         Current connection state for monitoring.
-        
+
         Returns:
             Current connection status information
         """
         return self._connection_status
 
+    def get_ib_client(self):
+        """
+        Get the underlying IB client instance.
+
+        Returns:
+            IB client instance for advanced operations
+        """
+        return self._ib
+
     async def _detect_account_type(self) -> Tuple[str, bool]:
         """
         Detect if connected to paper or live account.
-        
+
         Returns:
             Tuple[account_id, is_paper_account]
         """
@@ -201,7 +216,7 @@ class IBKRClient:
 
             # Paper accounts typically start with "DU"
             is_paper = account_id.startswith("DU")
-            
+
             return account_id, is_paper
 
         except Exception as e:
@@ -211,7 +226,7 @@ class IBKRClient:
     def _log_account_type_warning(self, account_id: str, is_paper: bool) -> None:
         """
         Log prominent account type warnings for safety.
-        
+
         Args:
             account_id: Account identifier
             is_paper: True if paper account
@@ -220,13 +235,13 @@ class IBKRClient:
             logger.warning(
                 "⚠️ PAPER TRADING ACCOUNT DETECTED",
                 account_id=account_id,
-                safety_mode="SIMULATION"
+                safety_mode="SIMULATION",
             )
         else:
             logger.critical(
                 "🔴 LIVE TRADING ACCOUNT DETECTED",
                 account_id="***REDACTED***",  # Never log real account IDs
-                safety_mode="LIVE_TRADING"
+                safety_mode="LIVE_TRADING",
             )
 
     def _on_connected(self) -> None:
@@ -239,10 +254,12 @@ class IBKRClient:
         if self._connection_status.state != ConnectionState.SHUTDOWN:
             self._connection_status.state = ConnectionState.DISCONNECTED
 
-    def _on_error(self, reqId: int, errorCode: int, errorString: str, contract=None) -> None:
+    def _on_error(
+        self, reqId: int, errorCode: int, errorString: str, contract=None
+    ) -> None:
         """
         Handle IBKR error events.
-        
+
         Args:
             reqId: Request ID
             errorCode: Error code from IBKR
@@ -253,6 +270,8 @@ class IBKRClient:
         if errorCode in [2104, 2106, 2158]:  # Market data farm connection messages
             logger.debug("IBKR info", code=errorCode, message=errorString)
         elif errorCode >= 2000:  # Warnings
-            logger.warning("IBKR warning", code=errorCode, message=errorString, reqId=reqId)
+            logger.warning(
+                "IBKR warning", code=errorCode, message=errorString, reqId=reqId
+            )
         else:  # Errors
             logger.error("IBKR error", code=errorCode, message=errorString, reqId=reqId)

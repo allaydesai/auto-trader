@@ -44,7 +44,9 @@ def _get_env_settings() -> Dict[str, Any]:
     ibkr_client_id: int = click.prompt("IBKR Client ID", default=1, type=int)
 
     # Force simulation mode for safety
-    console.print("\n[bold yellow]Simulation mode is ENABLED by default for safety.[/bold yellow]")
+    console.print(
+        "\n[bold yellow]Simulation mode is ENABLED by default for safety.[/bold yellow]"
+    )
     simulation_mode: bool = True
     debug: bool = click.confirm("Enable debug logging?", default=False)
 
@@ -86,10 +88,10 @@ def create_env_file(path: Path) -> None:
     """Create .env file with interactive prompts."""
     console.print("\n[bold]Environment Configuration:[/bold]")
     _show_safety_warning()
-    
+
     settings = _get_env_settings()
     env_content = _generate_env_content(settings)
-    
+
     path.write_text(env_content)
     console.print(f"[green]✓ Created {path}[/green]")
 
@@ -172,40 +174,40 @@ default_execution_functions:
 def get_plan_data_interactive() -> Dict[str, Any]:
     """Get plan data from user through interactive prompts."""
     from datetime import datetime
-    
+
     console.print("\n[bold]Plan Information:[/bold]")
-    
+
     # Get basic plan info
     symbol: str = Prompt.ask("Trading symbol (e.g., AAPL)", default="AAPL").upper()
-    
+
     # Generate plan ID suggestion
     date_str: str = datetime.now().strftime("%Y%m%d")
     suggested_plan_id: str = f"{symbol}_{date_str}_001"
-    
+
     plan_id: str = Prompt.ask("Plan ID", default=suggested_plan_id)
-    
+
     # Get price levels as strings and convert directly to Decimal
     entry_level_str: str = click.prompt("Entry level", type=str)
     stop_loss_str: str = click.prompt("Stop loss", type=str)
     take_profit_str: str = click.prompt("Take profit", type=str)
-    
+
     # Convert directly to Decimal without float intermediate
     entry_level: Decimal = Decimal(entry_level_str)
     stop_loss: Decimal = Decimal(stop_loss_str)
     take_profit: Decimal = Decimal(take_profit_str)
-    
+
     # Get risk category
     risk_category: str = Prompt.ask(
-        "Risk category",
-        choices=RISK_CATEGORY_CHOICES,
-        default=DEFAULT_RISK_CATEGORY
+        "Risk category", choices=RISK_CATEGORY_CHOICES, default=DEFAULT_RISK_CATEGORY
     )
-    
+
     # Get execution function details
     console.print("\n[bold]Entry Function:[/bold]")
-    threshold_str: str = click.prompt("Entry threshold", type=str, default=str(entry_level))
+    threshold_str: str = click.prompt(
+        "Entry threshold", type=str, default=str(entry_level)
+    )
     threshold: Decimal = Decimal(threshold_str)
-    
+
     return {
         "plan_id": plan_id,
         "symbol": symbol,
@@ -221,7 +223,9 @@ def export_performance_csv(period: str, current_date: str) -> None:
     """Export performance summary to CSV."""
     csv_filename = f"performance_summary_{period}_{current_date}.csv"
     console.print(f"[green]✓ Performance summary exported to {csv_filename}[/green]")
-    console.print("[yellow]Note: This is a placeholder. Real implementation would create actual CSV file.[/yellow]")
+    console.print(
+        "[yellow]Note: This is a placeholder. Real implementation would create actual CSV file.[/yellow]"
+    )
 
 
 def export_trade_history_csv(symbol: str | None, days: int) -> None:
@@ -229,4 +233,6 @@ def export_trade_history_csv(symbol: str | None, days: int) -> None:
     filter_suffix = f"_{symbol}" if symbol else ""
     csv_filename = f"trade_history_{days}days{filter_suffix}.csv"
     console.print(f"[green]✓ Trade history exported to {csv_filename}[/green]")
-    console.print("[yellow]Note: This is a placeholder. Real implementation would create actual CSV file.[/yellow]")
+    console.print(
+        "[yellow]Note: This is a placeholder. Real implementation would create actual CSV file.[/yellow]"
+    )

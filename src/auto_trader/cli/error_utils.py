@@ -28,14 +28,14 @@ def handle_config_validation_failure(issues: List[str], verbose: bool) -> None:
     )
 
     console.print("\n[bold red]Configuration Issues Found:[/bold red]")
-    
+
     # Show first 3 issues by default (progressive disclosure)
     critical_issues = issues[:3]
     remaining_issues = issues[3:]
-    
+
     for i, issue in enumerate(critical_issues, 1):
         console.print(f"  {i}. {issue}")
-    
+
     if remaining_issues:
         console.print(f"\n[dim]... and {len(remaining_issues)} more issue(s)[/dim]")
         if verbose:
@@ -44,7 +44,7 @@ def handle_config_validation_failure(issues: List[str], verbose: bool) -> None:
                 console.print(f"  {i}. {issue}")
         else:
             console.print("[dim]Use --verbose to see all issues[/dim]")
-    
+
     # Add helpful next steps
     console.print(
         Panel(
@@ -53,7 +53,7 @@ def handle_config_validation_failure(issues: List[str], verbose: bool) -> None:
             "• Check .env file for missing variables\n"
             "• Ensure DISCORD_WEBHOOK_URL is set correctly",
             title="Suggested Actions",
-            border_style="yellow"
+            border_style="yellow",
         )
     )
 
@@ -61,7 +61,9 @@ def handle_config_validation_failure(issues: List[str], verbose: bool) -> None:
     sys.exit(1)
 
 
-def handle_file_permission_error(file_path: Path, operation: str, error: Exception) -> None:
+def handle_file_permission_error(
+    file_path: Path, operation: str, error: Exception
+) -> None:
     """Handle file permission errors with enhanced context."""
     console.print(
         Panel(
@@ -78,30 +80,28 @@ def handle_file_permission_error(file_path: Path, operation: str, error: Excepti
             border_style="red",
         )
     )
-    
+
     logger.error(
-        "File permission error", 
-        file_path=str(file_path), 
-        operation=operation, 
+        "File permission error",
+        file_path=str(file_path),
+        operation=operation,
         error=str(error),
-        error_type=type(error).__name__
+        error_type=type(error).__name__,
     )
 
 
 def handle_validation_plan_failure(
-    loader: "TradePlanLoader", 
-    plans_dir: Optional[Path], 
-    verbose: bool
+    loader: "TradePlanLoader", plans_dir: Optional[Path], verbose: bool
 ) -> None:
     """Handle trade plan validation failure with progressive error disclosure."""
     console.print(
         Panel(
             "[yellow]⚠ No valid trade plans found[/yellow]",
-            title="Validation Result", 
+            title="Validation Result",
             border_style="yellow",
         )
     )
-    
+
     # Enhanced error reporting with progressive disclosure
     validation_report = loader.get_validation_report()
     if "Error" in validation_report and not verbose:
@@ -113,10 +113,10 @@ def handle_validation_plan_failure(
                 "• Ensure risk_category is one of: small, normal, large\n"
                 "• Use --verbose to see detailed validation errors",
                 title="Quick Help",
-                border_style="yellow"
+                border_style="yellow",
             )
         )
-    
+
     if verbose:
         console.print("\n" + validation_report)
 
@@ -124,7 +124,9 @@ def handle_validation_plan_failure(
 def handle_generic_error(operation: str, error: Exception) -> None:
     """Handle generic errors with proper logging and exit."""
     console.print(f"[red]Error during {operation}: {error}[/red]")
-    logger.error(f"{operation} error", error=str(error), error_type=type(error).__name__)
+    logger.error(
+        f"{operation} error", error=str(error), error_type=type(error).__name__
+    )
     sys.exit(1)
 
 
@@ -142,10 +144,7 @@ def show_safety_warning(simulation_mode: bool) -> None:
         )
 
 
-def check_existing_files(
-    output_dir: Path, 
-    force: bool
-) -> bool:
+def check_existing_files(output_dir: Path, force: bool) -> bool:
     """Check for existing configuration files and handle conflicts."""
     env_file = output_dir / ".env"
     config_file = output_dir / "config.yaml"
@@ -156,12 +155,10 @@ def check_existing_files(
     ]
 
     if existing_files and not force:
-        console.print(
-            "\n[yellow]Warning: The following files already exist:[/yellow]"
-        )
+        console.print("\n[yellow]Warning: The following files already exist:[/yellow]")
         for f in existing_files:
             console.print(f"  • {f}")
         console.print("\nUse --force to overwrite existing files.")
         return False
-    
+
     return True
