@@ -218,3 +218,11 @@ __marimo__/
 
 data/trade_plans/backups/
 logs/
+
+# Runtime state files (not configuration)
+data/state/positions.json
+data/state/*.bak.*
+
+# Individual trade plans (not templates or samples)
+# Pattern matches files like: AAPL_20250815_001.yaml, SPY_20251009_001.yaml
+data/trade_plans/*_[0-9]*.yaml
