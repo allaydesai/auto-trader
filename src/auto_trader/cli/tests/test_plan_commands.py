@@ -163,9 +163,7 @@ class TestListPlans:
             "auto_trader.cli.plan_commands.TradePlanLoader"
         ) as mock_loader_class, patch(
             "auto_trader.cli.plan_commands.display_plans_table"
-        ), patch(
-            "auto_trader.cli.plan_commands.display_stats_summary"
-        ):
+        ), patch("auto_trader.cli.plan_commands.display_stats_summary"):
             mock_plan1 = self.create_mock_plan(
                 "PLAN1", "AAPL", "awaiting_entry", "normal"
             )
@@ -203,9 +201,7 @@ class TestListPlans:
             "auto_trader.cli.plan_commands.TradePlanLoader"
         ) as mock_loader_class, patch(
             "auto_trader.cli.plan_commands.display_plans_table"
-        ), patch(
-            "auto_trader.cli.plan_commands.display_stats_summary"
-        ):
+        ), patch("auto_trader.cli.plan_commands.display_stats_summary"):
             mock_plan = self.create_mock_plan()
             mock_loader = MagicMock()
             mock_loader.load_all_plans.return_value = {"plan1": mock_plan}
@@ -226,9 +222,7 @@ class TestListPlans:
             "auto_trader.cli.plan_commands.TradePlanLoader"
         ) as mock_loader_class, patch(
             "auto_trader.cli.plan_commands.display_plans_table"
-        ), patch(
-            "auto_trader.cli.plan_commands.display_stats_summary"
-        ):
+        ), patch("auto_trader.cli.plan_commands.display_stats_summary"):
             mock_plan = self.create_mock_plan()
             mock_loader = MagicMock()
             mock_loader.load_all_plans.return_value = {"plan1": mock_plan}
@@ -288,9 +282,7 @@ class TestListPlans:
             "auto_trader.cli.plan_commands.TradePlanLoader"
         ) as mock_loader_class, patch(
             "auto_trader.cli.plan_commands.display_plans_table"
-        ) as mock_display, patch(
-            "auto_trader.cli.plan_commands.display_stats_summary"
-        ):
+        ) as mock_display, patch("auto_trader.cli.plan_commands.display_stats_summary"):
             mock_plan = self.create_mock_plan()
             mock_loader = MagicMock()
             mock_loader.load_all_plans.return_value = {"plan1": mock_plan}

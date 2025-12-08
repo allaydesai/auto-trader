@@ -143,8 +143,7 @@ class RiskManager:
         # Check open position limit
         if (
             self.max_open_positions is not None
-            and self.portfolio_tracker.get_position_count()
-            >= self.max_open_positions
+            and self.portfolio_tracker.get_position_count() >= self.max_open_positions
         ):
             errors.append(
                 f"Maximum open positions reached "

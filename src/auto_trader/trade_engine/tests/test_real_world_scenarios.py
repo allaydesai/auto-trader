@@ -738,9 +738,7 @@ class TestRealWorldScenarios:
 
                 await setup["market_adapter"]._on_bar_close(bar_close_event)
 
-        (
-            setup["order_manager"].place_market_order.call_count - morning_orders
-        )
+        (setup["order_manager"].place_market_order.call_count - morning_orders)
 
         # Verify expiration day behavior
         # Should have more activity in afternoon (volatile close)
