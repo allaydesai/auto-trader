@@ -46,7 +46,7 @@ default_exit_function: "take_profit_stop_loss"
 # "live" = Live trading account (real money - be careful!)
 # 
 # IMPORTANT: Always start with "paper" until you're confident in your setup
-environment: "paper"
+environment: "paper"  # Placeholder - not enforced yet
 
 # Advanced Configuration (Optional)
 # =================================

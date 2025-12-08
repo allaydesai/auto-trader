@@ -22,12 +22,11 @@ logger = get_logger("portfolio_tracker", "risk")
 class PortfolioTracker:
     """Track and persist portfolio risk across positions."""
 
-    MAX_PORTFOLIO_RISK = Decimal("10.0")  # 10% limit (AC 7, 19)
-
     def __init__(
         self,
         state_file: Optional[Path] = None,
         account_value: Optional[Decimal] = None,
+        max_portfolio_risk_percent: Optional[Decimal] = None,
     ) -> None:
         """
         Initialize portfolio tracker.
@@ -39,6 +38,11 @@ class PortfolioTracker:
         self.state_file = state_file or Path("data/state/position_registry.json")
         self._positions: Dict[str, PositionRiskEntry] = {}
         self._account_value = account_value or Decimal("0")
+        self.max_portfolio_risk = (
+            Decimal(str(max_portfolio_risk_percent))
+            if max_portfolio_risk_percent is not None
+            else Decimal("10.0")
+        )
         self._backup_manager = BackupManager(self.state_file)
 
         # Load existing state if file exists
@@ -50,6 +54,11 @@ class PortfolioTracker:
             account_value=float(self._account_value),
             existing_positions=len(self._positions),
         )
+
+    @property
+    def MAX_PORTFOLIO_RISK(self) -> Decimal:
+        """Backward-compatible access to max risk limit."""
+        return self.max_portfolio_risk
 
     def set_account_value(self, account_value: Decimal) -> None:
         """Set the account value for risk calculations."""
@@ -109,7 +118,7 @@ class PortfolioTracker:
             ),
             portfolio_risk_after=float(current_risk),
             total_positions_count=len(self._positions),
-            risk_capacity_remaining=float(self.MAX_PORTFOLIO_RISK - current_risk),
+            risk_capacity_remaining=float(self.max_portfolio_risk - current_risk),
         )
 
     def remove_position(self, position_id: str) -> bool:
@@ -230,11 +239,11 @@ class PortfolioTracker:
         new_risk_percent = (new_risk_amount / self._account_value) * Decimal("100")
         total_risk = current_risk + new_risk_percent
 
-        if total_risk > self.MAX_PORTFOLIO_RISK:
+        if total_risk > self.max_portfolio_risk:
             message = (
                 f"Portfolio risk limit exceeded: {total_risk:.2f}% "
                 f"(current: {current_risk:.2f}% + new: {new_risk_percent:.2f}%) "
-                f"exceeds limit of {self.MAX_PORTFOLIO_RISK:.1f}%"
+                f"exceeds limit of {self.max_portfolio_risk:.1f}%"
             )
 
             logger.warning(
@@ -242,7 +251,7 @@ class PortfolioTracker:
                 current_risk=float(current_risk),
                 new_risk=float(new_risk_percent),
                 total_risk=float(total_risk),
-                limit=float(self.MAX_PORTFOLIO_RISK),
+                limit=float(self.max_portfolio_risk),
                 new_risk_dollars=float(new_risk_amount),
             )
 
@@ -269,7 +278,7 @@ class PortfolioTracker:
             raise PortfolioRiskExceededError(
                 current_risk=current_risk,
                 new_risk=new_risk_percent,
-                limit=self.MAX_PORTFOLIO_RISK,
+                limit=self.max_portfolio_risk,
             )
 
     def get_available_risk_capacity(self) -> Tuple[Decimal, Decimal]:
@@ -280,7 +289,7 @@ class PortfolioTracker:
             Tuple of (percentage_capacity, dollar_capacity)
         """
         current_risk = self.get_current_portfolio_risk()
-        remaining_percent = self.MAX_PORTFOLIO_RISK - current_risk
+        remaining_percent = self.max_portfolio_risk - current_risk
         remaining_dollars = (remaining_percent / Decimal("100")) * self._account_value
 
         return remaining_percent, remaining_dollars
@@ -295,7 +304,7 @@ class PortfolioTracker:
             "position_count": self.get_position_count(),
             "total_dollar_risk": float(self.get_total_dollar_risk()),
             "current_risk_percentage": float(current_risk),
-            "risk_limit": float(self.MAX_PORTFOLIO_RISK),
+            "risk_limit": float(self.max_portfolio_risk),
             "remaining_capacity_percent": float(remaining_percent),
             "remaining_capacity_dollars": float(remaining_dollars),
             "positions": [

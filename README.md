@@ -580,7 +580,7 @@ The Auto-Trader uses a three-tier configuration system:
 3. **`user_config.yaml`** - User preferences
    - Account values
    - Default risk categories
-   - Trading preferences
+   - Trading preferences (CLI wizard defaults for timeframe + entry/exit functions)
 
 **Important:** IBKR connection settings (host, port, client_id) are ONLY in `.env`, not in `config.yaml`.
 
@@ -613,6 +613,7 @@ See [Configuration Guide](docs/configuration-guide.md) for detailed information.
 | `level` | Log level | "INFO" |
 | `rotation` | Log rotation frequency | "1 day" |
 | `retention` | Log retention period | "30 days" |
+| `format` | Structured log format string | `{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}` |
 
 ## CLI Commands
 

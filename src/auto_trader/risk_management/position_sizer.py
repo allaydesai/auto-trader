@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_DOWN
-from typing import Dict
+from typing import Dict, Optional
 
 from ..logging_config import get_logger
 from .risk_models import PositionSizeResult, InvalidPositionSizeError
@@ -31,6 +31,7 @@ class PositionSizer:
         risk_category: str,
         entry_price: Decimal,
         stop_loss: Decimal,
+        max_position_percent: Optional[Decimal] = None,
     ) -> PositionSizeResult:
         """
         Calculate position size using risk management formula.
@@ -74,6 +75,14 @@ class PositionSizer:
 
         # Round to whole shares (AC 4)
         position_size = self._round_to_shares(raw_position_size)
+
+        if max_position_percent is not None:
+            position_size = self._enforce_position_cap(
+                position_size,
+                account_value,
+                entry_price,
+                max_position_percent,
+            )
 
         # Log calculation details
         logger.info(
@@ -170,6 +179,42 @@ class PositionSizer:
 
         # Ensure minimum 1 share for valid trades
         return max(1, rounded_size)
+
+    def _enforce_position_cap(
+        self,
+        position_size: int,
+        account_value: Decimal,
+        entry_price: Decimal,
+        max_position_percent: Decimal,
+    ) -> int:
+        """Ensure position does not exceed configured capital allocation."""
+        max_percent = Decimal(str(max_position_percent))
+        if max_percent <= 0:
+            raise InvalidPositionSizeError(
+                "Max position percent must be positive",
+                entry_price=entry_price,
+                stop_price=entry_price,
+            )
+
+        max_position_value = (account_value * (max_percent / Decimal("100"))).quantize(
+            Decimal("0.01")
+        )
+        if entry_price <= 0:
+            raise InvalidPositionSizeError(
+                "Entry price must be positive",
+                entry_price=entry_price,
+                stop_price=entry_price,
+            )
+
+        max_shares = int((max_position_value / entry_price).quantize(Decimal("1"), ROUND_DOWN))
+        if max_shares <= 0:
+            raise InvalidPositionSizeError(
+                f"Max position percent ({max_percent}%) too restrictive for entry price {entry_price}",
+                entry_price=entry_price,
+                stop_price=entry_price,
+            )
+
+        return min(position_size, max_shares)
 
     def get_risk_percentage(self, risk_category: str) -> Decimal:
         """Get risk percentage for a given category."""

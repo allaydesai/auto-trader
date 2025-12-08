@@ -169,10 +169,18 @@ async def run_auto_trader(args: argparse.Namespace) -> int:
     if args.no_discord:
         settings.discord_webhook_url = ""
 
+    # Load configuration for logging defaults
+    config_loader = ConfigLoader(settings)
+    system_config = config_loader.system_config
+    log_defaults = system_config.logging
+
     # Setup logging
     log_config = LoggerConfig(
         logs_dir=settings.logs_dir,
-        log_level="DEBUG" if settings.debug else "INFO",
+        log_level="DEBUG" if settings.debug else log_defaults.level,
+        rotation=log_defaults.rotation,
+        retention=log_defaults.retention,
+        format_string=log_defaults.format,
     )
     log_config.configure_logging()
 
@@ -211,7 +219,6 @@ async def run_auto_trader(args: argparse.Namespace) -> int:
                 return 0
 
             # Update config to disable simulation
-            config_loader = ConfigLoader(settings)
             config_loader.system_config.trading.simulation_mode = False
 
         # Create application instance

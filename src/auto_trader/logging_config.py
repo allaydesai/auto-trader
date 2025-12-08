@@ -17,10 +17,20 @@ trade_context: ContextVar[Optional[str]] = ContextVar("trade_context", default=N
 class LoggerConfig:
     """Enhanced logging configuration manager."""
 
-    def __init__(self, logs_dir: Path = Path("logs"), log_level: str = "INFO"):
+    def __init__(
+        self,
+        logs_dir: Path = Path("logs"),
+        log_level: str = "INFO",
+        rotation: str = "1 day",
+        retention: str = "30 days",
+        format_string: str = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}",
+    ):
         """Initialize logger configuration."""
         self.logs_dir = logs_dir
         self.log_level = log_level
+        self.rotation = rotation
+        self.retention = retention
+        self.format_string = format_string
         self._configured = False
 
     def configure_logging(self) -> None:
@@ -50,8 +60,8 @@ class LoggerConfig:
         logger.add(
             self.logs_dir / "system.log",
             level=self.log_level,
-            rotation="1 day",
-            retention="30 days",
+            rotation=self.rotation,
+            retention=self.retention,
             compression="gz",
             format=self._json_format,
             serialize=True,
@@ -65,8 +75,8 @@ class LoggerConfig:
         logger.add(
             self.logs_dir / "trades.log",
             level="INFO",
-            rotation="1 day",
-            retention="30 days",
+            rotation=self.rotation,
+            retention=self.retention,
             compression="gz",
             format=self._json_format,
             serialize=True,
@@ -77,8 +87,8 @@ class LoggerConfig:
         logger.add(
             self.logs_dir / "risk.log",
             level="INFO",
-            rotation="1 day",
-            retention="30 days",
+            rotation=self.rotation,
+            retention=self.retention,
             compression="gz",
             format=self._json_format,
             serialize=True,
@@ -89,8 +99,8 @@ class LoggerConfig:
         logger.add(
             self.logs_dir / "cli.log",
             level="INFO",
-            rotation="1 day",
-            retention="30 days",
+            rotation=self.rotation,
+            retention=self.retention,
             compression="gz",
             format=self._json_format,
             serialize=True,
@@ -118,12 +128,7 @@ class LoggerConfig:
 
     def _json_format(self, record: Dict[str, Any]) -> str:
         """Custom JSON format for structured logging."""
-        return (
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-            "{level} | "
-            "{name}:{function}:{line} | "
-            "{message}"
-        )
+        return self.format_string
 
 
 class ContextualLogger:

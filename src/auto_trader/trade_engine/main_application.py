@@ -40,10 +40,15 @@ class ApplicationConfig(BaseModel):
     # Risk management
     account_value: float = 10000.0
     max_portfolio_risk_percent: float = 10.0
+    max_position_percent: float = 10.0
+    daily_loss_limit_percent: float = 2.0
+    max_open_positions: int = 5
 
     # Performance settings
     signal_timeout_seconds: int = 30
     state_save_interval_seconds: int = 60
+    order_timeout_seconds: int = 60
+    market_hours_only: bool = True
 
     # IBKR settings (for future use)
     ibkr_host: str = "127.0.0.1"
@@ -104,6 +109,14 @@ class TradingApplication:
             # Initialize risk manager
             self.risk_manager = RiskManager(
                 account_value=Decimal(str(self.config.account_value)),
+                daily_loss_limit_percent=Decimal(
+                    str(self.config.daily_loss_limit_percent)
+                ),
+                max_position_percent=Decimal(str(self.config.max_position_percent)),
+                max_open_positions=self.config.max_open_positions,
+                max_portfolio_risk_percent=Decimal(
+                    str(self.config.max_portfolio_risk_percent)
+                ),
             )
 
             # Initialize IBKR client with settings (passes connection config from .env)
@@ -115,6 +128,7 @@ class TradingApplication:
                 position_sizer=self.risk_manager.position_sizer,
                 portfolio_tracker=self.risk_manager.portfolio_tracker,
                 account_value=Decimal(str(self.config.account_value)),
+                max_position_percent=Decimal(str(self.config.max_position_percent)),
             )
 
             # Initialize order execution manager
@@ -132,6 +146,7 @@ class TradingApplication:
                 state_save_interval_seconds=self.config.state_save_interval_seconds,
                 enable_position_tracking=self.config.enable_position_tracking,
                 enable_risk_validation=self.config.enable_risk_validation,
+                market_hours_only=self.config.market_hours_only,
             )
 
             self.trade_orchestrator = TradeOrchestrator(
@@ -140,6 +155,8 @@ class TradingApplication:
                 order_execution_manager=self.order_execution_manager,
                 risk_manager=self.risk_manager,
                 config=orchestrator_config,
+                market_hours_only=self.config.market_hours_only,
+                order_timeout_seconds=self.config.order_timeout_seconds,
             )
 
             logger.info("All application components initialized successfully")

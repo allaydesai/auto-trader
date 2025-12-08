@@ -186,6 +186,20 @@ class IBKRClient:
         """
         return self._connection_status
 
+    def increment_reconnect_attempts(self) -> int:
+        """
+        Increment reconnect attempt counter.
+
+        Returns:
+            Current number of reconnect attempts
+        """
+        self._connection_status.reconnect_attempts += 1
+        return self._connection_status.reconnect_attempts
+
+    def reset_reconnect_attempts(self) -> None:
+        """Reset reconnect attempt counter."""
+        self._connection_status.reconnect_attempts = 0
+
     def get_ib_client(self):
         """
         Get the underlying IB client instance.

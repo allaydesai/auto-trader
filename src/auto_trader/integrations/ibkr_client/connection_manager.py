@@ -9,7 +9,7 @@ from loguru import logger
 
 from .circuit_breaker import CircuitBreaker, CircuitBreakerError, CircuitBreakerState
 from .client import ConnectionState, IBKRClient, ConnectionStatus
-from config import Settings
+from config import Settings, ConfigLoader
 
 
 class ConnectionManager:
@@ -32,16 +32,20 @@ class ConnectionManager:
         """
         self._settings = settings or Settings()
         self._state_dir = state_dir or Path("state")
+        self._config_loader = ConfigLoader(self._settings)
+        self._ibkr_config = self._config_loader.system_config.ibkr
 
         self._client = IBKRClient(self._settings)
         self._circuit_breaker = CircuitBreaker(
-            failure_threshold=5,
-            reset_timeout=60,
+            failure_threshold=self._ibkr_config.reconnect_attempts,
+            reset_timeout=self._ibkr_config.timeout,
             state_file=self._state_dir / "circuit_breaker_state.json",
         )
 
         self._shutdown_initiated = False
         self._reconnection_task: Optional[asyncio.Task] = None
+        self._max_reconnect_attempts = self._ibkr_config.reconnect_attempts
+        self._reconnect_attempts = 0
 
     async def connect(self) -> None:
         """
@@ -212,13 +216,32 @@ class ConnectionManager:
                 await asyncio.sleep(5)  # Check every 5 seconds
 
                 if not self.is_connected() and not self._shutdown_initiated:
-                    logger.warning("Connection lost - attempting reconnection")
+                    if (
+                        self._max_reconnect_attempts
+                        and self._reconnect_attempts >= self._max_reconnect_attempts
+                    ):
+                        logger.error(
+                            "Maximum reconnection attempts reached - giving up",
+                            attempts=self._reconnect_attempts,
+                            limit=self._max_reconnect_attempts,
+                        )
+                        break
+
+                    self._reconnect_attempts += 1
+                    attempt_no = self._client.increment_reconnect_attempts()
+                    logger.warning(
+                        "Connection lost - attempting reconnection",
+                        attempt=attempt_no,
+                        limit=self._max_reconnect_attempts,
+                    )
 
                     try:
                         await self._circuit_breaker.call_with_circuit_breaker(
                             self._client.connect
                         )
                         logger.info("Reconnection successful")
+                        self._reconnect_attempts = 0
+                        self._client.reset_reconnect_attempts()
 
                     except CircuitBreakerError:
                         logger.error("Reconnection blocked by circuit breaker")

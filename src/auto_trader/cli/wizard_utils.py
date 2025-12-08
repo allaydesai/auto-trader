@@ -58,6 +58,46 @@ class WizardFieldCollector:
         self.validation_engine = ValidationEngine()
         self.field_validator = WizardFieldValidator()
         self.console = Console()
+        self._system_config = self.config_loader.system_config
+        self._user_preferences = self.config_loader.user_preferences
+
+        user_risk_category = getattr(
+            self._user_preferences, "default_risk_category", DEFAULT_RISK_CATEGORY
+        )
+        if user_risk_category not in RISK_CATEGORY_CHOICES:
+            user_risk_category = DEFAULT_RISK_CATEGORY
+        self._default_risk_category = user_risk_category
+
+        raw_timeframes = getattr(self._user_preferences, "preferred_timeframes", None)
+        if isinstance(raw_timeframes, list):
+            preferred_timeframes = [
+                tf for tf in raw_timeframes if tf in AVAILABLE_TIMEFRAMES
+            ]
+        else:
+            preferred_timeframes = []
+        self._preferred_timeframes = preferred_timeframes or AVAILABLE_TIMEFRAMES
+        trading_config = getattr(self._system_config, "trading", None)
+        system_default_timeframe = (
+            getattr(trading_config, "default_timeframe", None) or DEFAULT_TIMEFRAME
+        )
+        preferred_default = preferred_timeframes[0] if preferred_timeframes else system_default_timeframe
+        self._default_timeframe = (
+            preferred_default
+            if preferred_default in AVAILABLE_TIMEFRAMES
+            else DEFAULT_TIMEFRAME
+        )
+        entry_pref = getattr(
+            self._user_preferences, "default_entry_function", DEFAULT_ENTRY_FUNCTION_TYPE
+        )
+        if entry_pref not in ENTRY_FUNCTION_TYPES:
+            entry_pref = DEFAULT_ENTRY_FUNCTION_TYPE
+        self._default_entry_function = entry_pref
+        exit_pref = getattr(
+            self._user_preferences, "default_exit_function", DEFAULT_EXIT_FUNCTION_TYPE
+        )
+        if exit_pref not in EXIT_FUNCTION_TYPES:
+            exit_pref = DEFAULT_EXIT_FUNCTION_TYPE
+        self._default_exit_function = exit_pref
 
         # Track collected values for validation
         self.collected_data: Dict[str, Any] = {}
@@ -211,7 +251,7 @@ class WizardFieldCollector:
                 choice = Prompt.ask(
                     "\n[cyan]Risk category[/cyan]",
                     choices=RISK_CATEGORY_CHOICES,
-                    default=DEFAULT_RISK_CATEGORY,
+                    default=self._default_risk_category,
                 )
                 category = RiskCategory(choice)
                 break
@@ -440,9 +480,9 @@ class WizardFieldCollector:
         Returns:
             Tuple of (entry_function, stop_loss_function, take_profit_function)
         """
-        # Available timeframes from constants
+        # Available timeframes from constants with user-preferred default
         timeframes = AVAILABLE_TIMEFRAMES
-        default_timeframe = DEFAULT_TIMEFRAME
+        default_timeframe = self._default_timeframe
 
         self.console.print("\n[bold]⚙️  Execution Functions:[/bold]")
 
@@ -451,7 +491,7 @@ class WizardFieldCollector:
         entry_type = Prompt.ask(
             "Entry trigger",
             choices=ENTRY_FUNCTION_TYPES,
-            default=DEFAULT_ENTRY_FUNCTION_TYPE,
+            default=self._default_entry_function,
         )
 
         entry_timeframe = Prompt.ask(
@@ -471,7 +511,7 @@ class WizardFieldCollector:
         stop_loss_type = Prompt.ask(
             "Stop loss trigger",
             choices=EXIT_FUNCTION_TYPES,
-            default=DEFAULT_EXIT_FUNCTION_TYPE,
+            default=self._default_exit_function,
         )
 
         stop_loss_timeframe = Prompt.ask(
@@ -491,7 +531,7 @@ class WizardFieldCollector:
         take_profit_type = Prompt.ask(
             "Take profit trigger",
             choices=EXIT_FUNCTION_TYPES,
-            default=DEFAULT_EXIT_FUNCTION_TYPE,
+            default=self._default_exit_function,
         )
 
         take_profit_timeframe = Prompt.ask(
