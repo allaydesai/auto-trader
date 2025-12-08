@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Optional
+from decimal import Decimal
 
 import click
 from rich.console import Console
@@ -320,10 +321,21 @@ def create_plan_interactive(
     try:
         # Initialize components
         config_loader = ConfigLoader()
+        system_config = config_loader.system_config
 
-        # Initialize risk manager with account value
+        # Initialize risk manager with account value and system risk settings
         account_value = config_loader.user_preferences.account_value
-        risk_manager = RiskManager(account_value=account_value)
+        risk_manager = RiskManager(
+            account_value=account_value,
+            daily_loss_limit_percent=Decimal(
+                str(system_config.risk.daily_loss_limit_percent)
+            ),
+            max_position_percent=Decimal(str(system_config.risk.max_position_percent)),
+            max_open_positions=system_config.risk.max_open_positions,
+            max_portfolio_risk_percent=Decimal(
+                str(system_config.risk.max_portfolio_risk_percent)
+            ),
+        )
 
         # Show portfolio status at start
         portfolio_summary = risk_manager.get_portfolio_summary()

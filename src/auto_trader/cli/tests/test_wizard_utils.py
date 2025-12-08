@@ -19,7 +19,13 @@ class TestWizardFieldCollector:
     def mock_config_loader(self):
         """Mock configuration loader."""
         config_loader = Mock(spec=ConfigLoader)
-        config_loader.user_preferences.account_value = Decimal("10000")
+        prefs = Mock()
+        prefs.account_value = Decimal("10000")
+        prefs.default_risk_category = "normal"
+        prefs.preferred_timeframes = ["15min", "30min"]
+        prefs.default_entry_function = "close_above"
+        prefs.default_exit_function = "close_below"
+        config_loader.user_preferences = prefs
         return config_loader
 
     @pytest.fixture

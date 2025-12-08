@@ -112,6 +112,9 @@ default_execution_function: "close_above"
 # Position Preferences
 default_position_size_override: null
 use_fractional_shares: false
+
+# Environment (informational only)
+environment: "paper"  # Placeholder – not enforced yet
 ```
 
 ## Configuration Priority and Overrides

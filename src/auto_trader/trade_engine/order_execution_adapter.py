@@ -27,6 +27,7 @@ class ExecutionOrderAdapter:
         self,
         order_execution_manager: OrderExecutionManager,
         default_risk_category: RiskCategory = RiskCategory.NORMAL,
+        order_timeout_seconds: int = 300,
     ):
         """Initialize execution order adapter.
 
@@ -49,12 +50,13 @@ class ExecutionOrderAdapter:
             order_execution_manager=order_execution_manager,
             order_request_builder=self.order_request_builder,
             circuit_breaker=self.circuit_breaker,
+            order_timeout_seconds=order_timeout_seconds,
         )
 
         # Configuration for adapter
         self.config = {
             "default_risk_category": default_risk_category,
-            "order_timeout_seconds": 300,  # 5 minutes
+            "order_timeout_seconds": order_timeout_seconds,
             "max_retry_attempts": 3,
             "circuit_breaker_enabled": True,
         }

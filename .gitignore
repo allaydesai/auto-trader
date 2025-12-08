@@ -208,6 +208,10 @@ cython_debug/
 # BMAD Core
 .bmad-core/
 
+# BMAD user state and memory (not configs)
+.bmad-user-memory/
+.agentvibes/
+
 # reference documents for historical context
 .ignore/
 

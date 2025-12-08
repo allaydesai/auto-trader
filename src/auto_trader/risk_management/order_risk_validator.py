@@ -24,14 +24,12 @@ logger = get_logger("order_risk_validator", "risk")
 class OrderRiskValidator:
     """Validate order requests against risk management rules."""
 
-    # Portfolio risk limit (10% maximum total risk)
-    MAX_PORTFOLIO_RISK_PERCENT = Decimal("10.0")
-
     def __init__(
         self,
         position_sizer: PositionSizer,
         portfolio_tracker: PortfolioTracker,
         account_value: Optional[Decimal] = None,
+        max_position_percent: Optional[Decimal] = None,
     ) -> None:
         """
         Initialize order risk validator.
@@ -44,6 +42,11 @@ class OrderRiskValidator:
         self.position_sizer = position_sizer
         self.portfolio_tracker = portfolio_tracker
         self._account_value = account_value
+        self._max_position_percent = (
+            Decimal(str(max_position_percent))
+            if max_position_percent is not None
+            else None
+        )
 
         logger.debug("OrderRiskValidator initialized")
 
@@ -108,7 +111,9 @@ class OrderRiskValidator:
                 new_trade_risk=position_size_result.portfolio_risk_percentage,
                 total_risk=(await self._get_current_portfolio_risk())
                 + position_size_result.portfolio_risk_percentage,
-                limit=self.MAX_PORTFOLIO_RISK_PERCENT,
+                limit=getattr(
+                    self.portfolio_tracker, "max_portfolio_risk", Decimal("10.0")
+                ),
             )
 
             return RiskValidationResult(
@@ -135,7 +140,9 @@ class OrderRiskValidator:
                 current_risk=Decimal("0.0"),
                 new_trade_risk=Decimal("0.0"),
                 total_risk=Decimal("0.0"),
-                limit=self.MAX_PORTFOLIO_RISK_PERCENT,
+                limit=getattr(
+                    self.portfolio_tracker, "max_portfolio_risk", Decimal("10.0")
+                ),
             )
 
             return RiskValidationResult(
@@ -159,6 +166,7 @@ class OrderRiskValidator:
                 risk_category=risk_category_str,
                 entry_price=order_request.entry_price,
                 stop_loss=order_request.stop_loss_price,
+                max_position_percent=self._max_position_percent,
             )
 
         except InvalidPositionSizeError as e:
@@ -179,14 +187,17 @@ class OrderRiskValidator:
                 (new_trade_risk / await self._get_account_value()) * Decimal("100")
             )
 
-            if total_risk > self.MAX_PORTFOLIO_RISK_PERCENT:
+            limit = getattr(
+                self.portfolio_tracker, "max_portfolio_risk", Decimal("10.0")
+            )
+            if total_risk > limit:
                 new_trade_risk_percent = (
                     new_trade_risk / await self._get_account_value()
                 ) * Decimal("100")
                 raise PortfolioRiskExceededError(
                     current_risk=portfolio_state.total_risk_percentage,
                     new_risk=new_trade_risk_percent,
-                    limit=self.MAX_PORTFOLIO_RISK_PERCENT,
+                    limit=limit,
                 )
 
             logger.debug(
@@ -196,7 +207,7 @@ class OrderRiskValidator:
                     (new_trade_risk / await self._get_account_value()) * Decimal("100")
                 ),
                 total_risk=float(total_risk),
-                limit=float(self.MAX_PORTFOLIO_RISK_PERCENT),
+                limit=float(limit),
             )
 
         except Exception as e:

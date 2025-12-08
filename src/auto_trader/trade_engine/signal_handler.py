@@ -1,5 +1,6 @@
 """Signal processing logic for different execution actions."""
 
+import asyncio
 from typing import Optional, Dict
 from datetime import datetime, UTC
 
@@ -27,6 +28,7 @@ class SignalHandler:
         order_execution_manager: OrderExecutionManager,
         order_request_builder: OrderRequestBuilder,
         circuit_breaker: CircuitBreakerManager,
+        order_timeout_seconds: int = 300,
     ):
         """Initialize signal handler.
 
@@ -38,6 +40,7 @@ class SignalHandler:
         self.order_execution_manager = order_execution_manager
         self.order_request_builder = order_request_builder
         self.circuit_breaker = circuit_breaker
+        self.order_timeout_seconds = order_timeout_seconds
 
         # Track execution function generated orders
         self.execution_orders: Dict[str, str] = {}  # execution_id -> order_id
@@ -74,8 +77,8 @@ class SignalHandler:
                 return None
 
             # Place the order
-            result = await self.order_execution_manager.place_market_order(
-                order_request
+            result = await self._execute_with_timeout(
+                self.order_execution_manager.place_market_order, order_request
             )
 
             if result.success:
@@ -130,8 +133,8 @@ class SignalHandler:
                 return None
 
             # Place the order
-            result = await self.order_execution_manager.place_market_order(
-                order_request
+            result = await self._execute_with_timeout(
+                self.order_execution_manager.place_market_order, order_request
             )
 
             if result.success:
@@ -188,8 +191,8 @@ class SignalHandler:
                 return None
 
             # Place the order
-            result = await self.order_execution_manager.place_market_order(
-                order_request
+            result = await self._execute_with_timeout(
+                self.order_execution_manager.place_market_order, order_request
             )
 
             if result.success:
@@ -322,3 +325,17 @@ class SignalHandler:
             quantity=0,
             order_type=order_type,
         )
+
+    async def _execute_with_timeout(self, func, *args, **kwargs):
+        """Execute order calls with configured timeout."""
+        try:
+            return await asyncio.wait_for(
+                func(*args, **kwargs), timeout=self.order_timeout_seconds
+            )
+        except asyncio.TimeoutError as exc:
+            logger.error(
+                "Order execution timed out",
+                timeout_seconds=self.order_timeout_seconds,
+                function=getattr(func, "__name__", str(func)),
+            )
+            raise exc

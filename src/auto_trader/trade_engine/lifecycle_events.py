@@ -73,6 +73,7 @@ class TradeOrchestrationConfig:
         enable_lifecycle_logging: bool = True,
         event_handler_timeout_seconds: int = 30,
         minimum_confidence_threshold: float = 0.7,
+        market_hours_only: bool = True,
     ):
         """Initialize orchestration config.
 
@@ -94,6 +95,7 @@ class TradeOrchestrationConfig:
         self.enable_lifecycle_logging = enable_lifecycle_logging
         self.event_handler_timeout_seconds = event_handler_timeout_seconds
         self.minimum_confidence_threshold = minimum_confidence_threshold
+        self.market_hours_only = market_hours_only
 
         # Validate configuration
         self._validate_config()
@@ -126,6 +128,7 @@ class TradeOrchestrationConfig:
             "enable_risk_validation": self.enable_risk_validation,
             "enable_lifecycle_logging": self.enable_lifecycle_logging,
             "event_handler_timeout_seconds": self.event_handler_timeout_seconds,
+            "market_hours_only": self.market_hours_only,
         }
 
     @classmethod
@@ -146,6 +149,7 @@ class TradeOrchestrationConfig:
             enable_risk_validation=data.get("enable_risk_validation", True),
             enable_lifecycle_logging=data.get("enable_lifecycle_logging", True),
             event_handler_timeout_seconds=data.get("event_handler_timeout_seconds", 30),
+            market_hours_only=data.get("market_hours_only", True),
         )
 
 

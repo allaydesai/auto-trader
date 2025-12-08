@@ -40,10 +40,17 @@ class AutoTraderApp:
         set_service_context("main", "initialize")
 
         try:
+            # Load configuration early for logging setup
+            system_config = self.config_loader.system_config
+            log_defaults = system_config.logging
+
             # Configure logging first
             log_config = LoggerConfig(
                 logs_dir=self.settings.logs_dir,
-                log_level="DEBUG" if self.settings.debug else "INFO",
+                log_level="DEBUG" if self.settings.debug else log_defaults.level,
+                rotation=log_defaults.rotation,
+                retention=log_defaults.retention,
+                format_string=log_defaults.format,
             )
             log_config.configure_logging()
 
@@ -190,8 +197,15 @@ class AutoTraderApp:
                 max_portfolio_risk_percent=float(
                     system_config.risk.max_portfolio_risk_percent
                 ),
-                signal_timeout_seconds=30,
+                max_position_percent=float(system_config.risk.max_position_percent),
+                daily_loss_limit_percent=float(
+                    system_config.risk.daily_loss_limit_percent
+                ),
+                max_open_positions=system_config.risk.max_open_positions,
+                signal_timeout_seconds=system_config.trading.order_timeout,
                 state_save_interval_seconds=60,
+                order_timeout_seconds=system_config.trading.order_timeout,
+                market_hours_only=system_config.trading.market_hours_only,
                 ibkr_host=self.settings.ibkr_host,
                 ibkr_port=self.settings.ibkr_port,
                 ibkr_client_id=self.settings.ibkr_client_id,

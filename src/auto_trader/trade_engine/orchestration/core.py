@@ -2,6 +2,8 @@
 
 from typing import Dict, Optional, Any
 from decimal import Decimal
+from datetime import datetime, time, UTC
+from zoneinfo import ZoneInfo
 
 from loguru import logger
 
@@ -48,6 +50,8 @@ class TradeOrchestrator:
         order_execution_manager: OrderExecutionManager,
         risk_manager: RiskManager,
         config: Optional[TradeOrchestrationConfig] = None,
+        market_hours_only: bool = True,
+        order_timeout_seconds: int = 300,
     ):
         """Initialize trade orchestrator.
 
@@ -63,6 +67,8 @@ class TradeOrchestrator:
         self.function_registry = function_registry
         self.order_execution_manager = order_execution_manager
         self.risk_manager = risk_manager
+        self.market_hours_only = market_hours_only
+        self.order_timeout_seconds = order_timeout_seconds
 
         # Configuration management
         self.config_manager = ConfigurationManager(config)
@@ -78,10 +84,12 @@ class TradeOrchestrator:
         self.coordinator = ComponentCoordinator(trade_plan_loader)
         self.data_router = MarketDataRouter()
         self.status_tracker = PlanStatusTracker()
+        self._eastern_tz = ZoneInfo("America/New_York")
 
         # Initialize execution adapter
         self.execution_adapter = ExecutionOrderAdapter(
-            order_execution_manager=self.order_execution_manager
+            order_execution_manager=self.order_execution_manager,
+            order_timeout_seconds=self.order_timeout_seconds,
         )
 
         # Initialize core processors
@@ -159,6 +167,14 @@ class TradeOrchestrator:
         if not self.is_running:
             return
 
+        if self.market_hours_only and not self._is_market_open(bar_data.timestamp):
+            logger.debug(
+                "Skipping market data outside market hours",
+                symbol=bar_data.symbol,
+                timestamp=bar_data.timestamp.isoformat(),
+            )
+            return
+
         symbol = bar_data.symbol
         bar_size = bar_data.bar_size
 
@@ -195,6 +211,20 @@ class TradeOrchestrator:
                     exc_info=True,
                 )
                 await self._handle_plan_error(plan, str(e))
+
+    def _is_market_open(self, timestamp: Optional[datetime]) -> bool:
+        """Check if timestamp falls within regular US market hours."""
+        ts = timestamp or datetime.now(UTC)
+        eastern_time = ts.astimezone(self._eastern_tz)
+
+        # Weekends closed
+        if eastern_time.weekday() >= 5:
+            return False
+
+        market_open = time(hour=9, minute=30)
+        market_close = time(hour=16, minute=0)
+        current_time = eastern_time.time()
+        return market_open <= current_time <= market_close
 
     async def _evaluate_trade_plan(self, plan: TradePlan, bar_data: BarData) -> None:
         """Evaluate a trade plan against market data.

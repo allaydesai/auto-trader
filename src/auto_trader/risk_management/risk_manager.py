@@ -28,26 +28,51 @@ class RiskManager:
         self,
         account_value: Decimal,
         daily_loss_limit: Optional[Decimal] = None,
+        daily_loss_limit_percent: Optional[Decimal] = None,
         state_file: Optional[Path] = None,
+        max_position_percent: Optional[Decimal] = None,
+        max_open_positions: Optional[int] = None,
+        max_portfolio_risk_percent: Optional[Decimal] = None,
     ) -> None:
         """
         Initialize risk manager.
 
         Args:
             account_value: Total account balance for calculations
-            daily_loss_limit: Maximum daily loss allowed (defaults to $500)
+            daily_loss_limit: Absolute daily loss limit in dollars
+            daily_loss_limit_percent: Maximum daily loss allowed (percent of account)
             state_file: Path to position registry state file
+            max_position_percent: Maximum capital allocation per trade
+            max_open_positions: Maximum simultaneously tracked positions
+            max_portfolio_risk_percent: Portfolio risk cap
         """
         self.account_value = account_value
-        self.daily_loss_limit = (
-            daily_loss_limit if daily_loss_limit is not None else Decimal("500.00")
+        self.max_position_percent = (
+            Decimal(str(max_position_percent))
+            if max_position_percent is not None
+            else None
         )
+        self.max_open_positions = max_open_positions
+        if daily_loss_limit is not None:
+            self.daily_loss_limit = Decimal(str(daily_loss_limit)).quantize(
+                Decimal("0.01")
+            )
+        else:
+            daily_limit_percent = (
+                Decimal(str(daily_loss_limit_percent))
+                if daily_loss_limit_percent is not None
+                else Decimal("5.0")
+            )
+            self.daily_loss_limit = (
+                self.account_value * (daily_limit_percent / Decimal("100"))
+            ).quantize(Decimal("0.01"))
 
         # Initialize components
         self.position_sizer = PositionSizer()
         self.portfolio_tracker = PortfolioTracker(
             state_file=state_file,
             account_value=account_value,
+            max_portfolio_risk_percent=max_portfolio_risk_percent,
         )
 
         # Track daily losses
@@ -95,6 +120,7 @@ class RiskManager:
                 risk_category=trade_plan.risk_category,
                 entry_price=trade_plan.entry_level,
                 stop_loss=trade_plan.stop_loss,
+                max_position_percent=self.max_position_percent,
             )
 
             logger.debug(
@@ -113,6 +139,18 @@ class RiskManager:
 
         if not portfolio_check.passed:
             errors.append(portfolio_check.reason or "Portfolio risk limit exceeded")
+
+        # Check open position limit
+        if (
+            self.max_open_positions is not None
+            and self.portfolio_tracker.get_position_count()
+            >= self.max_open_positions
+        ):
+            errors.append(
+                f"Maximum open positions reached "
+                f"({self.portfolio_tracker.get_position_count()}/"
+                f"{self.max_open_positions})"
+            )
 
         # Check daily loss limit (AC 24)
         daily_loss_check = self._check_daily_loss_limit()
@@ -382,7 +420,7 @@ class RiskManager:
             current_risk=current_risk,
             new_trade_risk=new_risk_percent,
             total_risk=current_risk + new_risk_percent,
-            limit=self.portfolio_tracker.MAX_PORTFOLIO_RISK,
+            limit=self.portfolio_tracker.max_portfolio_risk,
         )
 
     def _check_daily_loss_limit(self) -> bool:
@@ -416,7 +454,9 @@ class RiskManager:
                 reason=reason,
                 current_risk=self.portfolio_tracker.get_current_portfolio_risk(),
                 new_trade_risk=Decimal("0"),
-                limit=self.portfolio_tracker.MAX_PORTFOLIO_RISK,
+                limit=getattr(
+                    self.portfolio_tracker, "MAX_PORTFOLIO_RISK", Decimal("10.0")
+                ),
             ),
             errors=errors,
         )
