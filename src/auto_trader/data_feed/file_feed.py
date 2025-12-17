@@ -8,11 +8,12 @@ simulating live market data flow.
 import asyncio
 import csv
 import json
+from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Callable, List, Dict, Any
+from typing import Callable, List, Dict, Any, Optional
 
 import yaml
 from loguru import logger
@@ -28,6 +29,78 @@ class PlaybackMode(Enum):
     REAL_TIME = "real_time"  # Simulate real-time delivery based on timestamps
 
 
+@dataclass
+class ColumnMapping:
+    """Configuration for mapping CSV/file columns to BarData fields.
+
+    Supports flexible column name mapping for various data file formats.
+    Column names are matched case-insensitively.
+
+    Attributes:
+        timestamp: Column name for timestamp (default: "timestamp").
+        symbol: Column name for symbol (default: "symbol").
+        open: Column name for open price (default: "open").
+        high: Column name for high price (default: "high").
+        low: Column name for low price (default: "low").
+        close: Column name for close price (default: "close").
+        volume: Column name for volume (default: "volume").
+        bar_size: Column name for bar size (default: "bar_size").
+        default_symbol: Default symbol when column is missing.
+        default_bar_size: Default bar size when column is missing.
+
+    Example:
+        >>> # For files with "Date" instead of "timestamp"
+        >>> mapping = ColumnMapping(timestamp="Date", default_symbol="AAPL")
+        >>> feed = FileDataFeed("data.csv", column_mapping=mapping)
+    """
+
+    timestamp: str = "timestamp"
+    symbol: str = "symbol"
+    open: str = "open"
+    high: str = "high"
+    low: str = "low"
+    close: str = "close"
+    volume: str = "volume"
+    bar_size: str = "bar_size"
+
+    # Default values for columns that might be missing
+    default_symbol: Optional[str] = None
+    default_bar_size: Optional[BarSizeType] = None
+
+    @classmethod
+    def for_standard_ohlcv(
+        cls,
+        symbol: str,
+        bar_size: BarSizeType = "1min",
+        timestamp_column: str = "Date",
+    ) -> "ColumnMapping":
+        """Create mapping for standard OHLCV files with Date column.
+
+        Common format from data providers like Yahoo Finance, Alpha Vantage, etc.
+        Expects columns: Date, Open, High, Low, Close, Volume
+
+        Args:
+            symbol: The symbol to assign to all bars.
+            bar_size: The bar size to assign to all bars.
+            timestamp_column: The timestamp column name (default: "Date").
+
+        Returns:
+            ColumnMapping configured for standard OHLCV format.
+        """
+        return cls(
+            timestamp=timestamp_column,
+            symbol="symbol",  # Will use default since column won't exist
+            open="Open",
+            high="High",
+            low="Low",
+            close="Close",
+            volume="Volume",
+            bar_size="bar_size",  # Will use default since column won't exist
+            default_symbol=symbol,
+            default_bar_size=bar_size,
+        )
+
+
 class FileDataFeed:
     """File-based data feed implementing DataFeedProvider protocol.
 
@@ -39,11 +112,17 @@ class FileDataFeed:
         playback_mode: How to deliver bars (instant, sequential, real_time).
         speed_multiplier: Speed factor for sequential/real_time modes.
             1.0 = real time, 10.0 = 10x faster, 0.1 = 10x slower.
+        column_mapping: Optional column name mapping for non-standard files.
 
     Example:
+        >>> # Standard format
         >>> feed = FileDataFeed("data/simulation/scenario.csv")
         >>> feed.add_subscriber("orchestrator", process_bar)
         >>> await feed.start()
+
+        >>> # Custom format (e.g., Yahoo Finance style)
+        >>> mapping = ColumnMapping.for_standard_ohlcv("AAPL", "1min")
+        >>> feed = FileDataFeed("aapl_data.csv", column_mapping=mapping)
     """
 
     def __init__(
@@ -51,6 +130,7 @@ class FileDataFeed:
         file_path: str,
         playback_mode: PlaybackMode = PlaybackMode.INSTANT,
         speed_multiplier: float = 1.0,
+        column_mapping: Optional[ColumnMapping] = None,
     ) -> None:
         """Initialize file data feed.
 
@@ -58,6 +138,7 @@ class FileDataFeed:
             file_path: Path to the data file.
             playback_mode: How to deliver bars.
             speed_multiplier: Speed factor for playback.
+            column_mapping: Optional column name mapping configuration.
 
         Raises:
             FileNotFoundError: If the file does not exist.
@@ -66,6 +147,7 @@ class FileDataFeed:
         self._file_path = Path(file_path)
         self._playback_mode = playback_mode
         self._speed_multiplier = speed_multiplier
+        self._column_mapping = column_mapping or ColumnMapping()
 
         if not self._file_path.exists():
             raise FileNotFoundError(f"Data file not found: {file_path}")
@@ -87,6 +169,7 @@ class FileDataFeed:
             file_path=str(self._file_path),
             bars_loaded=len(self._bars),
             playback_mode=playback_mode.value,
+            column_mapping_used=column_mapping is not None,
         )
 
     def _validate_file_format(self) -> None:
@@ -136,8 +219,36 @@ class FileDataFeed:
         bars = [self._parse_bar_dict(bar_dict) for bar_dict in bars_data]
         return sorted(bars, key=lambda b: b.timestamp)
 
+    def _get_column_value(
+        self, bar_dict: Dict[str, Any], column_name: str, default: Any = None
+    ) -> Any:
+        """Get a value from bar_dict using case-insensitive column matching.
+
+        Args:
+            bar_dict: Dictionary with bar data fields.
+            column_name: The column name to look for.
+            default: Default value if column not found.
+
+        Returns:
+            The column value or default.
+        """
+        # First try exact match
+        if column_name in bar_dict:
+            return bar_dict[column_name]
+
+        # Try case-insensitive match
+        column_lower = column_name.lower()
+        for key, value in bar_dict.items():
+            if key.lower() == column_lower:
+                return value
+
+        return default
+
     def _parse_bar_dict(self, bar_dict: Dict[str, Any]) -> BarData:
         """Parse a dictionary into a BarData object.
+
+        Uses column mapping to handle various file formats.
+        Column names are matched case-insensitively.
 
         Args:
             bar_dict: Dictionary with bar data fields.
@@ -146,13 +257,24 @@ class FileDataFeed:
             Validated BarData object.
 
         Raises:
-            ValueError: If validation fails.
+            ValueError: If required fields are missing or validation fails.
         """
+        mapping = self._column_mapping
+
         # Parse timestamp
-        timestamp_str = bar_dict.get("timestamp", "")
+        timestamp_str = self._get_column_value(bar_dict, mapping.timestamp, "")
+        if not timestamp_str:
+            raise ValueError(
+                f"Missing timestamp column. Expected '{mapping.timestamp}', "
+                f"available columns: {list(bar_dict.keys())}"
+            )
+
         if isinstance(timestamp_str, str):
             # Handle ISO format with Z suffix
             timestamp_str = timestamp_str.replace("Z", "+00:00")
+            # Handle space-separated datetime (e.g., "2006-01-03 00:00:00")
+            if " " in timestamp_str and "T" not in timestamp_str:
+                timestamp_str = timestamp_str.replace(" ", "T")
             timestamp = datetime.fromisoformat(timestamp_str)
         else:
             timestamp = timestamp_str
@@ -161,16 +283,63 @@ class FileDataFeed:
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
 
+        # Get symbol (use default if column missing)
+        symbol = self._get_column_value(bar_dict, mapping.symbol)
+        if symbol is None:
+            if mapping.default_symbol:
+                symbol = mapping.default_symbol
+            else:
+                raise ValueError(
+                    f"Missing symbol column '{mapping.symbol}' and no default_symbol set. "
+                    f"Available columns: {list(bar_dict.keys())}"
+                )
+
+        # Get bar_size (use default if column missing)
+        bar_size = self._get_column_value(bar_dict, mapping.bar_size)
+        if bar_size is None:
+            if mapping.default_bar_size:
+                bar_size = mapping.default_bar_size
+            else:
+                raise ValueError(
+                    f"Missing bar_size column '{mapping.bar_size}' and no default_bar_size set. "
+                    f"Available columns: {list(bar_dict.keys())}"
+                )
+
+        # Get OHLCV values
+        open_val = self._get_column_value(bar_dict, mapping.open)
+        high_val = self._get_column_value(bar_dict, mapping.high)
+        low_val = self._get_column_value(bar_dict, mapping.low)
+        close_val = self._get_column_value(bar_dict, mapping.close)
+        volume_val = self._get_column_value(bar_dict, mapping.volume, 0)
+
+        # Validate required OHLC values exist
+        for name, val in [
+            ("open", open_val),
+            ("high", high_val),
+            ("low", low_val),
+            ("close", close_val),
+        ]:
+            if val is None:
+                raise ValueError(
+                    f"Missing {name} column '{getattr(mapping, name)}'. "
+                    f"Available columns: {list(bar_dict.keys())}"
+                )
+
+        # Round prices to 4 decimal places to comply with BarData validation
+        # Many data sources have excessive precision (e.g., Yahoo Finance)
+        def round_price(val: Any) -> Decimal:
+            return Decimal(str(val)).quantize(Decimal("0.0001"))
+
         # Create BarData (Pydantic validates OHLC consistency)
         return BarData(
-            symbol=bar_dict["symbol"],
+            symbol=symbol,
             timestamp=timestamp,
-            open_price=Decimal(str(bar_dict["open"])),
-            high_price=Decimal(str(bar_dict["high"])),
-            low_price=Decimal(str(bar_dict["low"])),
-            close_price=Decimal(str(bar_dict["close"])),
-            volume=int(bar_dict["volume"]),
-            bar_size=bar_dict["bar_size"],
+            open_price=round_price(open_val),
+            high_price=round_price(high_val),
+            low_price=round_price(low_val),
+            close_price=round_price(close_val),
+            volume=int(float(volume_val)),  # Handle float volumes like "807234400.0"
+            bar_size=bar_size,
         )
 
     @property
