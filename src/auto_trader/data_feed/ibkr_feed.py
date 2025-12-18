@@ -87,7 +87,13 @@ class IBKRDataFeed:
         """Start feeding data to subscribers.
 
         For IBKR, the feed is ready immediately after initialization
-        since the IB client is already connected.
+        since the IB client is already connected. This method sets the
+        is_running flag but does not initiate data streaming.
+
+        Note:
+            Actual data streaming begins when subscribe_symbols() is called.
+            This method exists to satisfy the DataFeedProvider protocol and
+            maintain consistency with FileDataFeed behavior.
         """
         logger.info("Starting IBKRDataFeed")
         self._is_running = True

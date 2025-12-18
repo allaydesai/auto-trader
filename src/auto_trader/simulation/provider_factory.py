@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from ib_async import IB
 
 from auto_trader.data_feed import (
     DataFeedProvider,
@@ -53,7 +56,7 @@ class SimulationContext:
 
 def create_data_feed_provider(
     simulation_context: SimulationContext,
-    ib_client: Optional[object] = None,
+    ib_client: Optional["IB"] = None,
 ) -> DataFeedProvider:
     """Create appropriate data feed provider based on simulation context.
 
@@ -106,19 +109,16 @@ def create_order_execution_provider(
         simulation_context: Simulation configuration context.
 
     Returns:
-        OrderExecutionProvider implementation (SimulatedOrderExecution for simulation,
-        or the caller should use existing OrderExecutionManager for live mode).
+        OrderExecutionProvider implementation (SimulatedOrderExecution for simulation).
 
-    Note:
-        For live mode, this returns SimulatedOrderExecution as a placeholder.
-        The actual live execution should use the existing OrderExecutionManager
-        which handles both modes internally. This factory is primarily for
-        the simulation path.
+    Raises:
+        NotImplementedError: If live mode is requested. Use OrderExecutionManager
+                           for live trading instead.
     """
     if simulation_context.enabled:
         return SimulatedOrderExecution()
     else:
-        # For live mode, return SimulatedOrderExecution as a fallback
-        # The actual live execution is handled by OrderExecutionManager
-        # which has its own simulation_mode flag
-        return SimulatedOrderExecution()
+        raise NotImplementedError(
+            "Live order execution not implemented in factory. "
+            "Use OrderExecutionManager for live trading."
+        )

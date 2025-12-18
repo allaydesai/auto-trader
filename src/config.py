@@ -78,6 +78,26 @@ class LoggingConfig(BaseModel):
     )
 
 
+class SimulationConfig(BaseModel):
+    """Configuration for simulation mode."""
+
+    enabled: bool = Field(default=False, description="Enable simulation mode")
+    data_file: Optional[str] = Field(
+        default=None, description="Path to simulation data file (CSV/YAML/JSON)"
+    )
+    playback_mode: str = Field(
+        default="sequential",
+        pattern="^(instant|sequential|real_time)$",
+        description="Data playback mode: instant, sequential, or real_time",
+    )
+    speed_multiplier: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=100.0,
+        description="Playback speed multiplier (1.0 = real-time)",
+    )
+
+
 class SystemConfig(BaseModel):
     """System-wide configuration from config.yaml."""
 
@@ -85,6 +105,7 @@ class SystemConfig(BaseModel):
     risk: RiskConfig = Field(default_factory=RiskConfig)
     trading: TradingConfig = Field(default_factory=TradingConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    simulation: SimulationConfig = Field(default_factory=SimulationConfig)
 
 
 class UserPreferences(BaseModel):
