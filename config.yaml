@@ -52,5 +52,15 @@ logging:
   format: "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}"
   # Log categories (future enhancement):
   # trade_logs: true              # Separate trade execution logs
-  # risk_logs: true               # Separate risk management logs  
+  # risk_logs: true               # Separate risk management logs
   # performance_logs: false       # Performance metrics logging
+
+# ============================================================
+# SIMULATION MODE CONFIGURATION
+# ============================================================
+# Configuration for simulation/testing mode (Story 3.4)
+simulation:
+  enabled: true                         # Enable simulation mode
+  data_file: "data/simulation/test_bars.csv"  # Path to simulation data file
+  playback_mode: "instant"              # instant, sequential, or real_time
+  speed_multiplier: 1.0                 # Playback speed (1.0 = real-time)
