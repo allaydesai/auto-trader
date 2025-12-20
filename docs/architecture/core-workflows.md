@@ -1,5 +1,8 @@
 # Core Workflows
 
+> For the **code-level call chain** (what classes/methods actually run at runtime), see:
+> - `docs/architecture/runtime-execution-flow.md`
+
 ## Trade Entry Workflow
 ```mermaid
 sequenceDiagram

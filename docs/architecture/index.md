@@ -31,6 +31,7 @@
     - [Trade Entry Workflow](./core-workflows.md#trade-entry-workflow)
     - [Connection Recovery Workflow](./core-workflows.md#connection-recovery-workflow)
     - [CLI Trade Plan Creation Workflow](./core-workflows.md#cli-trade-plan-creation-workflow)
+  - [Runtime Execution Flow (Code-Level)](./runtime-execution-flow.md)
   - [Database Schema](./database-schema.md)
     - [Trade Plan Schema (YAML)](./database-schema.md#trade-plan-schema-yaml)
     - [Position State Schema (JSON)](./database-schema.md#position-state-schema-json)
