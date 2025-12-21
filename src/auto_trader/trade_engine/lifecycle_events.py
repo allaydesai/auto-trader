@@ -156,11 +156,11 @@ class TradeOrchestrationConfig:
 class LifecycleEventManager:
     """Manages lifecycle event handlers and notifications."""
 
-    def __init__(self, config: TradeOrchestrationConfig):
+    def __init__(self, config: Any):
         """Initialize event manager.
 
         Args:
-            config: Orchestration configuration
+            config: Orchestration configuration (TradeOrchestrationConfig or OrchestrationConfig)
         """
         self.config = config
         self.event_handlers: List[Callable[[TradeLifecycleEvent], None]] = []

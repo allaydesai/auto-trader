@@ -1,6 +1,6 @@
 """Configuration management for trade orchestration."""
 
-from typing import Optional
+from typing import Any
 from dataclasses import dataclass
 
 
@@ -14,7 +14,16 @@ class OrchestrationConfig:
 
     # Signal processing settings
     signal_confidence_threshold: float = 0.7
+    minimum_confidence_threshold: float = 0.7  # Alias for compatibility
     enable_signal_filtering: bool = True
+
+    # Timing settings
+    signal_timeout_seconds: int = 300
+    state_save_interval_seconds: int = 60
+
+    # Position tracking
+    enable_position_tracking: bool = True
+    enable_lifecycle_logging: bool = True
 
     # Performance settings
     max_processing_latency_ms: int = 1000
@@ -32,13 +41,35 @@ class OrchestrationConfig:
 class ConfigurationManager:
     """Manages orchestration configuration and validation."""
 
-    def __init__(self, config: Optional[OrchestrationConfig] = None):
+    def __init__(self, config: Any = None):
         """Initialize configuration manager.
 
         Args:
-            config: Orchestration configuration
+            config: Orchestration configuration (OrchestrationConfig or TradeOrchestrationConfig)
         """
-        self.config = config or OrchestrationConfig()
+        if config is None:
+            self.config = OrchestrationConfig()
+        elif isinstance(config, OrchestrationConfig):
+            self.config = config
+        else:
+            # Convert TradeOrchestrationConfig or similar to OrchestrationConfig
+            self.config = OrchestrationConfig(
+                enable_risk_validation=getattr(config, "enable_risk_validation", True),
+                max_concurrent_trades=getattr(config, "max_concurrent_trades", 10),
+                minimum_confidence_threshold=getattr(
+                    config, "minimum_confidence_threshold", 0.7
+                ),
+                signal_timeout_seconds=getattr(config, "signal_timeout_seconds", 300),
+                state_save_interval_seconds=getattr(
+                    config, "state_save_interval_seconds", 60
+                ),
+                enable_position_tracking=getattr(
+                    config, "enable_position_tracking", True
+                ),
+                enable_lifecycle_logging=getattr(
+                    config, "enable_lifecycle_logging", True
+                ),
+            )
 
     def validate_configuration(self) -> bool:
         """Validate configuration settings.
