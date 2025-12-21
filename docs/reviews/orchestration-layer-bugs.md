@@ -12,7 +12,7 @@
 
 Ongoing analysis of the trade orchestration layer has identified several critical bugs and integration gaps that impact the reliability of the trade lifecycle, specifically around startup synchronization and post-fill processing.
 
-**Severity Distribution:** 1 CRITICAL | 1 HIGH | 2 MEDIUM | 3 RESOLVED
+**Severity Distribution:** 1 CRITICAL | 1 HIGH | 2 MEDIUM | 4 RESOLVED
 
 ---
 
@@ -40,6 +40,13 @@ Ongoing analysis of the trade orchestration layer has identified several critica
 **Fix Applied:** Implemented `save_plan()` and `load_plan()` methods in `TradePlanLoader`:
 - `save_plan(trade_plan)`: Saves plan to disk and updates in-memory cache. Updates existing file if plan was previously loaded, otherwise creates new file.
 - `load_plan(plan_id)`: Alias for `get_plan()` for orchestrator compatibility.
+
+### FIX-4: Market Data Subscription for Open Positions
+**Location:** `src/auto_trader/trade_engine/main_application.py:328-351`
+
+**Problem:** `_subscribe_to_market_data()` only considered `active_plans` (plans awaiting entry). If `active_plans` was empty but `position_plans` had open positions, the system would skip market data subscriptions, leaving open positions unmonitored for exits.
+
+**Fix Applied:** Updated `_subscribe_to_market_data()` to combine both `active_plans` and `position_plans` when extracting symbols and timeframes for subscription.
 
 ---
 

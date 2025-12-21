@@ -325,29 +325,37 @@ class TradingApplication:
                 "trade_orchestrator", self._market_data_callback
             )
 
-            # Get active trade plans to extract symbols and timeframes
+            # Get active trade plans and open position plans to extract symbols and timeframes
             active_plans = self.trade_orchestrator.active_plans
-            if not active_plans:
+            position_plans = self.trade_orchestrator.position_plans
+            all_plans = {**active_plans, **position_plans}
+
+            if not all_plans:
                 logger.info(
-                    "No active trade plans found, skipping market data subscription"
+                    "No active trade plans or open positions found, skipping market data subscription"
                 )
                 return
 
-            # Extract unique symbols from all active plans
-            symbols = list(set(plan.symbol for plan in active_plans.values()))
+            # Extract unique symbols from all monitored plans
+            symbols = list(set(plan.symbol for plan in all_plans.values()))
 
             # Extract unique timeframes from entry and exit functions
             timeframes = set()
-            for plan in active_plans.values():
-                timeframes.add(plan.entry_function.timeframe)
-                # Add both stop loss and take profit timeframes
-                if hasattr(plan, "stop_loss_function") and plan.stop_loss_function:
-                    timeframes.add(plan.stop_loss_function.timeframe)
-                if hasattr(plan, "take_profit_function") and plan.take_profit_function:
-                    timeframes.add(plan.take_profit_function.timeframe)
-                # Legacy support for old exit_function field
-                if hasattr(plan, "exit_function") and plan.exit_function:
-                    timeframes.add(plan.exit_function.timeframe)
+            for plan in all_plans.values():
+                # For plans awaiting entry, we need the entry function timeframe
+                if plan.status == "awaiting_entry":
+                    timeframes.add(plan.entry_function.timeframe)
+                
+                # For open positions, we need the exit function timeframes
+                elif plan.status == "position_open":
+                    # Add both stop loss and take profit timeframes
+                    if hasattr(plan, "stop_loss_function") and plan.stop_loss_function:
+                        timeframes.add(plan.stop_loss_function.timeframe)
+                    if hasattr(plan, "take_profit_function") and plan.take_profit_function:
+                        timeframes.add(plan.take_profit_function.timeframe)
+                    # Legacy support for old exit_function field
+                    if hasattr(plan, "exit_function") and plan.exit_function:
+                        timeframes.add(plan.exit_function.timeframe)
 
             logger.info(
                 "Subscribing to market data",
