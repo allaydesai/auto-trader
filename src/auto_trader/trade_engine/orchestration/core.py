@@ -9,7 +9,7 @@ from loguru import logger
 
 from auto_trader.models.trade_plan import TradePlan, TradePlanStatus
 from auto_trader.models.plan_loader import TradePlanLoader
-from auto_trader.models.execution import ExecutionContext
+from auto_trader.models.execution import ExecutionContext, PositionState
 from auto_trader.models.enums import ExecutionAction, Timeframe
 from auto_trader.models.order import OrderResult
 from auto_trader.models.market_data import BarData
@@ -134,14 +134,27 @@ class TradeOrchestrator:
             logger.info("Starting TradeOrchestrator")
 
             # Load all active trade plans
-            self.active_plans = await self.coordinator.load_active_trade_plans()
+            loaded_plans = await self.coordinator.load_active_trade_plans()
+
+            # Split plans into awaiting entry and open positions
+            self.active_plans = {
+                pid: p
+                for pid, p in loaded_plans.items()
+                if p.status == TradePlanStatus.AWAITING_ENTRY
+            }
+            self.position_plans = {
+                pid: p
+                for pid, p in loaded_plans.items()
+                if p.status == TradePlanStatus.POSITION_OPEN
+            }
 
             # Function registry is already initialized in constructor
             # No additional initialization needed
 
             self.is_running = True
             logger.info(
-                f"TradeOrchestrator started with {len(self.active_plans)} active plans"
+                f"TradeOrchestrator started with {len(self.active_plans)} awaiting entry "
+                f"and {len(self.position_plans)} open positions"
             )
 
         except Exception as e:
@@ -267,7 +280,7 @@ class TradeOrchestrator:
             entry_config = ExecutionFunctionConfig(
                 name=f"{plan.plan_id}_entry",
                 function_type=plan.entry_function.function_type,
-                timeframe=plan.entry_function.timeframe,
+                timeframe=Timeframe(plan.entry_function.timeframe),
                 parameters=plan.entry_function.parameters,
                 enabled=True,
                 lookback_bars=0,  # TODO: Implement historical data manager
@@ -292,9 +305,8 @@ class TradeOrchestrator:
 
             if result.success and result.order_result:
                 self.statistics.record_signal_generated(plan.plan_id, "ENTRY")
-                self.statistics.record_order_placed(
-                    plan.plan_id, result.order_result.order_id
-                )
+                order_id = result.order_result.order_id or "unknown"
+                self.statistics.record_order_placed(plan.plan_id, order_id)
 
                 # Update plan status and tracking
                 old_status = plan.status
@@ -351,6 +363,17 @@ class TradeOrchestrator:
             ]
 
             for exit_type, exit_func in exit_functions:
+                # Convert PositionEntry to PositionState for ExecutionContext
+                position_state = PositionState(
+                    symbol=position.symbol,
+                    quantity=position.quantity,
+                    entry_price=position.entry_price,
+                    current_price=bar_data.close_price,
+                    stop_loss=plan.stop_loss,
+                    take_profit=plan.take_profit,
+                    opened_at=position.timestamp,
+                )
+
                 # Build execution context for this exit function
                 context = ExecutionContext(
                     symbol=plan.symbol,
@@ -358,7 +381,7 @@ class TradeOrchestrator:
                     current_bar=bar_data,
                     historical_bars=[],  # TODO: Get from market data manager
                     trade_plan_params=exit_func.parameters,
-                    position_state=position,
+                    position_state=position_state,
                     account_balance=self.risk_manager.account_value,
                     timestamp=bar_data.timestamp,
                 )
@@ -369,7 +392,7 @@ class TradeOrchestrator:
                 exit_config = ExecutionFunctionConfig(
                     name=f"{plan.plan_id}_{exit_type}",
                     function_type=exit_func.function_type,
-                    timeframe=exit_func.timeframe,
+                    timeframe=Timeframe(exit_func.timeframe),
                     parameters=exit_func.parameters,
                     enabled=True,
                     lookback_bars=0,  # TODO: Implement historical data manager
@@ -513,7 +536,7 @@ class TradeOrchestrator:
         Returns:
             Dollar risk amount
         """
-        entry_price = order_result.average_fill_price
+        entry_price = order_result.average_fill_price or Decimal("0")
         stop_price = plan.stop_loss
         quantity = order_result.filled_quantity
 
@@ -522,12 +545,22 @@ class TradeOrchestrator:
     # Testing and compatibility methods
     async def add_trade_plan(self, trade_plan: TradePlan) -> None:
         """Add a trade plan for testing purposes."""
-        await self.trade_plan_loader.save_plan(trade_plan)
-        self.active_plans = await self.coordinator.load_active_trade_plans()
+        self.trade_plan_loader.save_plan(trade_plan)
+        loaded_plans = await self.coordinator.load_active_trade_plans()
+        self.active_plans = {
+            pid: p
+            for pid, p in loaded_plans.items()
+            if p.status == TradePlanStatus.AWAITING_ENTRY
+        }
+        self.position_plans = {
+            pid: p
+            for pid, p in loaded_plans.items()
+            if p.status == TradePlanStatus.POSITION_OPEN
+        }
 
-    async def get_trade_plan(self, plan_id: str) -> Optional[TradePlan]:
+    def get_trade_plan(self, plan_id: str) -> Optional[TradePlan]:
         """Get trade plan by ID for testing purposes."""
-        return await self.trade_plan_loader.load_plan(plan_id)
+        return self.trade_plan_loader.load_plan(plan_id)
 
     async def process_market_data(self, bar_data: BarData) -> None:
         """Process market data event for testing purposes."""

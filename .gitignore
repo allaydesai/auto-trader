@@ -230,3 +230,9 @@ data/state/*.bak.*
 # Individual trade plans (not templates or samples)
 # Pattern matches files like: AAPL_20250815_001.yaml, SPY_20251009_001.yaml
 data/trade_plans/*_[0-9]*.yaml
+
+# Large market data files for simulation (too large for git)
+data/*.csv
+
+# macOS
+.DS_Store

@@ -171,6 +171,74 @@ class TradePlanLoader:
         """
         return self._loaded_plans.get(plan_id)
 
+    def load_plan(self, plan_id: str) -> Optional[TradePlan]:
+        """
+        Alias for get_plan (for orchestrator compatibility).
+
+        Args:
+            plan_id: Unique plan identifier
+
+        Returns:
+            TradePlan instance or None if not found
+        """
+        return self.get_plan(plan_id)
+
+    def save_plan(self, trade_plan: TradePlan) -> bool:
+        """
+        Save a trade plan to disk and update in-memory cache.
+
+        Args:
+            trade_plan: TradePlan instance to save
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            plan_id = trade_plan.plan_id
+
+            # Determine file path
+            if plan_id in self._plan_to_file:
+                # Update existing file
+                file_path = self._plan_to_file[plan_id]
+            else:
+                # Create new file with plan_id as filename
+                file_path = self.plans_directory / f"{plan_id}.yaml"
+
+            # Ensure directory exists
+            self.plans_directory.mkdir(parents=True, exist_ok=True)
+
+            # Convert plan to dict for YAML serialization
+            plan_data = trade_plan.model_dump(mode="json")
+
+            # Write to file
+            with open(file_path, "w", encoding="utf-8") as f:
+                yaml.dump(plan_data, f, default_flow_style=False, sort_keys=False)
+
+            # Update in-memory cache
+            self._loaded_plans[plan_id] = trade_plan
+            self._plan_to_file[plan_id] = file_path
+
+            # Update file-to-plans mapping
+            if file_path not in self._file_to_plans:
+                self._file_to_plans[file_path] = set()
+            self._file_to_plans[file_path].add(plan_id)
+
+            logger.info(
+                "Saved trade plan",
+                plan_id=plan_id,
+                file_path=str(file_path),
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Failed to save trade plan",
+                plan_id=trade_plan.plan_id,
+                error=str(e),
+            )
+            return False
+
     def get_plans_by_status(self, status: TradePlanStatus) -> List[TradePlan]:
         """
         Get all plans with a specific status.

@@ -13,6 +13,9 @@ correlation_id: ContextVar[Optional[str]] = ContextVar("correlation_id", default
 service_context: ContextVar[Optional[str]] = ContextVar("service_context", default=None)
 trade_context: ContextVar[Optional[str]] = ContextVar("trade_context", default=None)
 
+# Simulation mode state (module-level for global access)
+_simulation_mode: bool = False
+
 
 class LoggerConfig:
     """Enhanced logging configuration manager."""
@@ -123,6 +126,10 @@ class LoggerConfig:
         # Add trade context if available
         if trade_context.get():
             record["extra"]["trade_context"] = trade_context.get()
+
+        # Prepend [SIM] to message when in simulation mode
+        if _simulation_mode:
+            record["message"] = f"[SIM] {record['message']}"
 
         return True
 
@@ -264,3 +271,22 @@ def clear_context() -> None:
     correlation_id.set(None)
     service_context.set(None)
     trade_context.set(None)
+
+
+def set_simulation_mode(enabled: bool) -> None:
+    """Set simulation mode for logging indicators.
+
+    Args:
+        enabled: Whether simulation mode is active.
+    """
+    global _simulation_mode
+    _simulation_mode = enabled
+
+
+def is_simulation_mode() -> bool:
+    """Check if simulation mode is active.
+
+    Returns:
+        True if simulation mode is enabled, False otherwise.
+    """
+    return _simulation_mode

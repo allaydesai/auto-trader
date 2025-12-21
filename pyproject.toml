@@ -6,11 +6,15 @@ requires-python = "==3.11.*"
 dependencies = [
     "apscheduler==3.10.4",
     "click>=8.2.1",
+    "fmp-py>=0.0.20.3",
     "httpx>=0.28.1",
     "ib-async>=2.0.1",
     "loguru>=0.7.3",
+    "matplotlib>=3.10.8",
+    "mcp>=1.25.0",
+    "mplfinance>=0.12.10b0",
     "numpy==1.26.0",
-    "pandas==2.2.0",
+    "pandas>=2.2.2",
     "psutil>=7.0.0",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.10.1",
@@ -23,7 +27,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "coverage>=7.10.3",
+    "ipykernel>=7.1.0",
+    "jupyterlab>=4.5.1",
     "mypy==1.11.0",
+    "plotly>=5.24.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",

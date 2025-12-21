@@ -206,7 +206,9 @@ class PositionSizer:
                 stop_price=entry_price,
             )
 
-        max_shares = int((max_position_value / entry_price).quantize(Decimal("1"), ROUND_DOWN))
+        max_shares = int(
+            (max_position_value / entry_price).quantize(Decimal("1"), ROUND_DOWN)
+        )
         if max_shares <= 0:
             raise InvalidPositionSizeError(
                 f"Max position percent ({max_percent}%) too restrictive for entry price {entry_price}",

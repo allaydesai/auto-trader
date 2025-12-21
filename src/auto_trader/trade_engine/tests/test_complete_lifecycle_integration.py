@@ -237,6 +237,7 @@ async def orchestrator(
         order_execution_manager=mock_order_execution_manager,
         risk_manager=mock_risk_manager,
         config=config,
+        market_hours_only=False,  # Disable for testing
     )
 
     return orchestrator

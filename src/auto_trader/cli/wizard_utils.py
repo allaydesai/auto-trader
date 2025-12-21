@@ -80,14 +80,20 @@ class WizardFieldCollector:
         system_default_timeframe = (
             getattr(trading_config, "default_timeframe", None) or DEFAULT_TIMEFRAME
         )
-        preferred_default = preferred_timeframes[0] if preferred_timeframes else system_default_timeframe
+        preferred_default = (
+            preferred_timeframes[0]
+            if preferred_timeframes
+            else system_default_timeframe
+        )
         self._default_timeframe = (
             preferred_default
             if preferred_default in AVAILABLE_TIMEFRAMES
             else DEFAULT_TIMEFRAME
         )
         entry_pref = getattr(
-            self._user_preferences, "default_entry_function", DEFAULT_ENTRY_FUNCTION_TYPE
+            self._user_preferences,
+            "default_entry_function",
+            DEFAULT_ENTRY_FUNCTION_TYPE,
         )
         if entry_pref not in ENTRY_FUNCTION_TYPES:
             entry_pref = DEFAULT_ENTRY_FUNCTION_TYPE

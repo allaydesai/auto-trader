@@ -150,9 +150,7 @@ class TestSummary:
         """Test summary with different time periods."""
         runner = CliRunner()
 
-        with patch(
-            "auto_trader.cli.monitor_commands.display_performance_summary"
-        ):
+        with patch("auto_trader.cli.monitor_commands.display_performance_summary"):
             # Test day period
             result = runner.invoke(summary, ["--period", "day"])
             assert result.exit_code == 0
